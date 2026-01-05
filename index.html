@@ -1,102 +1,646 @@
 <!doctype html>
 <html lang="ja">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>競艇 v1（払戻123 最終版）</title>
-<style>
-body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif;margin:0;background:#0b0f14;color:#e9eef5}
-.wrap{max-width:980px;margin:0 auto;padding:16px}
-.card{background:#121a24;border:1px solid #1c2a3b;border-radius:14px;padding:14px;margin:10px 0}
-.pill{display:inline-block;padding:6px 10px;border-radius:999px;font-size:12px;border:1px solid #2a3e5b;background:#0d141d;color:#cfe3ff}
-.grid{display:grid;gap:10px}
-.g2{grid-template-columns:1fr 1fr}
-.badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:900;border:1px solid #2a3e5b}
-.b-buy{color:#6ee7b7}.b-no{color:#fca5a5}.b-wait{color:#ffd27d}
-.raceCard{background:#111a26;border:1px solid #1c2a3b;border-radius:14px;padding:12px;margin:10px 0}
-.resultLine{margin-top:6px;color:#b8c5d6}
-input{width:100%;padding:8px;border-radius:8px;border:1px solid #223248;background:#0d141d;color:#fff}
-.btn{background:#2b6ff7;border:0;color:#fff;padding:8px 12px;border-radius:8px;font-weight:800;cursor:pointer}
-</style>
-</head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>競艇 v1（基の形＋払戻123表示/送信）</title>
+  <style>
+    body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
+    h1 { font-size: 18px; margin: 8px 0 10px; }
+    .sub { font-size: 12px; color:#b8c5d6; margin-bottom: 10px; line-height:1.6; }
 
+    .card { background:#121a24; border:1px solid #1c2a3b; border-radius:14px; padding:14px; margin:10px 0; box-shadow:0 6px 18px rgba(0,0,0,.25); }
+    .pill { display:inline-block; padding:6px 10px; border-radius:999px; font-size:12px; border:1px solid #2a3e5b; background:#0d141d; color:#cfe3ff; }
+
+    .grid { display:grid; gap:10px; }
+    .g2 { grid-template-columns: 1fr 1fr; }
+    .g3 { grid-template-columns: 1fr 1fr 1fr; }
+    @media (max-width: 760px) { .g2,.g3 { grid-template-columns: 1fr; } }
+
+    label { font-size:12px; color:#b8c5d6; display:block; margin-bottom:6px; }
+    input, select { width:100%; padding:10px; border-radius:10px; border:1px solid #223248; background:#0d141d; color:#e9eef5; font-size:14px; box-sizing:border-box; }
+
+    .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between; }
+    .rowL { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+
+    .btn { background:#2b6ff7; border:0; color:#fff; padding:10px 12px; border-radius:10px; font-weight:800; cursor:pointer; }
+    .btn2 { background:#223248; border:1px solid #2a3e5b; color:#e9eef5; padding:10px 12px; border-radius:10px; font-weight:800; cursor:pointer; }
+    .btnDanger { background:#7f1d1d; border:1px solid #991b1b; color:#fff; padding:10px 12px; border-radius:10px; font-weight:800; cursor:pointer; }
+
+    .muted { color:#b8c5d6; }
+    .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+    .hr { height:1px; background:#223248; margin:12px 0; }
+
+    .badge { display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:900; border:1px solid #2a3e5b; background:#0d141d; }
+    .b-buy { color:#6ee7b7; }
+    .b-no { color:#fca5a5; }
+    .b-wait { color:#ffd27d; }
+    .b-filter { color:#8aa3c7; }
+
+    .raceCard { background:#111a26; border:1px solid #1c2a3b; border-radius:14px; padding:12px; margin:10px 0; }
+    .tag { display:inline-block; padding:2px 8px; border:1px solid #2a3e5b; border-radius:999px; font-size:11px; margin-left:8px; color:#b8c5d6; }
+    .resultLine { margin-top:6px; color:#b8c5d6; }
+
+    .checkboxes { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+    .cb { display:flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid #2a3e5b; border-radius:999px; background:#0d141d; font-size:12px; color:#e9eef5; }
+    .cb input { width:auto; }
+
+    .log { white-space: pre-wrap; background:#0d141d; border:1px solid #223248; border-radius:10px; padding:10px; max-height:160px; overflow:auto; font-size:12px; }
+  </style>
+</head>
 <body>
 <div class="wrap">
-<h1>競艇 v1（払戻123 最終版）</h1>
+  <h1>競艇 v1（基の形＋払戻123表示/送信）</h1>
+  <div class="sub">
+    ✅ 基のUI/判定/送信は維持。追加は <b>払戻（100円）3連単123 / 3連複123</b> の表示と送信だけ。<br/>
+    ※ 取れない場合は「未取得」。判定（BUY/WAIT/NO/条件外）は一切変えません。
+  </div>
 
-<div class="card">
-<button class="btn" onclick="refresh()">更新</button>
-<button class="btn" onclick="sendBuy()">BUY送信</button>
-</div>
+  <div class="card">
+    <div class="pill">条件</div>
+    <div class="grid g3" style="margin-top:10px;">
+      <div><label>全国2連率(%) 下限</label><input id="minNat2" type="number" step="0.1" value="42" /></div>
+      <div><label>当地2連率(%) 下限</label><input id="minLoc2" type="number" step="0.1" value="42" /></div>
+      <div><label>モーター2連率(%) 下限</label><input id="minMotor2" type="number" step="0.1" value="38" /></div>
+    </div>
+    <div class="grid g3" style="margin-top:10px;">
+      <div><label>展示：1号艇順位（上位）</label><input id="maxTimeRank" type="number" step="1" value="2" /></div>
+      <div><label>速い相手NG（以上）</label><input id="maxFasterOpp" type="number" step="1" value="1" /></div>
+      <div><label>最低オッズ</label><input id="minBestOdds" type="number" step="0.1" value="7.0" /></div>
+    </div>
 
-<div class="card">
-<div class="pill">レース一覧</div>
-<div id="list"></div>
-</div>
+    <div class="hr"></div>
+
+    <div class="pill">集計</div>
+    <div class="muted" style="margin-top:8px;" id="summary">-</div>
+
+    <div class="hr"></div>
+
+    <div class="pill">表示モード</div>
+    <div class="grid g2" style="margin-top:10px;">
+      <div>
+        <label>表示</label>
+        <select id="viewMode">
+          <option value="candidates" selected>候補のみ（条件①通過）</option>
+          <option value="all">全件表示（理由確認用）</option>
+        </select>
+      </div>
+      <div style="align-self:end;">
+        <button class="btn2" id="applyBtn">適用</button>
+      </div>
+    </div>
+
+    <div class="hr"></div>
+
+    <div class="pill">対象レース場（全場ON）</div>
+    <div class="checkboxes" id="venueChecks"></div>
+
+    <div class="hr"></div>
+
+    <div class="pill">シート送信</div>
+    <div class="row" style="margin-top:10px;">
+      <div class="rowL">
+        <button class="btn" id="sendBuyBtn">送信：BUYのみ</button>
+        <button class="btn2" id="sendCandBtn">送信：候補（条件①通過）</button>
+        <button class="btn2" id="sendTestBtn">テスト送信（1行）</button>
+        <button class="btnDanger" id="clearLocalBtn">オッズ保存を全消去</button>
+      </div>
+      <div class="muted mono" id="sendStatus">-</div>
+    </div>
+    <div class="log" id="sendLog">ログ：\n</div>
+
+    <div class="hr"></div>
+
+    <div class="row">
+      <div class="rowL">
+        <button class="btn" id="refreshBtn">更新</button>
+        <button class="btn2" id="notifyBtn">通知を許可</button>
+      </div>
+      <div class="muted mono" id="status">-</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="pill">レース一覧</div>
+    <div id="list"></div>
+  </div>
 </div>
 
 <script>
-const GAS_URL="https://script.google.com/macros/s/AKfycbw5C8p_tw_dK9m5OWPrekxfbHz1mNq949fjBq1ymTo8xNCjtIGTRGbmVZYQyO3-O3fo/exec";
-const RESULTS_URL="https://boatraceopenapi.github.io/results/v2/today.json";
+(() => {
+  // ====== GAS URL ======
+  const GAS_URL = "https://script.google.com/macros/s/AKfycbw5C8p_tw_dK9m5OWPrekxfbHz1mNq949fjBq1ymTo8xNCjtIGTRGbmVZYQyO3-O3fo/exec";
 
-function normalizeCombo(s){
- return String(s).replace(/[–—ー_]/g,"-").replace(/,/g,"-").replace(/\s+/g,"").replace(/[^0-9-]/g,"");
-}
+  const $ = (id) => document.getElementById(id);
+  const n = (id) => {
+    const v = $(id).value;
+    if (v === "" || v == null) return null;
+    const x = Number(v);
+    return Number.isFinite(x) ? x : null;
+  };
 
-function extractResultAndPayout123(rr){
- const out={top3:null,pay3t123:null,pay3f123:null};
- if(!rr) return out;
+  const VENUES = {
+    1:"桐生",2:"戸田",3:"江戸川",4:"平和島",5:"多摩川",6:"浜名湖",7:"蒲郡",8:"常滑",
+    9:"津",10:"三国",11:"びわこ",12:"住之江",13:"尼崎",14:"鳴門",15:"丸亀",16:"児島",
+    17:"宮島",18:"徳山",19:"下関",20:"若松",21:"芦屋",22:"福岡",23:"唐津",24:"大村"
+  };
 
- // top3
- for(const k in rr){
-  const v=rr[k];
-  if(typeof v==="string" && v.match(/\b[1-6]-[1-6]-[1-6]\b/)){
-   out.top3=v;break;
+  let enabledStadiums = new Set(Array.from({length: 24}, (_, i) => i + 1));
+  let LAST_RACES = [];
+
+  const PROGRAMS_URL = "https://boatraceopenapi.github.io/programs/v2/today.json";
+  const PREVIEWS_URL = "https://boatraceopenapi.github.io/previews/v2/today.json";
+  const RESULTS_URL  = "https://boatraceopenapi.github.io/results/v2/today.json";
+
+  // ---- odds cache ----
+  const ODDS_KEY = "kyotei_odds_cache_goodshape_pay_v1";
+  function loadOddsCache() { try { return JSON.parse(localStorage.getItem(ODDS_KEY) || "{}"); } catch { return {}; } }
+  function saveOddsCache(cache) { try { localStorage.setItem(ODDS_KEY, JSON.stringify(cache)); } catch {} }
+  function getOdds(key) { const c = loadOddsCache(); return c[key] || { o123:"", o132:"" }; }
+  function setOdds(key, o123, o132) { const c=loadOddsCache(); c[key]={o123:String(o123??""), o132:String(o132??"")}; saveOddsCache(c); }
+  function clearOddsAll() { try { localStorage.removeItem(ODDS_KEY); } catch {} }
+
+  function setStatus(msg) { $("status").textContent = msg; }
+  function setSendStatus(msg) { $("sendStatus").textContent = msg; }
+  function logSend(line) {
+    const el = $("sendLog");
+    el.textContent += line + "\n";
+    el.scrollTop = el.scrollHeight;
   }
- }
+  function clearSendLog() { $("sendLog").textContent = "ログ：\n"; }
 
- const payouts=rr.payouts||rr.payout||rr.refunds||rr.haraimodoshi||{};
- const find=(arr)=>{
-  if(!Array.isArray(arr)) return null;
-  for(const it of arr){
-   if(normalizeCombo(it.combination)==="1-2-3"){
-    const n=Number(it.payout||it.pay||it.amount);
-    if(Number.isFinite(n)) return n;
-   }
+  async function fetchJson(url) {
+    const res = await fetch(url, { cache:"no-store" });
+    if (!res.ok) throw new Error(`fetch failed ${res.status}: ${url}`);
+    return await res.json();
   }
-  return null;
- };
 
- out.pay3t123=find(payouts.trifecta||payouts.sanrentan||[]);
- out.pay3f123=find(payouts.trio||payouts.sanrenpuku||[]);
- return out;
-}
+  // 展示は1〜3が揃えば判定可能
+  function exhReady(exh) {
+    for (let lane=1; lane<=3; lane++) {
+      const t = Number(exh[String(lane)]);
+      if (!Number.isFinite(t)) return false;
+    }
+    return true;
+  }
 
-async function refresh(){
- const res=await fetch(RESULTS_URL);
- const js=await res.json();
- const list=document.getElementById("list");
- list.innerHTML="";
- (js.results||[]).forEach(r=>{
-  const ex=extractResultAndPayout123(r);
-  const div=document.createElement("div");
-  div.className="raceCard";
-  div.innerHTML=`
-  <div><b>${r.race_stadium_name||""} ${r.race_number||""}R</b></div>
-  <div class="resultLine">結果: ${ex.top3||"-"}</div>
-  <div class="resultLine">払戻123: 3連単=${ex.pay3t123??"未取得"} / 3連複=${ex.pay3f123??"未取得"}</div>
-  `;
-  list.appendChild(div);
- });
-}
+  function passFilter1(r) {
+    const minNat2 = n("minNat2");
+    const minLoc2 = n("minLoc2");
+    const minMotor2 = n("minMotor2");
+    const reasons = [];
+    if (minNat2 != null && r.nat2 < minNat2) reasons.push("全国2連率不足");
+    if (minLoc2 != null && r.loc2 < minLoc2) reasons.push("当地2連率不足");
+    if (minMotor2 != null && r.motor2 < minMotor2) reasons.push("モーター2連率不足");
+    return { ok: reasons.length===0, reasons };
+  }
 
-async function sendBuy(){
- const payload={date:new Date().toISOString().slice(0,10),venue:"TEST",race:0,status:"BUY"};
- await fetch(GAS_URL,{method:"POST",mode:"no-cors",body:JSON.stringify(payload)});
- alert("送信しました（Master確認）");
-}
+  function exhibitionRank(exh) {
+    const arr = Object.entries(exh)
+      .map(([lane,t])=>({lane:Number(lane), t:Number(t)}))
+      .filter(x=>Number.isFinite(x.lane) && Number.isFinite(x.t))
+      .sort((a,b)=>a.t-b.t);
+    const idx = arr.findIndex(x=>x.lane===1);
+    return idx>=0 ? idx+1 : null;
+  }
 
-refresh();
+  function fasterOppCount(exh) {
+    const t1 = Number(exh["1"]);
+    if (!Number.isFinite(t1)) return null;
+    let c=0;
+    for (let lane=2; lane<=6; lane++) {
+      const t = Number(exh[String(lane)]);
+      if (Number.isFinite(t) && t < t1) c++;
+    }
+    return c;
+  }
+
+  function fasterOppLanes(exh) {
+    const t1 = Number(exh["1"]);
+    if (!Number.isFinite(t1)) return [];
+    const lanes=[];
+    for (let lane=2; lane<=6; lane++) {
+      const t = Number(exh[String(lane)]);
+      if (Number.isFinite(t) && t < t1) lanes.push(lane);
+    }
+    return lanes;
+  }
+
+  function judge(r, o123, o132) {
+    const f1 = passFilter1(r);
+    if (!f1.ok) return { state:"条件外", msg:`条件外：${f1.reasons.join(" / ")}` };
+
+    if (!r.exhReady) return { state:"WAIT", msg:"展示（1〜3）待ち" };
+
+    const reasons=[];
+    const maxTimeRank = n("maxTimeRank");
+    const maxFasterOpp = n("maxFasterOpp");
+    const minBestOdds = n("minBestOdds");
+
+    const rank = exhibitionRank(r.exh);
+    const faster = fasterOppCount(r.exh);
+
+    if (rank!=null && maxTimeRank!=null && rank>maxTimeRank) reasons.push("展示順位NG");
+    if (faster!=null && maxFasterOpp!=null && faster>=maxFasterOpp) reasons.push("速い相手が多い");
+
+    const fasterL = fasterOppLanes(r.exh);
+    const outerFast = fasterL.length>0 && fasterL.some(l=>l!==2 && l!==3);
+    if (outerFast) reasons.push("外枠が速い");
+
+    const bestOdds = Math.max(Number(o123)||0, Number(o132)||0);
+    if (!bestOdds) reasons.push("オッズ未入力");
+    else if (minBestOdds!=null && bestOdds<minBestOdds) reasons.push("オッズ不足");
+
+    if (reasons.length===0) return { state:"BUY", msg:"BUY（条件OK）", rank, faster, outerFast };
+    return { state:"NO", msg:`NO：${reasons.join(" / ")}`, rank, faster, outerFast };
+  }
+
+  // ===== 追加：払戻（100円）123を results から拾う（判定には使わない） =====
+  function normalizeCombo(s){
+    return String(s)
+      .replace(/[–—ー_]/g,"-")
+      .replace(/,/g,"-")
+      .replace(/\s+/g,"")
+      .replace(/[^0-9-]/g,"");
+  }
+
+  function extractTop3(rr) {
+    if (!rr || typeof rr !== "object") return null;
+    const stack=[rr];
+    while(stack.length){
+      const cur=stack.pop();
+      if(cur==null) continue;
+      if(typeof cur==="string"){
+        const m=cur.match(/\b([1-6])[-–]([1-6])[-–]([1-6])\b/);
+        if(m) return `${m[1]}-${m[2]}-${m[3]}`;
+      } else if(Array.isArray(cur)){
+        for(const x of cur) stack.push(x);
+      } else if(typeof cur==="object"){
+        for(const k of Object.keys(cur)) stack.push(cur[k]);
+      }
+    }
+    return null;
+  }
+
+  function findPayoutInArray(arr, targetCombo){
+    if(!Array.isArray(arr)) return null;
+    const tgt = normalizeCombo(targetCombo);
+    for(const it of arr){
+      if(!it || typeof it!=="object") continue;
+      const combo = it.combination ?? it.combo ?? it.kumi ?? it.kumiawase ?? it.pattern;
+      const pay   = it.payout ?? it.pay ?? it.refund ?? it.amount ?? it.money ?? it.value;
+      if(combo==null) continue;
+      if(normalizeCombo(String(combo))===tgt){
+        const num = Number(pay);
+        return Number.isFinite(num) ? num : null;
+      }
+    }
+    return null;
+  }
+
+  function extractPayout123(rr){
+    // return { pay3t123, pay3f123 } (may be null)
+    const out={pay3t123:null,pay3f123:null};
+    if(!rr || typeof rr!=="object") return out;
+
+    // よくある格納先候補を列挙（揺れに強く）
+    const payouts = rr.payouts || rr.payout || rr.pay || rr.refunds || rr.refund || rr.haraimodoshi || rr.refund_list || rr.payout_list || null;
+
+    // 3連単配列候補
+    const trifectaArr =
+      (payouts && (payouts.trifecta || payouts.sanrentan || payouts["3t"] || payouts["3tan"])) ||
+      rr.trifecta || rr.sanrentan || rr["3t"] || null;
+
+    // 3連複配列候補
+    const trioArr =
+      (payouts && (payouts.trio || payouts.sanrenpuku || payouts["3f"] || payouts["3fuku"])) ||
+      rr.trio || rr.sanrenpuku || rr["3f"] || null;
+
+    out.pay3t123 = findPayoutInArray(trifectaArr, "1-2-3");
+    out.pay3f123 = findPayoutInArray(trioArr, "1-2-3");
+
+    return out;
+  }
+
+  // ===== UI =====
+  function renderVenueChecks() {
+    const box = $("venueChecks");
+    box.innerHTML="";
+    const entries = Object.entries(VENUES).map(([k,v])=>({k:Number(k), v})).sort((a,b)=>a.k-b.k);
+    for (const {k,v} of entries) {
+      const el = document.createElement("label");
+      el.className="cb";
+      el.innerHTML = `<input type="checkbox" data-st="${k}"> ${k}:${v}`;
+      const cb = el.querySelector("input");
+      cb.checked = enabledStadiums.has(k);
+      cb.addEventListener("change", ()=>{
+        if (cb.checked) enabledStadiums.add(k); else enabledStadiums.delete(k);
+        refresh();
+      });
+      box.appendChild(el);
+    }
+  }
+
+  function renderSummary(races) {
+    const total = races.length;
+    const f1pass = races.filter(r => passFilter1(r).ok).length;
+    let buy=0,no=0,wait=0,filtered=0,hasTop3=0,hasPay=0;
+    for (const r of races) {
+      const odds = getOdds(r.key);
+      const st = judge(r, odds.o123, odds.o132).state;
+      if (st==="BUY") buy++; else if (st==="NO") no++; else if (st==="WAIT") wait++; else filtered++;
+      if (r.result_top3) hasTop3++;
+      if (Number.isFinite(r.final_payout_3t_123) || Number.isFinite(r.final_payout_3f_123)) hasPay++;
+    }
+    $("summary").textContent =
+      `取得${total}R / 条件①通過${f1pass}R / BUY${buy} / NO${no} / WAIT${wait} / 条件外${filtered} / 結果${hasTop3} / 払戻123${hasPay}`;
+  }
+
+  function makeRaceCard(r) {
+    const odds = getOdds(r.key);
+    const card = document.createElement("div");
+    card.className = "raceCard";
+    card.innerHTML = `
+      <div class="row">
+        <div>
+          <span class="pill">${r.venue} ${r.race}R</span>
+          <span class="badge b-wait" data-badge>WAIT</span>
+          <span class="tag">${r.date}</span>
+          <span class="tag">${r.title}</span>
+        </div>
+        <div class="muted">全国${r.nat2}% / 当地${r.loc2}% / M${r.motor2}%</div>
+      </div>
+
+      <div class="grid g2" style="margin-top:10px;">
+        <div class="muted">
+          展示 1:${Number.isFinite(r.exh["1"])?r.exh["1"]:"-"}
+          2:${Number.isFinite(r.exh["2"])?r.exh["2"]:"-"}
+          3:${Number.isFinite(r.exh["3"])?r.exh["3"]:"-"}
+          4:${Number.isFinite(r.exh["4"])?r.exh["4"]:"-"}
+          5:${Number.isFinite(r.exh["5"])?r.exh["5"]:"-"}
+          6:${Number.isFinite(r.exh["6"])?r.exh["6"]:"-"}
+          ${r.result_top3 ? `<div class="resultLine">結果（参考）: ${r.result_top3}</div>` : ``}
+          <div class="resultLine">払戻123（100円/自動）: 3連単=${Number.isFinite(r.final_payout_3t_123)?r.final_payout_3t_123:"未取得"} / 3連複=${Number.isFinite(r.final_payout_3f_123)?r.final_payout_3f_123:"未取得"}</div>
+        </div>
+        <div>
+          <div class="grid g2">
+            <div><label>1-2-3</label><input data-o123 type="number" step="0.1"></div>
+            <div><label>1-3-2</label><input data-o132 type="number" step="0.1"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="muted" style="margin-top:8px;" data-msg>…</div>
+    `;
+
+    const inp123 = card.querySelector("[data-o123]");
+    const inp132 = card.querySelector("[data-o132]");
+    const badge = card.querySelector("[data-badge]");
+    const msg = card.querySelector("[data-msg]");
+
+    inp123.value = odds.o123 ?? "";
+    inp132.value = odds.o132 ?? "";
+
+    function update() {
+      setOdds(r.key, inp123.value, inp132.value);
+      const st = judge(r, inp123.value, inp132.value);
+
+      if (st.state==="BUY") { badge.textContent="BUY"; badge.className="badge b-buy"; }
+      else if (st.state==="NO") { badge.textContent="NO"; badge.className="badge b-no"; }
+      else if (st.state==="WAIT") { badge.textContent="WAIT"; badge.className="badge b-wait"; }
+      else { badge.textContent="条件外"; badge.className="badge b-filter"; }
+
+      msg.textContent = st.msg;
+    }
+
+    inp123.addEventListener("input", update);
+    inp132.addEventListener("input", update);
+    update();
+
+    return card;
+  }
+
+  function renderList(races) {
+    const mode = $("viewMode").value;
+    let show = races.slice();
+    if (mode === "candidates") show = show.filter(r => passFilter1(r).ok);
+
+    function stateRank(r) {
+      const odds = getOdds(r.key);
+      const st = judge(r, odds.o123, odds.o132).state;
+      if (st==="BUY") return 0;
+      if (st==="WAIT") return 1;
+      if (st==="NO") return 2;
+      return 3;
+    }
+    show.sort((a,b) => (stateRank(a)-stateRank(b)) || a.venue.localeCompare(b.venue) || a.race-b.race);
+
+    const list = $("list");
+    list.innerHTML = "";
+    for (const r of show) list.appendChild(makeRaceCard(r));
+  }
+
+  // ===== 送信 =====
+  async function postToSheet(payload) {
+    const body = JSON.stringify(payload);
+    try {
+      const res = await fetch(GAS_URL, { method:"POST", headers:{ "Content-Type":"application/json" }, body });
+      const text = await res.text();
+      return { ok:true, mode:"cors", text };
+    } catch (e) {
+      try {
+        await fetch(GAS_URL, { method:"POST", mode:"no-cors", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body });
+        return { ok:true, mode:"no-cors", text:"(no-cors)" };
+      } catch (e2) {
+        return { ok:false, mode:"fail", text:String(e2) };
+      }
+    }
+  }
+
+  function makeSheetRow(r, st) {
+    const rank1 = r.exhReady ? (exhibitionRank(r.exh) ?? "") : "";
+    const faster = r.exhReady ? (fasterOppCount(r.exh) ?? "") : "";
+    const outerFast = r.exhReady ? ( (fasterOppLanes(r.exh).some(l=>l!==2 && l!==3)) ? true : false ) : "";
+    const odds = getOdds(r.key);
+
+    return {
+      date: r.date,
+      venue: r.venue,
+      race: r.race,
+      status: st.state,
+      nat2: r.nat2,
+      loc2: r.loc2,
+      motor2: r.motor2,
+      exh_rank_1: rank1,
+      fast_opp_count: faster,
+      outer_fast: outerFast,
+      odds_input_3t_123: odds.o123,
+      odds_input_3t_132: odds.o132,
+      final_odds_3t_123: "",   // 使わない（空欄）
+      final_odds_3f_123: "",   // 使わない（空欄）
+      final_payout_3t_123: (Number.isFinite(r.final_payout_3t_123) ? r.final_payout_3t_123 : ""),
+      final_payout_3f_123: (Number.isFinite(r.final_payout_3f_123) ? r.final_payout_3f_123 : ""),
+      result_top3: (r.result_top3 || "")
+    };
+  }
+
+  async function sendRows(rows) {
+    clearSendLog();
+    setSendStatus(`送信中… ${rows.length}件`);
+    logSend(`GAS_URL: ${GAS_URL}`);
+    let ok=0, ng=0;
+    for (let i=0; i<rows.length; i++) {
+      const payload = rows[i];
+      logSend(`POST ${i+1}/${rows.length}: ${payload.date} ${payload.venue} ${payload.race}R ${payload.status}`);
+      const r = await postToSheet(payload);
+      if (r.ok) { ok++; logSend(`  -> OK (${r.mode}) ${String(r.text).slice(0,80)}`); }
+      else { ng++; logSend(`  -> NG ${r.text}`); }
+      setSendStatus(`送信中… ${i+1}/${rows.length}（OK${ok}/NG${ng}）`);
+      await new Promise(res => setTimeout(res, 150));
+    }
+    setSendStatus(`完了：${rows.length}件（OK${ok}/NG${ng}）`);
+  }
+
+  async function handleSendBuyOnly() {
+    if (!LAST_RACES.length) { alert("まず更新してください"); return; }
+    const rows = [];
+    for (const r of LAST_RACES) {
+      const f1 = passFilter1(r);
+      if (!f1.ok) continue;
+      const odds = getOdds(r.key);
+      const st = judge(r, odds.o123, odds.o132);
+      if (st.state === "BUY") rows.push(makeSheetRow(r, st));
+    }
+    if (!rows.length) { setSendStatus("BUYが0件なので送信なし"); return; }
+    if (!confirm(`BUYのみ ${rows.length}件を送信します。OK？`)) return;
+    await sendRows(rows);
+  }
+
+  async function handleSendCandidates() {
+    if (!LAST_RACES.length) { alert("まず更新してください"); return; }
+    const rows = [];
+    for (const r of LAST_RACES) {
+      const f1 = passFilter1(r);
+      if (!f1.ok) continue;
+      const odds = getOdds(r.key);
+      const st = judge(r, odds.o123, odds.o132);
+      rows.push(makeSheetRow(r, st));
+    }
+    if (!rows.length) { setSendStatus("条件①通過が0件なので送信なし"); return; }
+    if (!confirm(`候補（条件①通過） ${rows.length}件を送信します。OK？`)) return;
+    await sendRows(rows);
+  }
+
+  async function handleSendTest() {
+    clearSendLog();
+    const payload = { date:new Date().toISOString().slice(0,10), venue:"TEST", race:0, status:"TEST" };
+    setSendStatus("テスト送信中…");
+    logSend(JSON.stringify(payload));
+    const r = await postToSheet(payload);
+    if (r.ok) { setSendStatus(`テスト送信 OK（${r.mode}）`); alert("TEST行がMasterに増えたか確認してください"); }
+    else { setSendStatus("テスト送信 NG"); alert("失敗：ログ確認"); }
+  }
+
+  // ===== データ読み込み =====
+  async function loadAndBuildRaces() {
+    setStatus("データ取得中…");
+    const [programs, previews, results] = await Promise.all([
+      fetchJson(PROGRAMS_URL),
+      fetchJson(PREVIEWS_URL),
+      fetchJson(RESULTS_URL),
+    ]);
+
+    const progList = programs.programs || [];
+    const prevList = previews.previews || [];
+    const prevMap = new Map();
+    for (const p of prevList) {
+      const key = `${p.race_date}-${p.race_stadium_number}-${p.race_number}`;
+      prevMap.set(key, p);
+    }
+
+    const resultMap = new Map();
+    for (const rr of (results.results || results.races || [])) {
+      const key = `${rr.race_date}-${rr.race_stadium_number}-${rr.race_number}`;
+      resultMap.set(key, rr);
+    }
+
+    const races=[];
+    for (const pr of progList) {
+      const stadium = pr.race_stadium_number;
+      if (!enabledStadiums.has(stadium)) continue;
+
+      const key = `${pr.race_date}-${stadium}-${pr.race_number}`;
+      const pv = prevMap.get(key);
+      const b1 = (pr.boats || []).find(b=>b.racer_boat_number===1);
+      if (!b1) continue;
+
+      const exh={};
+      if (pv && pv.boats) {
+        for (let lane=1; lane<=6; lane++) {
+          const t = pv.boats[String(lane)]?.racer_exhibition_time;
+          if (t!=null) exh[String(lane)] = Number(t);
+        }
+      }
+
+      const rr = resultMap.get(key);
+      const top3 = rr ? extractTop3(rr) : null;
+      const pay = rr ? extractPayout123(rr) : {pay3t123:null,pay3f123:null};
+
+      races.push({
+        key,
+        venue: VENUES[stadium],
+        race: pr.race_number,
+        date: pr.race_date,
+        title: pr.race_title || "一般戦",
+        nat2: Number(b1.racer_national_top_2_percent ?? 0),
+        loc2: Number(b1.racer_local_top_2_percent ?? 0),
+        motor2: Number(b1.racer_assigned_motor_top_2_percent ?? 0),
+        exh,
+        exhReady: exhReady(exh),
+        result_top3: top3,
+        final_payout_3t_123: pay.pay3t123,
+        final_payout_3f_123: pay.pay3f123
+      });
+    }
+
+    setStatus(`取得OK：${races.length}R / ${new Date().toLocaleTimeString()}`);
+    return races;
+  }
+
+  async function refresh() {
+    try {
+      const races = await loadAndBuildRaces();
+      LAST_RACES = races;
+      renderSummary(races);
+      renderList(races);
+      setSendStatus("準備OK");
+      logSend("更新完了");
+    } catch (e) {
+      setStatus("取得失敗");
+      setSendStatus("送信不可（取得失敗）");
+      logSend("取得失敗: " + String(e));
+    }
+  }
+
+  // notify (そのまま)
+  $("notifyBtn").addEventListener("click", async () => {
+    if (!("Notification" in window)) { alert("このブラウザは通知に対応していません"); return; }
+    const p = await Notification.requestPermission();
+    alert(`通知権限：${p}`);
+  });
+
+  // wiring
+  $("refreshBtn").addEventListener("click", refresh);
+  $("applyBtn").addEventListener("click", () => renderList(LAST_RACES));
+  $("sendBuyBtn").addEventListener("click", handleSendBuyOnly);
+  $("sendCandBtn").addEventListener("click", handleSendCandidates);
+  $("sendTestBtn").addEventListener("click", handleSendTest);
+  $("clearLocalBtn").addEventListener("click", () => { if(confirm("オッズ保存を全消去しますか？")){ clearOddsAll(); refresh(); } });
+
+  renderVenueChecks();
+  refresh();
+})();
 </script>
 </body>
 </html>
