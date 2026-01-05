@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v1（最終オッズ123 自動取得＋送信）</title>
+  <title>競艇 v1（最終オッズ123 自動取得＋送信 / 未取得表示）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -41,9 +41,10 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v1（最終オッズ123 自動取得＋送信）</h1>
+  <h1>競艇 v1（最終オッズ123 自動取得＋送信 / 未取得表示）</h1>
   <div class="sub">
-    ✅ 結果が取れたレースは「結果トップ3」と「最終オッズ 3連単123 / 3連複123」を可能な限り自動で埋めます（取れない日は空欄）。<br/>
+    ✅ 結果が取れたレースは「結果トップ3」を表示。<br/>
+    ✅ 最終オッズ123は <b>取れなくても行だけは表示</b> し、未取得と明示します。<br/>
     ✅ GASへ：BUYのみ送信 / 候補（条件①通過）送信
   </div>
 
@@ -119,7 +120,6 @@
 
 <script>
 (() => {
-  // ====== GAS Web App URL（あなたのURL） ======
   const GAS_URL = "https://script.google.com/macros/s/AKfycbw5C8p_tw_dK9m5OWPrekxfbHz1mNq949fjBq1ymTo8xNCjtIGTRGbmVZYQyO3-O3fo/exec";
 
   const $ = (id) => document.getElementById(id);
@@ -143,8 +143,7 @@
   const PREVIEWS_URL = "https://boatraceopenapi.github.io/previews/v2/today.json";
   const RESULTS_URL  = "https://boatraceopenapi.github.io/results/v2/today.json";
 
-  // ---- odds cache ----
-  const ODDS_KEY = "kyotei_odds_cache_finalodds_v1";
+  const ODDS_KEY = "kyotei_odds_cache_finalodds_v1A";
   function loadOddsCache() { try { return JSON.parse(localStorage.getItem(ODDS_KEY) || "{}"); } catch { return {}; } }
   function saveOddsCache(cache) { try { localStorage.setItem(ODDS_KEY, JSON.stringify(cache)); } catch {} }
   function getOdds(key) { const c = loadOddsCache(); return c[key] || { o123:"", o132:"" }; }
@@ -243,20 +242,14 @@
     return { state:"NO", msg:`NO：${reasons.join(" / ")}`, rank, faster, outerFast };
   }
 
-  // =========================
-  // ここが強化ポイント：結果＋最終オッズ（123）を “構造検索” で拾う
-  // =========================
+  // ===== 結果＋最終オッズ123抽出 =====
   function extractFinalFor123(rr) {
-    // return: { top3, odds3t123, odds3f123 }
     const out = { top3:null, odds3t123:null, odds3f123:null };
     if (!rr || typeof rr !== "object") return out;
 
-    // 1) まずトップ3（1-2-3形式の文字列）を探す
     const comb = findFirstCombination_(rr);
     if (comb) out.top3 = comb;
 
-    // 2) 次に「123」に紐づく値を探す（オッズ or 払戻どちらでも入ってる可能性）
-    //    戦略：キー名に 3連単/3連複/odds/payout 等を含む数値を探索し、近くに "1-2-3" があるケースを優先
     const best = findOddsFor123_(rr);
     out.odds3t123 = best.odds3t123;
     out.odds3f123 = best.odds3f123;
@@ -284,7 +277,6 @@
   function findOddsFor123_(root) {
     const result = { odds3t123:null, odds3f123:null };
 
-    // 探索1：文字列に "3連単 ... 1-2-3 ... 数値" が入っていればそれを採用
     const allStrings = [];
     const stack = [root];
     while (stack.length) {
@@ -294,6 +286,7 @@
       else if (Array.isArray(cur)) for (const x of cur) stack.push(x);
       else if (typeof cur === "object") for (const k of Object.keys(cur)) stack.push(cur[k]);
     }
+
     for (const s of allStrings) {
       const m = s.match(/3連単.*?1[-–]2[-–]3.*?([0-9]+(?:\.[0-9]+)?)/);
       if (m) { result.odds3t123 = Number(m[1]); break; }
@@ -303,31 +296,22 @@
       if (m) { result.odds3f123 = Number(m[1]); break; }
     }
 
-    // 探索2：オブジェクト構造に「123」「1-2-3」を含むキー/値がある場合
-    // 例：{ sanrentan: { "123": 12.3 } } などを拾う
     function walk(obj) {
       if (!obj || typeof obj !== "object") return;
       if (Array.isArray(obj)) { for (const x of obj) walk(x); return; }
 
       for (const [k,v] of Object.entries(obj)) {
         const key = String(k).toLowerCase();
-
-        // 直下に "123" などのキーがある構造
         if (v && typeof v === "object" && !Array.isArray(v)) {
-          // 3連単系
           if (result.odds3t123 == null && /3t|3tan|sanrentan|3連単/.test(key)) {
             const cand = pick123ValueFromObj(v);
             if (cand != null) result.odds3t123 = cand;
           }
-          // 3連複系
           if (result.odds3f123 == null && /3f|3fuku|sanrenpuku|3連複/.test(key)) {
             const cand = pick123ValueFromObj(v);
             if (cand != null) result.odds3f123 = cand;
           }
         }
-
-        // 文字列形式で "1-2-3" を含み、近くに数値がある場合は探索済み
-        // 数値の直接キーがある場合
         walk(v);
       }
     }
@@ -339,19 +323,17 @@
   }
 
   function pick123ValueFromObj(obj) {
-    // 値の候補キー： "123" / "1-2-3" / "1_2_3" / "1,2,3"
     const keys = ["123","1-2-3","1_2_3","1,2,3"];
     for (const k of keys) {
       if (obj[k] != null && Number.isFinite(Number(obj[k]))) return Number(obj[k]);
     }
-    // さらに、キー自体に 123 が含まれる場合（例："odds_123"）
     for (const [k,v] of Object.entries(obj)) {
       if (String(k).includes("123") && v != null && Number.isFinite(Number(v))) return Number(v);
     }
     return null;
   }
 
-  // UI
+  // ===== UI =====
   function renderVenueChecks() {
     const box = $("venueChecks");
     box.innerHTML="";
@@ -373,15 +355,14 @@
   function renderSummary(races) {
     const total = races.length;
     const f1pass = races.filter(r => passFilter1(r).ok).length;
-    let buy=0,no=0,wait=0,filtered=0,hasTop3=0,hasFinal=0;
+    let buy=0,no=0,wait=0,filtered=0,hasTop3=0;
     for (const r of races) {
       const odds = getOdds(r.key);
       const st = judge(r, odds.o123, odds.o132).state;
       if (st==="BUY") buy++; else if (st==="NO") no++; else if (st==="WAIT") wait++; else filtered++;
       if (r.result_top3) hasTop3++;
-      if (Number.isFinite(r.final_odds_3t_123) || Number.isFinite(r.final_odds_3f_123)) hasFinal++;
     }
-    $("summary").textContent = `取得${total}R / 条件①通過${f1pass}R / BUY${buy} / NO${no} / WAIT${wait} / 条件外${filtered} / 結果${hasTop3} / 最終オッズ123${hasFinal}`;
+    $("summary").textContent = `取得${total}R / 条件①通過${f1pass}R / BUY${buy} / NO${no} / WAIT${wait} / 条件外${filtered} / 結果${hasTop3}`;
   }
 
   function makeRaceCard(r) {
@@ -408,9 +389,7 @@
           5:${Number.isFinite(r.exh["5"])?r.exh["5"]:"-"}
           6:${Number.isFinite(r.exh["6"])?r.exh["6"]:"-"}
           ${r.result_top3 ? `<div class="resultLine">結果（参考）: ${r.result_top3}</div>` : ``}
-          ${(Number.isFinite(r.final_odds_3t_123) || Number.isFinite(r.final_odds_3f_123)) ? `
-            <div class="resultLine">最終オッズ123（自動）: 3連単=${Number.isFinite(r.final_odds_3t_123)?r.final_odds_3t_123:""} / 3連複=${Number.isFinite(r.final_odds_3f_123)?r.final_odds_3f_123:""}</div>
-          ` : ``}
+          <div class="resultLine">最終オッズ123（自動）: 3連単=${Number.isFinite(r.final_odds_3t_123)?r.final_odds_3t_123:"未取得"} / 3連複=${Number.isFinite(r.final_odds_3f_123)?r.final_odds_3f_123:"未取得"}</div>
         </div>
         <div>
           <div class="grid g2">
@@ -446,7 +425,6 @@
     inp123.addEventListener("input", update);
     inp132.addEventListener("input", update);
     update();
-
     return card;
   }
 
@@ -470,26 +448,17 @@
     for (const r of show) list.appendChild(makeRaceCard(r));
   }
 
-  // ====== 送信（通常→no-cors） ======
+  // ===== 送信（通常→no-cors） =====
   async function postToSheet(payload) {
     const body = JSON.stringify(payload);
     try {
-      const res = await fetch(GAS_URL, {
-        method: "POST",
-        headers: { "Content-Type":"application/json" },
-        body
-      });
+      const res = await fetch(GAS_URL, { method:"POST", headers:{ "Content-Type":"application/json" }, body });
       const text = await res.text();
       return { ok:true, mode:"cors", text };
     } catch (e) {
       try {
-        await fetch(GAS_URL, {
-          method: "POST",
-          mode: "no-cors",
-          headers: { "Content-Type":"text/plain;charset=utf-8" },
-          body
-        });
-        return { ok:true, mode:"no-cors", text:"(no-cors: response not readable)" };
+        await fetch(GAS_URL, { method:"POST", mode:"no-cors", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body });
+        return { ok:true, mode:"no-cors", text:"(no-cors)" };
       } catch (e2) {
         return { ok:false, mode:"fail", text:String(e2) };
       }
@@ -500,9 +469,7 @@
     const rank1 = r.exhReady ? (exhibitionRank(r.exh) ?? "") : "";
     const faster = r.exhReady ? (fasterOppCount(r.exh) ?? "") : "";
     const outerFast = r.exhReady ? ( (fasterOppLanes(r.exh).some(l=>l!==2 && l!==3)) ? true : false ) : "";
-
     const odds = getOdds(r.key);
-
     return {
       date: r.date,
       venue: r.venue,
@@ -531,7 +498,7 @@
       const payload = rows[i];
       logSend(`POST ${i+1}/${rows.length}: ${payload.date} ${payload.venue} ${payload.race}R ${payload.status}`);
       const r = await postToSheet(payload);
-      if (r.ok) { ok++; logSend(`  -> OK (${r.mode}) ${String(r.text).slice(0,120)}`); }
+      if (r.ok) { ok++; logSend(`  -> OK (${r.mode}) ${String(r.text).slice(0,100)}`); }
       else { ng++; logSend(`  -> NG ${r.text}`); }
       setSendStatus(`送信中… ${i+1}/${rows.length}（OK${ok}/NG${ng}）`);
       await new Promise(res => setTimeout(res, 150));
@@ -571,20 +538,14 @@
 
   async function handleSendTest() {
     clearSendLog();
-    const payload = {
-      date: new Date().toISOString().slice(0,10),
-      venue: "TEST",
-      race: 0,
-      status: "TEST"
-    };
+    const payload = { date:new Date().toISOString().slice(0,10), venue:"TEST", race:0, status:"TEST" };
     setSendStatus("テスト送信中…");
-    logSend("テスト送信 payload:");
     logSend(JSON.stringify(payload));
     const r = await postToSheet(payload);
     if (r.ok) {
       setSendStatus(`テスト送信 OK（${r.mode}）`);
       logSend(`OK: ${r.text}`);
-      alert("テスト送信しました。MasterにTEST行が増えているか確認してください。");
+      alert("テスト送信しました。MasterにTEST行が増えたか確認してください。");
     } else {
       setSendStatus("テスト送信 NG");
       logSend(`NG: ${r.text}`);
@@ -606,36 +567,6 @@
     if (!("Notification" in window)) return;
     if (Notification.permission !== "granted") return;
     try { new Notification(title, { body }); } catch {}
-  }
-
-  function renderVenueChecks() {
-    const box = $("venueChecks");
-    box.innerHTML="";
-    const entries = Object.entries(VENUES).map(([k,v])=>({k:Number(k), v})).sort((a,b)=>a.k-b.k);
-    for (const {k,v} of entries) {
-      const el = document.createElement("label");
-      el.className="cb";
-      el.innerHTML = `<input type="checkbox" data-st="${k}"> ${k}:${v}`;
-      const cb = el.querySelector("input");
-      cb.checked = enabledStadiums.has(k);
-      cb.addEventListener("change", ()=>{
-        if (cb.checked) enabledStadiums.add(k); else enabledStadiums.delete(k);
-        refresh();
-      });
-      box.appendChild(el);
-    }
-  }
-
-  function renderSummary(races) {
-    const total = races.length;
-    const f1pass = races.filter(r => passFilter1(r).ok).length;
-    let buy=0,no=0,wait=0,filtered=0;
-    for (const r of races) {
-      const odds = getOdds(r.key);
-      const st = judge(r, odds.o123, odds.o132).state;
-      if (st==="BUY") buy++; else if (st==="NO") no++; else if (st==="WAIT") wait++; else filtered++;
-    }
-    $("summary").textContent = `取得${total}R / 条件①通過${f1pass}R / BUY${buy} / NO${no} / WAIT${wait} / 条件外${filtered}`;
   }
 
   async function loadAndBuildRaces() {
@@ -697,93 +628,9 @@
         final_odds_3f_123: ext.odds3f123
       });
     }
+
     setStatus(`取得OK：${races.length}R / ${new Date().toLocaleTimeString()}`);
     return races;
-  }
-
-  function makeRaceCard(r) {
-    const odds = getOdds(r.key);
-    const card = document.createElement("div");
-    card.className = "raceCard";
-    card.innerHTML = `
-      <div class="row">
-        <div>
-          <span class="pill">${r.venue} ${r.race}R</span>
-          <span class="badge b-wait" data-badge>WAIT</span>
-          <span class="tag">${r.date}</span>
-          <span class="tag">${r.title}</span>
-        </div>
-        <div class="muted">全国${r.nat2}% / 当地${r.loc2}% / M${r.motor2}%</div>
-      </div>
-
-      <div class="grid g2" style="margin-top:10px;">
-        <div class="muted">
-          展示 1:${Number.isFinite(r.exh["1"])?r.exh["1"]:"-"}
-          2:${Number.isFinite(r.exh["2"])?r.exh["2"]:"-"}
-          3:${Number.isFinite(r.exh["3"])?r.exh["3"]:"-"}
-          4:${Number.isFinite(r.exh["4"])?r.exh["4"]:"-"}
-          5:${Number.isFinite(r.exh["5"])?r.exh["5"]:"-"}
-          6:${Number.isFinite(r.exh["6"])?r.exh["6"]:"-"}
-          ${r.result_top3 ? `<div class="resultLine">結果（参考）: ${r.result_top3}</div>` : ``}
-          ${(Number.isFinite(r.final_odds_3t_123) || Number.isFinite(r.final_odds_3f_123)) ? `
-            <div class="resultLine">最終オッズ123（自動）: 3連単=${Number.isFinite(r.final_odds_3t_123)?r.final_odds_3t_123:""} / 3連複=${Number.isFinite(r.final_odds_3f_123)?r.final_odds_3f_123:""}</div>
-          ` : ``}
-        </div>
-        <div>
-          <div class="grid g2">
-            <div><label>1-2-3</label><input data-o123 type="number" step="0.1"></div>
-            <div><label>1-3-2</label><input data-o132 type="number" step="0.1"></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="muted" style="margin-top:8px;" data-msg>…</div>
-    `;
-
-    const inp123 = card.querySelector("[data-o123]");
-    const inp132 = card.querySelector("[data-o132]");
-    const badge = card.querySelector("[data-badge]");
-    const msg = card.querySelector("[data-msg]");
-
-    inp123.value = odds.o123 ?? "";
-    inp132.value = odds.o132 ?? "";
-
-    function update() {
-      setOdds(r.key, inp123.value, inp132.value);
-      const st = judge(r, inp123.value, inp132.value);
-
-      if (st.state==="BUY") { badge.textContent="BUY"; badge.className="badge b-buy"; }
-      else if (st.state==="NO") { badge.textContent="NO"; badge.className="badge b-no"; }
-      else if (st.state==="WAIT") { badge.textContent="WAIT"; badge.className="badge b-wait"; }
-      else { badge.textContent="条件外"; badge.className="badge b-filter"; }
-
-      msg.textContent = st.msg;
-    }
-
-    inp123.addEventListener("input", update);
-    inp132.addEventListener("input", update);
-    update();
-    return card;
-  }
-
-  function renderList(races) {
-    const mode = $("viewMode").value;
-    let show = races.slice();
-    if (mode === "candidates") show = show.filter(r => passFilter1(r).ok);
-
-    function stateRank(r) {
-      const odds = getOdds(r.key);
-      const st = judge(r, odds.o123, odds.o132).state;
-      if (st==="BUY") return 0;
-      if (st==="WAIT") return 1;
-      if (st==="NO") return 2;
-      return 3;
-    }
-    show.sort((a,b) => (stateRank(a)-stateRank(b)) || a.venue.localeCompare(b.venue) || a.race-b.race);
-
-    const list = $("list");
-    list.innerHTML = "";
-    for (const r of show) list.appendChild(makeRaceCard(r));
   }
 
   async function refresh() {
@@ -801,7 +648,7 @@
     }
   }
 
-  // Buttons
+  // Wiring
   $("refreshBtn").addEventListener("click", refresh);
   $("applyBtn").addEventListener("click", () => renderList(LAST_RACES));
   $("sendBuyBtn").addEventListener("click", handleSendBuyOnly);
@@ -815,7 +662,6 @@
     alert(`通知権限：${p}`);
   });
 
-  // Init
   renderVenueChecks();
   refresh();
 })();
