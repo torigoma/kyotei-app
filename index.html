@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v1（基の形＋払戻123表示/送信）</title>
+  <title>競艇 v1（基の形＋払戻123 自動表示/送信）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -51,10 +51,11 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v1（基の形＋払戻123表示/送信）</h1>
+  <h1>競艇 v1（基の形＋払戻123 自動表示/送信）</h1>
   <div class="sub">
-    ✅ 基のUI/判定/送信は維持。追加は <b>払戻（100円）3連単123 / 3連複123</b> の表示と送信だけ。<br/>
-    ※ 取れない場合は「未取得」。判定（BUY/WAIT/NO/条件外）は一切変えません。
+    ✅ 判定UI/送信/ログ/候補切替など「基の形」を維持。<br/>
+    ✅ 追加は <b>払戻（100円） 3連単123 / 3連複123</b> を results から拾って表示＆送信するだけ。<br/>
+    ※ 取れない場合は未取得。判定（BUY/WAIT/NO/条件外）は一切変えません。
   </div>
 
   <div class="card">
@@ -64,6 +65,7 @@
       <div><label>当地2連率(%) 下限</label><input id="minLoc2" type="number" step="0.1" value="42" /></div>
       <div><label>モーター2連率(%) 下限</label><input id="minMotor2" type="number" step="0.1" value="38" /></div>
     </div>
+
     <div class="grid g3" style="margin-top:10px;">
       <div><label>展示：1号艇順位（上位）</label><input id="maxTimeRank" type="number" step="1" value="2" /></div>
       <div><label>速い相手NG（以上）</label><input id="maxFasterOpp" type="number" step="1" value="1" /></div>
@@ -115,7 +117,6 @@
     <div class="row">
       <div class="rowL">
         <button class="btn" id="refreshBtn">更新</button>
-        <button class="btn2" id="notifyBtn">通知を許可</button>
       </div>
       <div class="muted mono" id="status">-</div>
     </div>
@@ -154,7 +155,7 @@
   const RESULTS_URL  = "https://boatraceopenapi.github.io/results/v2/today.json";
 
   // ---- odds cache ----
-  const ODDS_KEY = "kyotei_odds_cache_goodshape_pay_v1";
+  const ODDS_KEY = "kyotei_odds_cache_goodshape_payfix3";
   function loadOddsCache() { try { return JSON.parse(localStorage.getItem(ODDS_KEY) || "{}"); } catch { return {}; } }
   function saveOddsCache(cache) { try { localStorage.setItem(ODDS_KEY, JSON.stringify(cache)); } catch {} }
   function getOdds(key) { const c = loadOddsCache(); return c[key] || { o123:"", o132:"" }; }
@@ -176,11 +177,11 @@
     return await res.json();
   }
 
-  // 展示は1〜3が揃えば判定可能
+  // ===== 判定ロジック（基のまま） =====
   function exhReady(exh) {
     for (let lane=1; lane<=3; lane++) {
       const t = Number(exh[String(lane)]);
-      if (!Number.isFinite(t)) return false;
+      if (!Number.isFinite(t) || t <= 0) return false; // 0は欠損扱い
     }
     return true;
   }
@@ -199,7 +200,7 @@
   function exhibitionRank(exh) {
     const arr = Object.entries(exh)
       .map(([lane,t])=>({lane:Number(lane), t:Number(t)}))
-      .filter(x=>Number.isFinite(x.lane) && Number.isFinite(x.t))
+      .filter(x=>Number.isFinite(x.lane) && Number.isFinite(x.t) && x.t>0)
       .sort((a,b)=>a.t-b.t);
     const idx = arr.findIndex(x=>x.lane===1);
     return idx>=0 ? idx+1 : null;
@@ -207,22 +208,22 @@
 
   function fasterOppCount(exh) {
     const t1 = Number(exh["1"]);
-    if (!Number.isFinite(t1)) return null;
+    if (!Number.isFinite(t1) || t1<=0) return null;
     let c=0;
     for (let lane=2; lane<=6; lane++) {
       const t = Number(exh[String(lane)]);
-      if (Number.isFinite(t) && t < t1) c++;
+      if (Number.isFinite(t) && t>0 && t < t1) c++;
     }
     return c;
   }
 
   function fasterOppLanes(exh) {
     const t1 = Number(exh["1"]);
-    if (!Number.isFinite(t1)) return [];
+    if (!Number.isFinite(t1) || t1<=0) return [];
     const lanes=[];
     for (let lane=2; lane<=6; lane++) {
       const t = Number(exh[String(lane)]);
-      if (Number.isFinite(t) && t < t1) lanes.push(lane);
+      if (Number.isFinite(t) && t>0 && t < t1) lanes.push(lane);
     }
     return lanes;
   }
@@ -256,15 +257,7 @@
     return { state:"NO", msg:`NO：${reasons.join(" / ")}`, rank, faster, outerFast };
   }
 
-  // ===== 追加：払戻（100円）123を results から拾う（判定には使わない） =====
-  function normalizeCombo(s){
-    return String(s)
-      .replace(/[–—ー_]/g,"-")
-      .replace(/,/g,"-")
-      .replace(/\s+/g,"")
-      .replace(/[^0-9-]/g,"");
-  }
-
+  // ===== 結果トップ3（既存の探し方） =====
   function extractTop3(rr) {
     if (!rr || typeof rr !== "object") return null;
     const stack=[rr];
@@ -283,15 +276,23 @@
     return null;
   }
 
+  // ===== 払戻123（100円）を配列形式から拾う =====
+  // 重要：3連複は "1=2=3" 表記があり得るので、数字だけ抜いて正規化する
+  function normalizeComboDigits(s){
+    const digits = String(s).match(/[1-6]/g);
+    if (!digits || digits.length < 3) return "";
+    return digits.slice(0,3).join("-"); // "1-2-3"
+  }
+
   function findPayoutInArray(arr, targetCombo){
     if(!Array.isArray(arr)) return null;
-    const tgt = normalizeCombo(targetCombo);
+    const tgt = normalizeComboDigits(targetCombo); // "1-2-3"
     for(const it of arr){
       if(!it || typeof it!=="object") continue;
       const combo = it.combination ?? it.combo ?? it.kumi ?? it.kumiawase ?? it.pattern;
       const pay   = it.payout ?? it.pay ?? it.refund ?? it.amount ?? it.money ?? it.value;
       if(combo==null) continue;
-      if(normalizeCombo(String(combo))===tgt){
+      if(normalizeComboDigits(combo) === tgt){
         const num = Number(pay);
         return Number.isFinite(num) ? num : null;
       }
@@ -300,19 +301,15 @@
   }
 
   function extractPayout123(rr){
-    // return { pay3t123, pay3f123 } (may be null)
     const out={pay3t123:null,pay3f123:null};
     if(!rr || typeof rr!=="object") return out;
 
-    // よくある格納先候補を列挙（揺れに強く）
     const payouts = rr.payouts || rr.payout || rr.pay || rr.refunds || rr.refund || rr.haraimodoshi || rr.refund_list || rr.payout_list || null;
 
-    // 3連単配列候補
     const trifectaArr =
       (payouts && (payouts.trifecta || payouts.sanrentan || payouts["3t"] || payouts["3tan"])) ||
       rr.trifecta || rr.sanrentan || rr["3t"] || null;
 
-    // 3連複配列候補
     const trioArr =
       (payouts && (payouts.trio || payouts.sanrenpuku || payouts["3f"] || payouts["3fuku"])) ||
       rr.trio || rr.sanrenpuku || rr["3f"] || null;
@@ -320,6 +317,8 @@
     out.pay3t123 = findPayoutInArray(trifectaArr, "1-2-3");
     out.pay3f123 = findPayoutInArray(trioArr, "1-2-3");
 
+    if (!Number.isFinite(out.pay3t123)) out.pay3t123 = null;
+    if (!Number.isFinite(out.pay3f123)) out.pay3f123 = null;
     return out;
   }
 
@@ -361,6 +360,7 @@
     const odds = getOdds(r.key);
     const card = document.createElement("div");
     card.className = "raceCard";
+
     card.innerHTML = `
       <div class="row">
         <div>
@@ -417,7 +417,6 @@
     inp123.addEventListener("input", update);
     inp132.addEventListener("input", update);
     update();
-
     return card;
   }
 
@@ -441,7 +440,7 @@
     for (const r of show) list.appendChild(makeRaceCard(r));
   }
 
-  // ===== 送信 =====
+  // ===== 送信（cors→no-cors） =====
   async function postToSheet(payload) {
     const body = JSON.stringify(payload);
     try {
@@ -477,8 +476,8 @@
       outer_fast: outerFast,
       odds_input_3t_123: odds.o123,
       odds_input_3t_132: odds.o132,
-      final_odds_3t_123: "",   // 使わない（空欄）
-      final_odds_3f_123: "",   // 使わない（空欄）
+      final_odds_3t_123: "",
+      final_odds_3f_123: "",
       final_payout_3t_123: (Number.isFinite(r.final_payout_3t_123) ? r.final_payout_3t_123 : ""),
       final_payout_3f_123: (Number.isFinite(r.final_payout_3f_123) ? r.final_payout_3f_123 : ""),
       result_top3: (r.result_top3 || "")
@@ -623,13 +622,6 @@
     }
   }
 
-  // notify (そのまま)
-  $("notifyBtn").addEventListener("click", async () => {
-    if (!("Notification" in window)) { alert("このブラウザは通知に対応していません"); return; }
-    const p = await Notification.requestPermission();
-    alert(`通知権限：${p}`);
-  });
-
   // wiring
   $("refreshBtn").addEventListener("click", refresh);
   $("applyBtn").addEventListener("click", () => renderList(LAST_RACES));
@@ -638,6 +630,7 @@
   $("sendTestBtn").addEventListener("click", handleSendTest);
   $("clearLocalBtn").addEventListener("click", () => { if(confirm("オッズ保存を全消去しますか？")){ clearOddsAll(); refresh(); } });
 
+  // init
   renderVenueChecks();
   refresh();
 })();
