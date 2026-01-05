@@ -55,7 +55,8 @@
   <div class="sub">
     ✅ 判定UI/送信/ログ/候補切替など「基の形」を維持。<br/>
     ✅ 追加は <b>払戻（100円） 3連単123 / 3連複123</b> を results から拾って表示＆送信するだけ。<br/>
-    ※ 取れない場合は未取得。判定（BUY/WAIT/NO/条件外）は一切変えません。
+    ✅ 改善：API取得は <b>強制キャッシュ回避</b>。さらに <b>確定してるのに123が無い＝0円</b> として区別。<br/>
+    ✅ 改善：シートの着順(1-2-3)が日付化しないよう、送信時に <b>テキスト固定</b>。
   </div>
 
   <div class="card">
@@ -171,8 +172,10 @@
   }
   function clearSendLog() { $("sendLog").textContent = "ログ：\n"; }
 
+  // ✅ 改善：URLに ?v=timestamp を付けてキャッシュを強制回避
   async function fetchJson(url) {
-    const res = await fetch(url, { cache:"no-store" });
+    const bust = url + (url.includes("?") ? "&" : "?") + "v=" + Date.now();
+    const res = await fetch(bust, { cache:"no-store" });
     if (!res.ok) throw new Error(`fetch failed ${res.status}: ${url}`);
     return await res.json();
   }
@@ -284,6 +287,17 @@
     return digits.slice(0,3).join("-"); // "1-2-3"
   }
 
+  function toNumberLoose(v){
+    if (v == null) return null;
+    if (typeof v === "object") {
+      v = v.value ?? v.amount ?? v.payout ?? v.pay ?? v.money ?? null;
+    }
+    const s = String(v).replace(/,/g,"").trim();
+    if (s === "") return null;
+    const num = Number(s);
+    return Number.isFinite(num) ? num : null;
+  }
+
   function findPayoutInArray(arr, targetCombo){
     if(!Array.isArray(arr)) return null;
     const tgt = normalizeComboDigits(targetCombo); // "1-2-3"
@@ -293,13 +307,14 @@
       const pay   = it.payout ?? it.pay ?? it.refund ?? it.amount ?? it.money ?? it.value;
       if(combo==null) continue;
       if(normalizeComboDigits(combo) === tgt){
-        const num = Number(pay);
-        return Number.isFinite(num) ? num : null;
+        return toNumberLoose(pay);
       }
     }
     return null;
   }
 
+  // ✅ 改善：払戻配列が存在する＝確定
+  // 確定してるのに123が無い → 0円（未取得と区別）
   function extractPayout123(rr){
     const out={pay3t123:null,pay3f123:null};
     if(!rr || typeof rr!=="object") return out;
@@ -314,8 +329,14 @@
       (payouts && (payouts.trio || payouts.sanrenpuku || payouts["3f"] || payouts["3fuku"])) ||
       rr.trio || rr.sanrenpuku || rr["3f"] || null;
 
-    out.pay3t123 = findPayoutInArray(trifectaArr, "1-2-3");
-    out.pay3f123 = findPayoutInArray(trioArr, "1-2-3");
+    const hasTri  = Array.isArray(trifectaArr) && trifectaArr.length > 0;
+    const hasTrio = Array.isArray(trioArr)     && trioArr.length > 0;
+
+    const v3t = findPayoutInArray(trifectaArr, "1-2-3");
+    const v3f = findPayoutInArray(trioArr,     "1-2-3");
+
+    out.pay3t123 = (v3t == null && hasTri)  ? 0 : v3t;
+    out.pay3f123 = (v3f == null && hasTrio) ? 0 : v3f;
 
     if (!Number.isFinite(out.pay3t123)) out.pay3t123 = null;
     if (!Number.isFinite(out.pay3f123)) out.pay3f123 = null;
@@ -353,7 +374,7 @@
       if (Number.isFinite(r.final_payout_3t_123) || Number.isFinite(r.final_payout_3f_123)) hasPay++;
     }
     $("summary").textContent =
-      `取得${total}R / 条件①通過${f1pass}R / BUY${buy} / NO${no} / WAIT${wait} / 条件外${filtered} / 結果${hasTop3} / 払戻123${hasPay}`;
+      `取得${total}R / 条件①通過${f1pass}R / BUY${buy} / NO${no} / WAIT${wait} / 条件外${filtered} / 結果${hasTop3} / 払戻123(確定含む)${hasPay}`;
   }
 
   function makeRaceCard(r) {
@@ -480,7 +501,8 @@
       final_odds_3f_123: "",
       final_payout_3t_123: (Number.isFinite(r.final_payout_3t_123) ? r.final_payout_3t_123 : ""),
       final_payout_3f_123: (Number.isFinite(r.final_payout_3f_123) ? r.final_payout_3f_123 : ""),
-      result_top3: (r.result_top3 || "")
+      // ✅ 改善：1-2-3 が日付に変換されないようにテキスト固定（先頭に '）
+      result_top3: (r.result_top3 ? ("'" + r.result_top3) : "")
     };
   }
 
