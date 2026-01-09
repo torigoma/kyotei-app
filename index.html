@@ -1,9 +1,9 @@
-<!doctype html>
+￥<!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v1（基の形＋払戻123＋おすすめ条件）</title>
+  <title>競艇 v1（基の形＋払戻123＋おすすめ条件v2）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -51,14 +51,13 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v1（基の形＋払戻123＋おすすめ条件）</h1>
+  <h1>競艇 v1（基の形＋払戻123＋おすすめ条件v2）</h1>
   <div class="sub">
-    ✅ 判定UI/送信/ログ/候補切替など「基の形」を維持。<br/>
-    ✅ results から <b>払戻（100円） 3連単123 / 3連複123</b> を拾って表示＆送信。<br/>
-    ✅ 取得は <b>強制キャッシュ回避</b>。<b>確定してるのに123が無い＝0円</b> として区別。<br/>
-    ✅ シートの着順(1-2-3)が日付化しないよう、送信時に <b>テキスト固定</b>。<br/>
-    ✅ おすすめ条件：<b>maxOdds=25</b>＋<b>Δ2(2-1)≤0.12</b>＋<b>混戦回避（近い艇が多いとNO）</b><br/>
-    ✅ BUY時の推奨：<b>3連複 1-2-3（1点）</b>
+    ✅ BoatraceOpenAPI（programs/previews/results）から取得。<br/>
+    ✅ 払戻（100円）3連単123 / 3連複123 を results から表示＆送信。<br/>
+    ✅ キャッシュ強制回避（?v=timestamp）。確定してるのに123が無い＝0円。<br/>
+    ✅ BUY時の推奨：<b>3連複 1-2-3（1点）</b>（買い目は増やさない）。<br/>
+    ✅ 昨日の変更案を全部採用：<b>「速い相手カウント」は使わず “外枠が速い”だけでNO</b> ＋ <b>Δ3(3-1)</b>追加。
   </div>
 
   <div class="card">
@@ -71,15 +70,19 @@
 
     <div class="grid g3" style="margin-top:10px;">
       <div><label>展示：1号艇順位（上位）</label><input id="maxTimeRank" type="number" step="1" value="2" /></div>
-      <div><label>速い相手NG（以上）</label><input id="maxFasterOpp" type="number" step="1" value="1" /></div>
-      <div><label>近い艇の上限数（混戦回避）</label><input id="maxNearCount" type="number" step="1" value="2" /></div>
+      <div><label>混戦回避：近い艇の上限数</label><input id="maxNearCount" type="number" step="1" value="2" /></div>
+      <div><label>混戦判定：1号艇 +（秒）以内</label><input id="nearEps" type="number" step="0.01" value="0.03" /></div>
+    </div>
+
+    <div class="grid g3" style="margin-top:10px;">
+      <div><label>2号艇遅れ上限 Δ2=（2−1）秒</label><input id="maxDelta2" type="number" step="0.01" value="0.12" /></div>
+      <div><label>3号艇遅れ上限 Δ3=（3−1）秒</label><input id="maxDelta3" type="number" step="0.01" value="0.15" /></div>
+      <div><label>最高オッズ（上限）</label><input id="maxBestOdds" type="number" step="0.1" value="25" /></div>
     </div>
 
     <div class="grid g2" style="margin-top:10px;">
       <div><label>最低オッズ</label><input id="minBestOdds" type="number" step="0.1" value="6.0" /></div>
-      <div><label>最高オッズ（上限）</label><input id="maxBestOdds" type="number" step="0.1" value="25" /></div>
-      <div><label>2号艇遅れ上限 Δ2=（2−1）秒</label><input id="maxDelta2" type="number" step="0.01" value="0.12" /></div>
-      <div><label>混戦判定：1号艇 +（秒）以内</label><input id="nearEps" type="number" step="0.01" value="0.03" /></div>
+      <div class="muted" style="align-self:end;">※「速い相手カウント」は判定に使いません（外枠が速いのみ使用）</div>
     </div>
 
     <div class="hr"></div>
@@ -247,12 +250,11 @@
     return lanes;
   }
 
-  // ✅ 追加：2号艇遅れΔ2（2-1）と混戦カウント
-  function delta2(exh) {
+  function deltaLane(exh, lane) {
     const t1 = Number(exh["1"]);
-    const t2 = Number(exh["2"]);
-    if (!Number.isFinite(t1) || !Number.isFinite(t2) || t1<=0 || t2<=0) return null;
-    return t2 - t1;
+    const tx = Number(exh[String(lane)]);
+    if (!Number.isFinite(t1) || !Number.isFinite(tx) || t1<=0 || tx<=0) return null;
+    return tx - t1;
   }
 
   function nearCount(exh, eps) {
@@ -275,25 +277,30 @@
 
     const reasons=[];
     const maxTimeRank = n("maxTimeRank");
-    const maxFasterOpp = n("maxFasterOpp");
+
     const minBestOdds = n("minBestOdds");
     const maxBestOdds = n("maxBestOdds");
+
     const maxDelta2 = n("maxDelta2");
+    const maxDelta3 = n("maxDelta3");
+
     const nearEps = n("nearEps");
     const maxNearCount = n("maxNearCount");
 
     const rank = exhibitionRank(r.exh);
-    const faster = fasterOppCount(r.exh);
 
     if (rank!=null && maxTimeRank!=null && rank>maxTimeRank) reasons.push("展示順位NG");
-    if (faster!=null && maxFasterOpp!=null && faster>=maxFasterOpp) reasons.push("速い相手が多い");
 
+    // ✅ 昨日の変更案：速い相手カウントは判定に使わない（outerFastのみ）
     const fasterL = fasterOppLanes(r.exh);
     const outerFast = fasterL.length>0 && fasterL.some(l=>l!==2 && l!==3);
     if (outerFast) reasons.push("外枠が速い");
 
-    const d2 = delta2(r.exh);
+    const d2 = deltaLane(r.exh, 2);
     if (d2!=null && maxDelta2!=null && d2 > maxDelta2) reasons.push("2号艇が遅い");
+
+    const d3 = deltaLane(r.exh, 3);
+    if (d3!=null && maxDelta3!=null && d3 > maxDelta3) reasons.push("3号艇が遅い");
 
     const nc = nearCount(r.exh, nearEps ?? 0.03);
     if (nc!=null && maxNearCount!=null && nc > maxNearCount) reasons.push("混戦（1に近い艇が多い）");
@@ -306,17 +313,9 @@
     }
 
     if (reasons.length===0) {
-      return {
-        state:"BUY",
-        msg:"BUY（条件OK）｜推奨：3連複 1-2-3（1点）",
-        rank, faster, outerFast, d2, nc
-      };
+      return { state:"BUY", msg:"BUY（条件OK）｜推奨：3連複 1-2-3（1点）", rank, outerFast, d2, d3, nc };
     }
-    return {
-      state:"NO",
-      msg:`NO：${reasons.join(" / ")}`,
-      rank, faster, outerFast, d2, nc
-    };
+    return { state:"NO", msg:`NO：${reasons.join(" / ")}`, rank, outerFast, d2, d3, nc };
   }
 
   // ===== 結果トップ3 =====
@@ -491,11 +490,12 @@
       else if (st.state==="WAIT") { badge.textContent="WAIT"; badge.className="badge b-wait"; }
       else { badge.textContent="条件外"; badge.className="badge b-filter"; }
 
-      const d2 = (st.d2!=null) ? st.d2.toFixed(2) : "-";
-      const nc = (st.nc!=null) ? st.nc : "-";
       const eps = n("nearEps");
       const epsTxt = (eps!=null) ? eps.toFixed(2) : "-";
-      exhmeta.textContent = `展示指標: Δ2(2-1)=${d2}s / 近い艇(<=+${epsTxt}s)=${nc}`;
+      const d2 = (st.d2!=null) ? st.d2.toFixed(2) : "-";
+      const d3 = (st.d3!=null) ? st.d3.toFixed(2) : "-";
+      const nc = (st.nc!=null) ? st.nc : "-";
+      exhmeta.textContent = `展示指標: Δ2=${d2}s / Δ3=${d3}s / 近い艇(<=+${epsTxt}s)=${nc} / 外枠速い=${st.outerFast? "YES":"NO"}`;
 
       msg.textContent = st.msg;
     }
@@ -664,7 +664,6 @@
       const exh={};
       if (pv && pv.boats) {
         for (let lane=1; lane<=6; lane++) {
-          // キー揺れに少しだけ強くする
           const obj = pv.boats[String(lane)] || pv.boats[lane] || null;
           const t = obj?.racer_exhibition_time ?? obj?.exhibition_time ?? null;
           if (t!=null) exh[String(lane)] = Number(t);
@@ -682,62 +681,4 @@
         date: pr.race_date,
         title: pr.race_title || "一般戦",
         nat2: Number(b1.racer_national_top_2_percent ?? 0),
-        loc2: Number(b1.racer_local_top_2_percent ?? 0),
-        motor2: Number(b1.racer_assigned_motor_top_2_percent ?? 0),
-        exh,
-        exhReady: exhReady(exh),
-        result_top3: top3,
-        final_payout_3t_123: pay.pay3t123,
-        final_payout_3f_123: pay.pay3f123
-      });
-    }
-
-    setStatus(`取得OK：${races.length}R / ${new Date().toLocaleTimeString()}`);
-    return races;
-  }
-
-  // ✅ 展示待ちがある間だけ自動更新
-  let AUTO_TIMER = null;
-  function clearAutoTimer() { if (AUTO_TIMER) { clearTimeout(AUTO_TIMER); AUTO_TIMER = null; } }
-  function maybeScheduleAutoRefresh() {
-    clearAutoTimer();
-    if (!$("autoRefresh").checked) { setAutoStatus("自動更新OFF"); return; }
-    const need = LAST_RACES.some(r => passFilter1(r).ok && !r.exhReady);
-    if (!need) { setAutoStatus("展示OK"); return; }
-    setAutoStatus("展示待ち→20秒後に自動更新");
-    AUTO_TIMER = setTimeout(refresh, 20000);
-  }
-
-  async function refresh() {
-    try {
-      const races = await loadAndBuildRaces();
-      LAST_RACES = races;
-      renderSummary(races);
-      renderList(races);
-      setSendStatus("準備OK");
-      logSend("更新完了");
-      maybeScheduleAutoRefresh();
-    } catch (e) {
-      setStatus("取得失敗");
-      setAutoStatus("-");
-      setSendStatus("送信不可（取得失敗）");
-      logSend("取得失敗: " + String(e));
-    }
-  }
-
-  // wiring
-  $("refreshBtn").addEventListener("click", refresh);
-  $("applyBtn").addEventListener("click", () => renderList(LAST_RACES));
-  $("sendBuyBtn").addEventListener("click", handleSendBuyOnly);
-  $("sendCandBtn").addEventListener("click", handleSendCandidates);
-  $("sendTestBtn").addEventListener("click", handleSendTest);
-  $("clearLocalBtn").addEventListener("click", () => { if(confirm("オッズ保存を全消去しますか？")){ clearOddsAll(); refresh(); } });
-  $("autoRefresh").addEventListener("change", maybeScheduleAutoRefresh);
-
-  // init
-  renderVenueChecks();
-  refresh();
-})();
-</script>
-</body>
-</html>
+￥
