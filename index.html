@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v1（段階表示＋おすすめ条件v2）</title>
+  <title>競艇 v1（段階表示＋おすすめ条件v2＋安定更新）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -51,11 +51,12 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v1（段階表示＋おすすめ条件v2）</h1>
+  <h1>競艇 v1（段階表示＋おすすめ条件v2＋安定更新）</h1>
   <div class="sub">
-    ✅ 「出せる条件から先に出す」：programs取得後すぐ一覧表示 → その後に展示/払戻を反映。<br/>
+    ✅ programs取得後すぐ表示（朝に出せるNGは朝出す）→ previews/resultsは後追い反映。<br/>
+    ✅ 自動更新は previews/results のみ（programsは固定＝朝の条件がブレにくい）。<br/>
     ✅ 判定：外枠が速いのみでNO（速い相手カウントは判定に使わない）＋ Δ2/Δ3/混戦回避＋オッズ上限。<br/>
-    ✅ BUY時の推奨：<b>3連複 1-2-3（1点）</b>（買い目は増やさない）。
+    ✅ BUY時推奨：<b>3連複 1-2-3（1点）</b>
   </div>
 
   <div class="card">
@@ -80,7 +81,12 @@
 
     <div class="grid g2" style="margin-top:10px;">
       <div><label>最低オッズ</label><input id="minBestOdds" type="number" step="0.1" value="6.0" /></div>
-      <div class="muted" style="align-self:end;">※BUY推奨：<b>3連複 1-2-3（1点）</b></div>
+      <div><label>中止判定：締切後◯分（展示0＆結果なし）</label><input id="cancelGraceMin" type="number" step="1" value="30" /></div>
+    </div>
+
+    <div class="grid g2" style="margin-top:10px;">
+      <div><label>自動更新対象：締切まで◯分以内</label><input id="autoWindowMin" type="number" step="1" value="90" /></div>
+      <div class="muted" style="align-self:end;">※自動更新は previews/results のみ</div>
     </div>
 
     <div class="hr"></div>
@@ -127,7 +133,7 @@
 
     <div class="row">
       <div class="rowL">
-        <button class="btn" id="refreshBtn">更新</button>
+        <button class="btn" id="refreshBtn">更新（programs→即表示→展示/結果）</button>
         <label class="cb" style="margin:0;">
           <input type="checkbox" id="autoRefresh" checked />
           展示待ち時に自動更新（20秒）
@@ -147,12 +153,13 @@
 
 <script>
 (() => {
-  // ====== GAS URL ======
   const GAS_URL = "https://script.google.com/macros/s/AKfycbw5C8p_tw_dK9m5OWPrekxfbHz1mNq949fjBq1ymTo8xNCjtIGTRGbmVZYQyO3-O3fo/exec";
 
   const $ = (id) => document.getElementById(id);
   const n = (id) => {
-    const v = $(id).value;
+    const el = $(id);
+    if (!el) return null;
+    const v = el.value;
     if (v === "" || v == null) return null;
     const x = Number(v);
     return Number.isFinite(x) ? x : null;
@@ -171,7 +178,7 @@
   const PREVIEWS_URL = "https://boatraceopenapi.github.io/previews/v2/today.json";
   const RESULTS_URL  = "https://boatraceopenapi.github.io/results/v2/today.json";
 
-  // ---- odds cache ----
+  // odds cache
   const ODDS_KEY = "kyotei_odds_cache_goodshape_payfix3";
   function loadOddsCache() { try { return JSON.parse(localStorage.getItem(ODDS_KEY) || "{}"); } catch { return {}; } }
   function saveOddsCache(cache) { try { localStorage.setItem(ODDS_KEY, JSON.stringify(cache)); } catch {} }
@@ -189,10 +196,7 @@
   }
   function clearSendLog() { $("sendLog").textContent = "ログ：\n"; }
 
-  function nowTimeStr() {
-    const d = new Date();
-    return d.toLocaleTimeString();
-  }
+  function nowTimeStr() { return new Date().toLocaleTimeString(); }
 
   async function fetchJson(url) {
     const bust = url + (url.includes("?") ? "&" : "?") + "v=" + Date.now();
@@ -201,11 +205,19 @@
     return await res.json();
   }
 
-  // ===== 判定用の小関数 =====
+  function parseLocalDateTime(s) {
+    if (!s) return null;
+    const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/);
+    if (!m) return null;
+    const [_, Y, M, D, h, mi, se] = m;
+    return new Date(Number(Y), Number(M)-1, Number(D), Number(h), Number(mi), Number(se));
+  }
+
+  // ===== 判定の基本 =====
   function exhReady(exh) {
     for (let lane=1; lane<=3; lane++) {
       const t = Number(exh[String(lane)]);
-      if (!Number.isFinite(t) || t <= 0) return false;
+      if (!Number.isFinite(t) || t <= 0) return false; // 0は欠損扱い
     }
     return true;
   }
@@ -260,34 +272,44 @@
     return c;
   }
 
-  // ===== judge（“出せる条件から先に出す”版）=====
-  function judge(r, o123, o132) {
-    // ① programs条件（朝すぐ出せる）
-    const f1 = passFilter1(r);
-    if (!f1.ok) {
-      return { state:"条件外", msg:`条件外：${f1.reasons.join(" / ")}` };
-    }
+  function updateCancelFlag(r) {
+    r.isCancelled = false;
+    // すでに結果が確定してるなら中止扱いしない
+    if (r._resTech != null) return;
 
-    // ② odds条件（入力済みなら朝でも出せる）
-    const oddsReasons = [];
+    const dt = parseLocalDateTime(r.race_closed_at);
+    if (!dt) return;
+
+    const grace = n("cancelGraceMin") ?? 30;
+    if (Date.now() < dt.getTime() + grace * 60 * 1000) return;
+
+    // previews/resultsが来ている前提で判定（通信失敗の誤判定を避ける）
+    if (!r._hasPreviews || !r._hasResults) return;
+
+    const allZero = ["1","2","3","4","5","6"].every(l => Number(r.exh[l] ?? 0) === 0);
+    const noPayout = (Number(r._resTriLen ?? 0) === 0) && (Number(r._res3tLen ?? 0) === 0);
+
+    if (allZero && noPayout) r.isCancelled = true;
+  }
+
+  function judge(r, o123, o132) {
+    if (r.isCancelled) return { state:"中止", msg:"中止（展示=0 / 結果なし）" };
+
+    const f1 = passFilter1(r);
+    if (!f1.ok) return { state:"条件外", msg:`条件外：${f1.reasons.join(" / ")}` };
+
     const minBestOdds = n("minBestOdds");
     const maxBestOdds = n("maxBestOdds");
     const bestOdds = Math.max(Number(o123)||0, Number(o132)||0);
 
-    if (!bestOdds) oddsReasons.push("オッズ未入力");
-    else {
-      if (minBestOdds!=null && bestOdds<minBestOdds) oddsReasons.push("オッズ不足");
-      if (maxBestOdds!=null && bestOdds>maxBestOdds) oddsReasons.push("オッズ上限超過");
-    }
-
-    // ③ 展示がまだなら、展示条件は後から（でも“分かる条件”は表示する）
     if (!r.exhReady) {
-      const extra = oddsReasons.length ? ` / ${oddsReasons.join(" / ")}` : "";
-      return { state:"WAIT", msg:`WAIT：展示（1〜3）待ち${extra}` };
+      const oddsMsg = (!bestOdds) ? " / オッズ未入力" :
+        ((minBestOdds!=null && bestOdds<minBestOdds) ? " / オッズ不足" :
+         (maxBestOdds!=null && bestOdds>maxBestOdds) ? " / オッズ上限超過" : "");
+      return { state:"WAIT", msg:`WAIT：展示（1〜3）待ち${oddsMsg}` };
     }
 
-    // ④ 展示条件（previewsが来たら評価）
-    const reasons = [];
+    const reasons=[];
     const maxTimeRank = n("maxTimeRank");
     const maxDelta2 = n("maxDelta2");
     const maxDelta3 = n("maxDelta3");
@@ -311,14 +333,14 @@
     const nc = nearCount(r.exh, nearEpsV);
     if (nc!=null && maxNearCount!=null && nc > maxNearCount) reasons.push("混戦（1に近い艇が多い）");
 
-    // odds理由も合流
-    reasons.push(...oddsReasons.filter(x => x !== "オッズ未入力" ? true : true));
-
-    if (reasons.length===0) {
-      return { state:"BUY", msg:"BUY（条件OK）｜推奨：3連複 1-2-3（1点）", rank, outerFast, d2, d3, nc };
+    if (!bestOdds) reasons.push("オッズ未入力");
+    else {
+      if (minBestOdds!=null && bestOdds<minBestOdds) reasons.push("オッズ不足");
+      if (maxBestOdds!=null && bestOdds>maxBestOdds) reasons.push("オッズ上限超過");
     }
-    // オッズ未入力だけでNOにしたくない場合はここで調整可能（今はNOに含める設計）
-    return { state:"NO", msg:`NO：${reasons.join(" / ")}`, rank, outerFast, d2, d3, nc };
+
+    if (reasons.length===0) return { state:"BUY", msg:"BUY（条件OK）｜推奨：3連複 1-2-3（1点）" };
+    return { state:"NO", msg:`NO：${reasons.join(" / ")}` };
   }
 
   // ===== 結果トップ3 =====
@@ -412,25 +434,24 @@
       cb.checked = enabledStadiums.has(k);
       cb.addEventListener("change", ()=>{
         if (cb.checked) enabledStadiums.add(k); else enabledStadiums.delete(k);
-        refresh();
+        refreshFull();
       });
       box.appendChild(el);
     }
   }
 
   function renderSummary(races) {
-    const total = races.length;
-    const f1pass = races.filter(r => passFilter1(r).ok).length;
-    let buy=0,no=0,wait=0,filtered=0,hasTop3=0,hasPay=0;
+    let buy=0,no=0,wait=0,filtered=0,cancel=0;
     for (const r of races) {
       const odds = getOdds(r.key);
       const st = judge(r, odds.o123, odds.o132).state;
-      if (st==="BUY") buy++; else if (st==="NO") no++; else if (st==="WAIT") wait++; else filtered++;
-      if (r.result_top3) hasTop3++;
-      if (Number.isFinite(r.final_payout_3t_123) || Number.isFinite(r.final_payout_3f_123)) hasPay++;
+      if (st==="BUY") buy++;
+      else if (st==="NO") no++;
+      else if (st==="WAIT") wait++;
+      else if (st==="中止") cancel++;
+      else filtered++;
     }
-    $("summary").textContent =
-      `取得${total}R / 条件①通過${f1pass}R / BUY${buy} / NO${no} / WAIT${wait} / 条件外${filtered} / 結果${hasTop3} / 払戻123${hasPay}`;
+    $("summary").textContent = `取得${races.length}R / BUY${buy} / NO${no} / WAIT${wait} / 中止${cancel} / 条件外${filtered}`;
   }
 
   function makeRaceCard(r) {
@@ -488,6 +509,7 @@
       if (st.state==="BUY") { badge.textContent="BUY"; badge.className="badge b-buy"; }
       else if (st.state==="NO") { badge.textContent="NO"; badge.className="badge b-no"; }
       else if (st.state==="WAIT") { badge.textContent="WAIT"; badge.className="badge b-wait"; }
+      else if (st.state==="中止") { badge.textContent="中止"; badge.className="badge b-filter"; }
       else { badge.textContent="条件外"; badge.className="badge b-filter"; }
 
       msg.textContent = st.msg;
@@ -499,7 +521,6 @@
     return card;
   }
 
-  // 0件対策込み
   function renderList(races) {
     const mode = $("viewMode").value;
     let show = races.slice();
@@ -534,10 +555,10 @@
       if (st==="BUY") return 0;
       if (st==="WAIT") return 1;
       if (st==="NO") return 2;
-      return 3;
+      if (st==="中止") return 3;
+      return 4;
     }
     show.sort((a,b) => (stateRank(a)-stateRank(b)) || a.venue.localeCompare(b.venue) || a.race-b.race);
-
     for (const r of show) list.appendChild(makeRaceCard(r));
   }
 
@@ -606,6 +627,7 @@
     const rows = [];
     for (const r of LAST_RACES) {
       if (!passFilter1(r).ok) continue;
+      if (r.isCancelled) continue;
       const odds = getOdds(r.key);
       const st = judge(r, odds.o123, odds.o132);
       if (st.state === "BUY") rows.push(makeSheetRow(r, st));
@@ -620,6 +642,7 @@
     const rows = [];
     for (const r of LAST_RACES) {
       if (!passFilter1(r).ok) continue;
+      if (r.isCancelled) continue;
       const odds = getOdds(r.key);
       const st = judge(r, odds.o123, odds.o132);
       rows.push(makeSheetRow(r, st));
@@ -657,36 +680,49 @@
         race: pr.race_number,
         date: pr.race_date,
         title: pr.race_title || "一般戦",
+        race_closed_at: pr.race_closed_at || "",
         nat2: Number(b1.racer_national_top_2_percent ?? 0),
         loc2: Number(b1.racer_local_top_2_percent ?? 0),
         motor2: Number(b1.racer_assigned_motor_top_2_percent ?? 0),
+
         exh: {},
         exhReady: false,
+
         result_top3: null,
         final_payout_3t_123: null,
         final_payout_3f_123: null,
+
         _progAt: progAtStr,
         _exhAt: "-",
-        _resAt: "-"
+        _resAt: "-",
+
+        _hasPreviews: false,
+        _hasResults: false,
+        _resTech: null,
+        _resTriLen: 0,
+        _res3tLen: 0,
+
+        isCancelled: false
       });
     }
     return races;
+  }
+
+  function keyParts(r) {
+    const parts = r.key.split("-");
+    return { date: parts.slice(0,3).join("-"), stadium: Number(parts[3]), race: Number(parts[4]) };
   }
 
   function mergePreviews(races, previewsJson, exhAtStr) {
     const prevList = previewsJson.previews || [];
     const prevMap = new Map();
     for (const p of prevList) {
-      const key = `${p.race_date}-${p.race_stadium_number}-${p.race_number}`;
-      prevMap.set(key, p);
+      prevMap.set(`${p.race_date}-${p.race_stadium_number}-${p.race_number}`, p);
     }
 
     for (const r of races) {
-      const parts = r.key.split("-");
-      const date = parts.slice(0,3).join("-");
-      const stadium = Number(parts[3]);
-      const raceNo = Number(parts[4]);
-      const pv = prevMap.get(`${date}-${stadium}-${raceNo}`);
+      const {date, stadium, race} = keyParts(r);
+      const pv = prevMap.get(`${date}-${stadium}-${race}`);
       if (!pv || !pv.boats) continue;
 
       const exh = {};
@@ -697,6 +733,7 @@
       }
       r.exh = exh;
       r.exhReady = exhReady(exh);
+      r._hasPreviews = true;
       r._exhAt = exhAtStr;
     }
   }
@@ -705,70 +742,119 @@
     const list = resultsJson.results || resultsJson.races || [];
     const map = new Map();
     for (const rr of list) {
-      const key = `${rr.race_date}-${rr.race_stadium_number}-${rr.race_number}`;
-      map.set(key, rr);
+      map.set(`${rr.race_date}-${rr.race_stadium_number}-${rr.race_number}`, rr);
     }
 
     for (const r of races) {
-      const parts = r.key.split("-");
-      const date = parts.slice(0,3).join("-");
-      const stadium = Number(parts[3]);
-      const raceNo = Number(parts[4]);
-      const rr = map.get(`${date}-${stadium}-${raceNo}`);
+      const {date, stadium, race} = keyParts(r);
+      const rr = map.get(`${date}-${stadium}-${race}`);
       if (!rr) continue;
 
+      r._hasResults = true;
+      r._resAt = resAtStr;
+
+      r._resTech = rr.race_technique_number ?? null;
+
+      const payouts = rr.payouts || {};
+      r._res3tLen = (payouts.trifecta || []).length;
+      r._resTriLen = (payouts.trio || []).length;
+
       r.result_top3 = extractTop3(rr);
+
       const pay = extractPayout123(rr);
       r.final_payout_3t_123 = pay.pay3t123;
       r.final_payout_3f_123 = pay.pay3f123;
-      r._resAt = resAtStr;
     }
   }
 
-  // auto refresh
+  function recomputeFlagsAll() {
+    for (const r of LAST_RACES) updateCancelFlag(r);
+  }
+
+  // ===== 自動更新（previews/resultsのみ）=====
   let AUTO_TIMER = null;
   function clearAutoTimer() { if (AUTO_TIMER) { clearTimeout(AUTO_TIMER); AUTO_TIMER = null; } }
+
+  function minutesUntilClose(r) {
+    const dt = parseLocalDateTime(r.race_closed_at);
+    if (!dt) return null;
+    return (dt.getTime() - Date.now()) / 60000;
+  }
+
   function maybeScheduleAutoRefresh() {
     clearAutoTimer();
     if (!$("autoRefresh").checked) { setAutoStatus("自動更新OFF"); return; }
-    const need = LAST_RACES.some(r => passFilter1(r).ok && !r.exhReady);
-    if (!need) { setAutoStatus("展示OK"); return; }
-    setAutoStatus("展示待ち→20秒後に自動更新");
-    AUTO_TIMER = setTimeout(refresh, 20000);
+    if (!LAST_RACES.length) { setAutoStatus("-"); return; }
+
+    const win = n("autoWindowMin") ?? 90;
+    const need = LAST_RACES.some(r => {
+      if (!passFilter1(r).ok) return false;
+      if (r.isCancelled) return false;
+      if (r.exhReady) return false;
+      const m = minutesUntilClose(r);
+      if (m == null) return false;
+      return (m <= win) && (m >= -5); // 締切前〜ちょい過ぎまで
+    });
+
+    if (!need) { setAutoStatus("展示OK/対象なし"); return; }
+    setAutoStatus("展示待ち→20秒後に自動更新（previews/resultsのみ）");
+    AUTO_TIMER = setTimeout(refreshLite, 20000);
   }
 
-  async function refresh() {
+  async function refreshLite() {
+    try {
+      if (!LAST_RACES.length) return refreshFull();
+
+      setStatus(`previews/results更新中… / ${nowTimeStr()}`);
+
+      const previewsP = fetchJson(PREVIEWS_URL).then(pv => {
+        mergePreviews(LAST_RACES, pv, nowTimeStr());
+      }).catch(e => logSend("previews失敗: " + String(e)));
+
+      const resultsP = fetchJson(RESULTS_URL).then(rs => {
+        mergeResults(LAST_RACES, rs, nowTimeStr());
+      }).catch(e => logSend("results失敗: " + String(e)));
+
+      await Promise.allSettled([previewsP, resultsP]);
+      recomputeFlagsAll();
+
+      renderSummary(LAST_RACES);
+      renderList(LAST_RACES);
+      setStatus(`軽更新OK / ${nowTimeStr()}`);
+      setSendStatus("準備OK");
+      maybeScheduleAutoRefresh();
+    } catch (e) {
+      setStatus("軽更新失敗");
+      logSend("軽更新失敗: " + String(e));
+      maybeScheduleAutoRefresh();
+    }
+  }
+
+  async function refreshFull() {
     try {
       setStatus("programs取得中…");
       const progAt = nowTimeStr();
       const programs = await fetchJson(PROGRAMS_URL);
 
-      // ① programsだけで即表示
       LAST_RACES = buildBaseRaces(programs, progAt);
       renderSummary(LAST_RACES);
       renderList(LAST_RACES);
       setStatus(`programs OK（${LAST_RACES.length}R）/ ${progAt} / previews&results取得中…`);
 
-      // ② previews/results を並行で取り、来た順に反映
       const previewsP = fetchJson(PREVIEWS_URL).then(pv => {
         mergePreviews(LAST_RACES, pv, nowTimeStr());
-        renderSummary(LAST_RACES);
-        renderList(LAST_RACES);
-        setStatus(`previews反映 / ${nowTimeStr()} / results取得中…`);
-      }).catch(e => {
-        logSend("previews失敗: " + String(e));
-      });
+      }).catch(e => logSend("previews失敗: " + String(e)));
 
       const resultsP = fetchJson(RESULTS_URL).then(rs => {
         mergeResults(LAST_RACES, rs, nowTimeStr());
-        renderSummary(LAST_RACES);
-        renderList(LAST_RACES);
-        setStatus(`results反映 / ${nowTimeStr()} / 完了`);
-      }).catch(e => {
-        logSend("results失敗: " + String(e));
-      });
+      }).catch(e => logSend("results失敗: " + String(e)));
 
       await Promise.allSettled([previewsP, resultsP]);
+      recomputeFlagsAll();
+
+      renderSummary(LAST_RACES);
+      renderList(LAST_RACES);
+      setStatus(`完了 / ${nowTimeStr()}`);
       setSendStatus("準備OK");
       logSend("更新完了");
       maybeScheduleAutoRefresh();
@@ -781,17 +867,17 @@
   }
 
   // wiring
-  $("refreshBtn").addEventListener("click", refresh);
-  $("applyBtn").addEventListener("click", () => renderList(LAST_RACES));
+  $("refreshBtn").addEventListener("click", refreshFull);
+  $("applyBtn").addEventListener("click", () => { renderSummary(LAST_RACES); renderList(LAST_RACES); });
   $("sendBuyBtn").addEventListener("click", handleSendBuyOnly);
   $("sendCandBtn").addEventListener("click", handleSendCandidates);
   $("sendTestBtn").addEventListener("click", handleSendTest);
-  $("clearLocalBtn").addEventListener("click", () => { if(confirm("オッズ保存を全消去しますか？")){ clearOddsAll(); refresh(); } });
+  $("clearLocalBtn").addEventListener("click", () => { if(confirm("オッズ保存を全消去しますか？")){ clearOddsAll(); refreshFull(); } });
   $("autoRefresh").addEventListener("change", maybeScheduleAutoRefresh);
 
   // init
   renderVenueChecks();
-  refresh();
+  refreshFull();
 })();
 </script>
 </body>
