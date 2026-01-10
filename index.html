@@ -1,9 +1,9 @@
-￥<!doctype html>
+<!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v1（基の形＋払戻123＋おすすめ条件v2）</title>
+  <title>競艇 v1（基の形＋払戻123＋おすすめ条件v2＋空表示対策）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -53,11 +53,11 @@
 <div class="wrap">
   <h1>競艇 v1（基の形＋払戻123＋おすすめ条件v2）</h1>
   <div class="sub">
-    ✅ BoatraceOpenAPI（programs/previews/results）から取得。<br/>
+    ✅ キャッシュ強制回避（?v=timestamp）。<br/>
     ✅ 払戻（100円）3連単123 / 3連複123 を results から表示＆送信。<br/>
-    ✅ キャッシュ強制回避（?v=timestamp）。確定してるのに123が無い＝0円。<br/>
-    ✅ BUY時の推奨：<b>3連複 1-2-3（1点）</b>（買い目は増やさない）。<br/>
-    ✅ 昨日の変更案を全部採用：<b>「速い相手カウント」は使わず “外枠が速い”だけでNO</b> ＋ <b>Δ3(3-1)</b>追加。
+    ✅ 速い相手カウントは判定に使わない（<b>外枠が速い</b>だけでNO）。<br/>
+    ✅ Δ2(2-1), Δ3(3-1), 混戦回避, maxOdds で「買い過ぎず当たりやすい形」を拾う。<br/>
+    ✅ 初期表示は<b>全件表示</b>（空画面対策）。
   </div>
 
   <div class="card">
@@ -75,14 +75,14 @@
     </div>
 
     <div class="grid g3" style="margin-top:10px;">
-      <div><label>2号艇遅れ上限 Δ2=（2−1）秒</label><input id="maxDelta2" type="number" step="0.01" value="0.12" /></div>
-      <div><label>3号艇遅れ上限 Δ3=（3−1）秒</label><input id="maxDelta3" type="number" step="0.01" value="0.15" /></div>
+      <div><label>Δ2（2−1）上限</label><input id="maxDelta2" type="number" step="0.01" value="0.12" /></div>
+      <div><label>Δ3（3−1）上限</label><input id="maxDelta3" type="number" step="0.01" value="0.15" /></div>
       <div><label>最高オッズ（上限）</label><input id="maxBestOdds" type="number" step="0.1" value="25" /></div>
     </div>
 
     <div class="grid g2" style="margin-top:10px;">
       <div><label>最低オッズ</label><input id="minBestOdds" type="number" step="0.1" value="6.0" /></div>
-      <div class="muted" style="align-self:end;">※「速い相手カウント」は判定に使いません（外枠が速いのみ使用）</div>
+      <div class="muted" style="align-self:end;">※BUY時の推奨：<b>3連複 1-2-3（1点）</b></div>
     </div>
 
     <div class="hr"></div>
@@ -97,8 +97,8 @@
       <div>
         <label>表示</label>
         <select id="viewMode">
-          <option value="candidates" selected>候補のみ（条件①通過）</option>
-          <option value="all">全件表示（理由確認用）</option>
+          <option value="candidates">候補のみ（条件①通過）</option>
+          <option value="all" selected>全件表示（理由確認用）</option>
         </select>
       </div>
       <div style="align-self:end;">
@@ -149,7 +149,6 @@
 
 <script>
 (() => {
-  // ====== GAS URL ======
   const GAS_URL = "https://script.google.com/macros/s/AKfycbw5C8p_tw_dK9m5OWPrekxfbHz1mNq949fjBq1ymTo8xNCjtIGTRGbmVZYQyO3-O3fo/exec";
 
   const $ = (id) => document.getElementById(id);
@@ -173,7 +172,7 @@
   const PREVIEWS_URL = "https://boatraceopenapi.github.io/previews/v2/today.json";
   const RESULTS_URL  = "https://boatraceopenapi.github.io/results/v2/today.json";
 
-  // ---- odds cache ----
+  // odds cache
   const ODDS_KEY = "kyotei_odds_cache_goodshape_payfix3";
   function loadOddsCache() { try { return JSON.parse(localStorage.getItem(ODDS_KEY) || "{}"); } catch { return {}; } }
   function saveOddsCache(cache) { try { localStorage.setItem(ODDS_KEY, JSON.stringify(cache)); } catch {} }
@@ -191,7 +190,6 @@
   }
   function clearSendLog() { $("sendLog").textContent = "ログ：\n"; }
 
-  // ✅ URLに ?v=timestamp を付けてキャッシュを強制回避
   async function fetchJson(url) {
     const bust = url + (url.includes("?") ? "&" : "?") + "v=" + Date.now();
     const res = await fetch(bust, { cache:"no-store" });
@@ -199,11 +197,11 @@
     return await res.json();
   }
 
-  // ===== 判定ロジック =====
+  // ===== logic =====
   function exhReady(exh) {
     for (let lane=1; lane<=3; lane++) {
       const t = Number(exh[String(lane)]);
-      if (!Number.isFinite(t) || t <= 0) return false; // 0は欠損扱い
+      if (!Number.isFinite(t) || t <= 0) return false;
     }
     return true;
   }
@@ -228,17 +226,6 @@
     return idx>=0 ? idx+1 : null;
   }
 
-  function fasterOppCount(exh) {
-    const t1 = Number(exh["1"]);
-    if (!Number.isFinite(t1) || t1<=0) return null;
-    let c=0;
-    for (let lane=2; lane<=6; lane++) {
-      const t = Number(exh[String(lane)]);
-      if (Number.isFinite(t) && t>0 && t < t1) c++;
-    }
-    return c;
-  }
-
   function fasterOppLanes(exh) {
     const t1 = Number(exh["1"]);
     if (!Number.isFinite(t1) || t1<=0) return [];
@@ -248,6 +235,17 @@
       if (Number.isFinite(t) && t>0 && t < t1) lanes.push(lane);
     }
     return lanes;
+  }
+
+  function fasterOppCount(exh) {
+    const t1 = Number(exh["1"]);
+    if (!Number.isFinite(t1) || t1<=0) return null;
+    let c=0;
+    for (let lane=2; lane<=6; lane++) {
+      const t = Number(exh[String(lane)]);
+      if (Number.isFinite(t) && t>0 && t < t1) c++;
+    }
+    return c;
   }
 
   function deltaLane(exh, lane) {
@@ -264,7 +262,7 @@
     for (let lane=2; lane<=6; lane++) {
       const t = Number(exh[String(lane)]);
       if (!Number.isFinite(t) || t<=0) continue;
-      if (t <= t1 + eps) c++; // 速い(=t1より小さい)も「近い」に含める
+      if (t <= t1 + eps) c++;
     }
     return c;
   }
@@ -272,26 +270,21 @@
   function judge(r, o123, o132) {
     const f1 = passFilter1(r);
     if (!f1.ok) return { state:"条件外", msg:`条件外：${f1.reasons.join(" / ")}` };
-
     if (!r.exhReady) return { state:"WAIT", msg:"展示（1〜3）待ち" };
 
     const reasons=[];
     const maxTimeRank = n("maxTimeRank");
-
     const minBestOdds = n("minBestOdds");
     const maxBestOdds = n("maxBestOdds");
-
     const maxDelta2 = n("maxDelta2");
     const maxDelta3 = n("maxDelta3");
-
-    const nearEps = n("nearEps");
+    const nearEpsV = n("nearEps") ?? 0.03;
     const maxNearCount = n("maxNearCount");
 
     const rank = exhibitionRank(r.exh);
-
     if (rank!=null && maxTimeRank!=null && rank>maxTimeRank) reasons.push("展示順位NG");
 
-    // ✅ 昨日の変更案：速い相手カウントは判定に使わない（outerFastのみ）
+    // ★変更案：速い相手カウントは使わず、外枠が速いだけでNO
     const fasterL = fasterOppLanes(r.exh);
     const outerFast = fasterL.length>0 && fasterL.some(l=>l!==2 && l!==3);
     if (outerFast) reasons.push("外枠が速い");
@@ -302,7 +295,7 @@
     const d3 = deltaLane(r.exh, 3);
     if (d3!=null && maxDelta3!=null && d3 > maxDelta3) reasons.push("3号艇が遅い");
 
-    const nc = nearCount(r.exh, nearEps ?? 0.03);
+    const nc = nearCount(r.exh, nearEpsV);
     if (nc!=null && maxNearCount!=null && nc > maxNearCount) reasons.push("混戦（1に近い艇が多い）");
 
     const bestOdds = Math.max(Number(o123)||0, Number(o132)||0);
@@ -318,7 +311,7 @@
     return { state:"NO", msg:`NO：${reasons.join(" / ")}`, rank, outerFast, d2, d3, nc };
   }
 
-  // ===== 結果トップ3 =====
+  // ===== top3 =====
   function extractTop3(rr) {
     if (!rr || typeof rr !== "object") return null;
     const stack=[rr];
@@ -337,7 +330,7 @@
     return null;
   }
 
-  // ===== 払戻123 =====
+  // ===== payout 123 =====
   function normalizeComboDigits(s){
     const digits = String(s).match(/[1-6]/g);
     if (!digits || digits.length < 3) return "";
@@ -346,9 +339,7 @@
 
   function toNumberLoose(v){
     if (v == null) return null;
-    if (typeof v === "object") {
-      v = v.value ?? v.amount ?? v.payout ?? v.pay ?? v.money ?? null;
-    }
+    if (typeof v === "object") v = v.value ?? v.amount ?? v.payout ?? v.pay ?? v.money ?? null;
     const s = String(v).replace(/,/g,"").trim();
     if (s === "") return null;
     const num = Number(s);
@@ -398,7 +389,7 @@
     return out;
   }
 
-  // ===== UI =====
+  // ===== UI helpers =====
   function renderVenueChecks() {
     const box = $("venueChecks");
     box.innerHTML="";
@@ -506,10 +497,37 @@
     return card;
   }
 
+  // ★空画面対策込み renderList
   function renderList(races) {
     const mode = $("viewMode").value;
     let show = races.slice();
-    if (mode === "candidates") show = show.filter(r => passFilter1(r).ok);
+
+    if (mode === "candidates") {
+      show = show.filter(r => passFilter1(r).ok);
+    }
+
+    const list = $("list");
+    list.innerHTML = "";
+
+    if (show.length === 0) {
+      const box = document.createElement("div");
+      box.className = "muted";
+      box.style.padding = "10px";
+      box.innerHTML = `
+        表示できるレースがありません。<br/>
+        ・「候補のみ」→ 条件①通過が0件の可能性<br/>
+        ・取得失敗 → 右上ステータスが「取得失敗」になります<br/>
+        <div style="margin-top:8px;">
+          <button class="btn2" id="toAllBtn">全件表示に切り替える</button>
+        </div>
+      `;
+      list.appendChild(box);
+      box.querySelector("#toAllBtn").addEventListener("click", () => {
+        $("viewMode").value = "all";
+        renderList(LAST_RACES);
+      });
+      return;
+    }
 
     function stateRank(r) {
       const odds = getOdds(r.key);
@@ -521,12 +539,10 @@
     }
     show.sort((a,b) => (stateRank(a)-stateRank(b)) || a.venue.localeCompare(b.venue) || a.race-b.race);
 
-    const list = $("list");
-    list.innerHTML = "";
     for (const r of show) list.appendChild(makeRaceCard(r));
   }
 
-  // ===== 送信（cors→no-cors） =====
+  // ===== send =====
   async function postToSheet(payload) {
     const body = JSON.stringify(payload);
     try {
@@ -566,7 +582,7 @@
       final_odds_3f_123: "",
       final_payout_3t_123: (Number.isFinite(r.final_payout_3t_123) ? r.final_payout_3t_123 : ""),
       final_payout_3f_123: (Number.isFinite(r.final_payout_3f_123) ? r.final_payout_3f_123 : ""),
-      // ✅日付化防止：先頭に ' を付けてテキスト固定
+      // 日付化防止：先頭に '
       result_top3: (r.result_top3 ? ("'" + r.result_top3) : "")
     };
   }
@@ -628,7 +644,7 @@
     else { setSendStatus("テスト送信 NG"); alert("失敗：ログ確認"); }
   }
 
-  // ===== データ読み込み =====
+  // ===== load =====
   async function loadAndBuildRaces() {
     setStatus("データ取得中…");
     const [programs, previews, results] = await Promise.all([
@@ -681,4 +697,62 @@
         date: pr.race_date,
         title: pr.race_title || "一般戦",
         nat2: Number(b1.racer_national_top_2_percent ?? 0),
-￥
+        loc2: Number(b1.racer_local_top_2_percent ?? 0),
+        motor2: Number(b1.racer_assigned_motor_top_2_percent ?? 0),
+        exh,
+        exhReady: exhReady(exh),
+        result_top3: top3,
+        final_payout_3t_123: pay.pay3t123,
+        final_payout_3f_123: pay.pay3f123
+      });
+    }
+
+    setStatus(`取得OK：${races.length}R / ${new Date().toLocaleTimeString()}`);
+    return races;
+  }
+
+  // auto refresh
+  let AUTO_TIMER = null;
+  function clearAutoTimer() { if (AUTO_TIMER) { clearTimeout(AUTO_TIMER); AUTO_TIMER = null; } }
+  function maybeScheduleAutoRefresh() {
+    clearAutoTimer();
+    if (!$("autoRefresh").checked) { setAutoStatus("自動更新OFF"); return; }
+    const need = LAST_RACES.some(r => passFilter1(r).ok && !r.exhReady);
+    if (!need) { setAutoStatus("展示OK"); return; }
+    setAutoStatus("展示待ち→20秒後に自動更新");
+    AUTO_TIMER = setTimeout(refresh, 20000);
+  }
+
+  async function refresh() {
+    try {
+      const races = await loadAndBuildRaces();
+      LAST_RACES = races;
+      renderSummary(races);
+      renderList(races);
+      setSendStatus("準備OK");
+      logSend("更新完了");
+      maybeScheduleAutoRefresh();
+    } catch (e) {
+      setStatus("取得失敗");
+      setAutoStatus("-");
+      setSendStatus("送信不可（取得失敗）");
+      logSend("取得失敗: " + String(e));
+    }
+  }
+
+  // wiring
+  $("refreshBtn").addEventListener("click", refresh);
+  $("applyBtn").addEventListener("click", () => renderList(LAST_RACES));
+  $("sendBuyBtn").addEventListener("click", handleSendBuyOnly);
+  $("sendCandBtn").addEventListener("click", handleSendCandidates);
+  $("sendTestBtn").addEventListener("click", handleSendTest);
+  $("clearLocalBtn").addEventListener("click", () => { if(confirm("オッズ保存を全消去しますか？")){ clearOddsAll(); refresh(); } });
+  $("autoRefresh").addEventListener("change", maybeScheduleAutoRefresh);
+
+  // init
+  renderVenueChecks();
+  refresh();
+})();
+</script>
+</body>
+</html>
