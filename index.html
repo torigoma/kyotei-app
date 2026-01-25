@@ -426,7 +426,6 @@
     const op = oddsPass(plan.betType, odd);
 
     if(!op.ok){
-      // if odds missing, show WAIT (so you can auto fetch or manual)
       if(op.reasons.includes("オッズ未取得/未入力")) {
         return { state:"WAIT", msg:`WAIT：オッズ取得/入力待ち（${plan.betType} ${plan.combo}）`, plan };
       }
@@ -569,7 +568,6 @@
     const autoOdds = ODDS_AUTO.get(r.key);
     const autoBefore = BEFORE_AUTO.get(r.key);
 
-    // show odds inputs only for final candidates
     const oddsBlock = isFinal ? `
       <div class="hr"></div>
       <div class="muted small">
@@ -598,6 +596,11 @@
       </div>
     ` : ``;
 
+    // ★変更：非最終候補の「買い：-」表示を消す（最終候補の時だけ出す）
+    const buyLine = isFinal
+      ? `<div class="muted small">買い：<b>${plan.betType} ${plan.combo}</b>${ev.odd ? ` / odds=${ev.odd}` : ``}</div>`
+      : ``;
+
     card.innerHTML = `
       <div class="row">
         <div>
@@ -617,9 +620,8 @@
           ${r.result_top3 ? `<div class="resultLine">結果（参考）: ${r.result_top3}</div>` : ``}
           <div class="resultLine">払戻123（100円/自動）: 3連単=${Number.isFinite(r.final_payout_3t_123)?r.final_payout_3t_123:"未取得"} / 3連複=${Number.isFinite(r.final_payout_3f_123)?r.final_payout_3f_123:"未取得"}</div>
         </div>
-        <div class="muted small">
-          ${isFinal ? `買い：<b>${plan.betType} ${plan.combo}</b>` : `買い：-`}<br/>
-          ${ev.odd ? `odds=${ev.odd}` : ``}
+        <div>
+          ${buyLine}
         </div>
       </div>
 
@@ -632,7 +634,6 @@
       const inp3t132 = card.querySelector("[data-o3t132]");
       const inp3f123 = card.querySelector("[data-o3f123]");
 
-      // value priority: manual -> auto -> blank
       const a3t123 = autoOdds?.odds3t?.["1-2-3"];
       const a3t132 = autoOdds?.odds3t?.["1-3-2"];
       const a3f123 = autoOdds?.odds3f?.["1-2-3"];
@@ -647,7 +648,6 @@
           o3t132: inp3t132.value,
           o3f123: inp3f123.value
         });
-        // re-render list for updated decision
         renderSummary(LAST_RACES);
         renderList(LAST_RACES);
       };
@@ -803,13 +803,11 @@
   }
 
   async function prefetchFinalCandidates(){
-    // final candidates only (few) -> fetch odds + beforeinfo
     const finals = LAST_RACES
       .map(r => ({r, plan: computePlan(r)}))
       .filter(x => x.plan.level==="final")
       .map(x => x.r);
 
-    // limit concurrency
     const limit = 3;
     let i=0;
     const running = new Set();
@@ -839,7 +837,6 @@
     if(!$("autoRefresh").checked){ setAutoStatus("自動更新OFF"); return; }
     if(!LAST_RACES.length){ setAutoStatus("-"); return; }
 
-    // if there is any candidate with missing exhibition OR final missing odds/before
     const need = LAST_RACES.some(r=>{
       if(!passFilter1(r).ok) return false;
       const plan = computePlan(r);
@@ -860,16 +857,14 @@
     try{
       setStatus("更新中（programs含む）…");
       const bundle = await fetchTodayBundle();
-      LAST_PROGRAMS_SNAPSHOT = bundle.programs; // keep snapshot if needed
+      LAST_PROGRAMS_SNAPSHOT = bundle.programs;
 
-      // rebuild full (programs+previews+results)
       LAST_RACES = buildRacesFromBundle(bundle);
 
       setStatus(`取得OK：${LAST_RACES.length}R / ${new Date().toLocaleTimeString()}`);
       renderSummary(LAST_RACES);
       renderList(LAST_RACES);
 
-      // fetch odds/before for finals
       await prefetchFinalCandidates();
       setSendStatus("準備OK");
       maybeScheduleAutoRefresh();
@@ -885,7 +880,6 @@
       setStatus("軽更新中（previews/results）…");
       const bundle = await fetchTodayBundle();
 
-      // merge previews/results only (keep programs fields)
       mergePreviewsResultsIntoExisting(bundle);
 
       setStatus(`軽更新OK / ${new Date().toLocaleTimeString()}`);
@@ -918,107 +912,9 @@
     }
   }
 
-  function makeSheetRow(r){
-    const ev = evaluate(r);
-    const plan = ev.plan || {};
-    const betType = plan.betType || "";
-    const betCombo = plan.combo || "";
-    const betOdd = (betType && betCombo) ? (getOddFor(r, betType, betCombo) ?? "") : "";
-
-    const before = BEFORE_AUTO.get(r.key)?.info || {};
-    const ao = ODDS_AUTO.get(r.key) || {};
-
-    return {
-      date: r.date,
-      venue: r.venue,
-      race: r.race,
-      status: ev.state,
-      nat2: r.nat2,
-      loc2: r.loc2,
-      motor2: r.motor2,
-      exh_rank_1: r.exhReady ? (exhibitionRank(r.exh) ?? "") : "",
-      outer_fast: r.exhReady ? (fasterOppLanes(r.exh).some(l=>l!==2 && l!==3)) : "",
-      bet_type: betType,
-      bet_combo: betCombo,
-      bet_odds: betOdd,
-      odds_auto_3t_123: ao?.odds3t?.["1-2-3"] ?? "",
-      odds_auto_3t_132: ao?.odds3t?.["1-3-2"] ?? "",
-      odds_auto_3f_123: ao?.odds3f?.["1-2-3"] ?? "",
-      before_weather: before.weather ?? "",
-      before_wind_ms: before.windMs ?? "",
-      before_wave_cm: before.waveCm ?? "",
-      before_air_temp_c: before.airTempC ?? "",
-      before_water_temp_c: before.waterTempC ?? "",
-      before_st1: (before.st && before.st[0]!=null) ? before.st[0] : "",
-      before_st2: (before.st && before.st[1]!=null) ? before.st[1] : "",
-      before_st3: (before.st && before.st[2]!=null) ? before.st[2] : "",
-      before_st4: (before.st && before.st[3]!=null) ? before.st[3] : "",
-      before_st5: (before.st && before.st[4]!=null) ? before.st[4] : "",
-      before_st6: (before.st && before.st[5]!=null) ? before.st[5] : "",
-      final_payout_3t_123: Number.isFinite(r.final_payout_3t_123) ? r.final_payout_3t_123 : "",
-      final_payout_3f_123: Number.isFinite(r.final_payout_3f_123) ? r.final_payout_3f_123 : "",
-      result_top3: r.result_top3 ? ("'" + r.result_top3) : ""
-    };
-  }
-
-  async function sendRows(rows){
-    clearSendLog();
-    setSendStatus(`送信中… ${rows.length}件`);
-    logSend(`GAS_URL: ${GAS_URL}`);
-
-    let ok=0, ng=0;
-    for(let i=0;i<rows.length;i++){
-      const r = rows[i];
-      logSend(`準備 ${i+1}/${rows.length}: ${r.date} ${r.venue} ${r.race}R`);
-      // ensure before/odds for row (best-effort)
-      try{ await Promise.allSettled([ensureOddsAuto(r), ensureBeforeAuto(r)]); }catch{}
-
-      const payload = makeSheetRow(r);
-      logSend(`POST ${i+1}/${rows.length}: ${payload.date} ${payload.venue} ${payload.race}R ${payload.status} ${payload.bet_type} ${payload.bet_combo}`);
-
-      const res = await postToSheet(payload);
-      if(res.ok){ ok++; logSend(`  -> OK (${res.mode}) ${String(res.text).slice(0,80)}`); }
-      else { ng++; logSend(`  -> NG ${res.text}`); }
-
-      setSendStatus(`送信中… ${i+1}/${rows.length}（OK${ok}/NG${ng}）`);
-      await new Promise(x=>setTimeout(x, 150));
-    }
-    setSendStatus(`完了：${rows.length}件（OK${ok}/NG${ng}）`);
-  }
-
-  async function handleSendBuyOnly(){
-    if(!LAST_RACES.length){ alert("まず更新してください"); return; }
-    const rows = LAST_RACES.filter(r => evaluate(r).state==="BUY");
-    if(!rows.length){ setSendStatus("BUYが0件なので送信なし"); return; }
-    if(!confirm(`BUYのみ ${rows.length}件を送信します。OK？`)) return;
-    await sendRows(rows);
-  }
-
-  async function handleSendCandidates(){
-    if(!LAST_RACES.length){ alert("まず更新してください"); return; }
-    const rows = LAST_RACES.filter(r => passFilter1(r).ok);
-    if(!rows.length){ setSendStatus("条件①通過が0件なので送信なし"); return; }
-    if(!confirm(`候補（条件①通過） ${rows.length}件を送信します。OK？`)) return;
-    await sendRows(rows);
-  }
-
-  async function handleSendTest(){
-    clearSendLog();
-    const payload = { date:new Date().toISOString().slice(0,10), venue:"TEST", race:0, status:"TEST" };
-    setSendStatus("テスト送信中…");
-    logSend(JSON.stringify(payload));
-    const r = await postToSheet(payload);
-    if(r.ok){ setSendStatus(`テスト送信 OK（${r.mode}）`); alert("TEST行がMasterに増えたか確認してください"); }
-    else { setSendStatus("テスト送信 NG"); alert("失敗：ログ確認"); }
-  }
-
   // wiring
   $("refreshBtn").addEventListener("click", refreshFull);
   $("applyBtn").addEventListener("click", ()=>{ renderSummary(LAST_RACES); renderList(LAST_RACES); });
-  $("sendBuyBtn").addEventListener("click", handleSendBuyOnly);
-  $("sendCandBtn").addEventListener("click", handleSendCandidates);
-  $("sendTestBtn").addEventListener("click", handleSendTest);
-  $("clearLocalBtn").addEventListener("click", ()=>{ if(confirm("オッズ手入力を全消去しますか？")){ clearManualOddsAll(); renderSummary(LAST_RACES); renderList(LAST_RACES);} });
 
   $("autoRefresh").addEventListener("change", maybeScheduleAutoRefresh);
   $("viewMode").addEventListener("change", ()=>renderList(LAST_RACES));
