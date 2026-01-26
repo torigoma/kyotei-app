@@ -57,7 +57,7 @@
     ✅ ①=3連単 / ②=3連複 を展示で自動切替（1レース1点）。<br/>
     ✅ オッズ/風波/STは Worker で自動取得（最終候補だけ）→ 手入力は最終候補だけ出る。<br/>
     ✅ 自動更新は previews/results のみ（programsは固定でブレにくい）。<br/>
-    ✅ 日々の分析用に「スナップショット保存（JSON/CSV）」を追加（シート送信ボタンは撤去）。
+    ✅ スナップショット保存（JSON/CSV）で日々の分析用データを蓄積できます（送信ボタンは廃止）。
   </div>
 
   <div class="card">
@@ -132,19 +132,17 @@
     <div class="hr"></div>
 
     <div class="pill">データ保存（分析用スナップショット）</div>
-    <div class="muted small" style="margin-top:8px;">
-      ・当日の全レース＋判定結果（BUY/NO/WAIT/条件外）＋理由＋オッズ（auto/手）＋設定値をまとめて保存できます。<br/>
-      ・JSONはメタ情報も含み、CSVは1行=1レースのフラット形式です。
-    </div>
     <div class="row" style="margin-top:10px;">
       <div class="rowL">
-        <button class="btn" id="downloadJsonBtn">保存：JSON（全レース＋設定）</button>
-        <button class="btn2" id="downloadCsvBtn">保存：CSV（全レース）</button>
+        <button class="btn" id="exportJsonBtn">保存：JSON</button>
+        <button class="btn2" id="exportCsvBtn">保存：CSV</button>
         <button class="btnDanger" id="clearLocalBtn">オッズ手入力を全消去</button>
       </div>
-      <div class="muted mono" id="downloadStatus">-</div>
+      <div class="muted mono" id="exportStatus">-</div>
     </div>
-    <div class="log" id="sysLog">ログ：\n</div>
+    <div class="muted small" style="margin-top:8px;">
+      ※ その時点の全レース（候補/理由/最終買い目/オッズ/展示/払戻など）を保存します。日々の分析はこのファイルを蓄積してください。
+    </div>
 
     <div class="hr"></div>
 
@@ -176,6 +174,7 @@
 (() => {
   // ====== CONFIG ======
   const WORKER_BASE = "https://kyotei-worker.tanabedaichi0831.workers.dev";
+
   document.getElementById("workerBase").textContent = WORKER_BASE;
 
   const $ = (id) => document.getElementById(id);
@@ -219,13 +218,7 @@
 
   function setStatus(msg){ $("status").textContent = msg; }
   function setAutoStatus(msg){ $("autoStatus").textContent = msg; }
-  function setDownloadStatus(msg){ $("downloadStatus").textContent = msg; }
-  function logLine(line){
-    const el=$("sysLog");
-    el.textContent += line + "\n";
-    el.scrollTop = el.scrollHeight;
-  }
-  function clearLog(){ $("sysLog").textContent = "ログ：\n"; }
+  function setExportStatus(msg){ $("exportStatus").textContent = msg; }
 
   function ymdToHd(ymd){
     return String(ymd || "").replace(/-/g,"");
@@ -397,12 +390,12 @@
     return getManualOddFor(r, betType, combo) ?? getAutoOddsFor(r, betType, combo);
   }
 
-  function oddsSource(r, betType, combo){
-    const man = getManualOddFor(r, betType, combo);
-    if(Number.isFinite(man)) return "manual";
-    const aut = getAutoOddsFor(r, betType, combo);
-    if(Number.isFinite(aut)) return "auto";
-    return "none";
+  function getOddWithSource(r, betType, combo){
+    const manual = getManualOddFor(r, betType, combo);
+    if (manual != null) return { odd: manual, source: "manual" };
+    const auto = getAutoOddsFor(r, betType, combo);
+    if (auto != null) return { odd: auto, source: "auto" };
+    return { odd: null, source: "none" };
   }
 
   function oddsPass(betType, odd){
@@ -432,17 +425,17 @@
     if(plan.level==="out") return { state:"条件外", msg:`条件外：${plan.reasons.join(" / ")}`, plan };
 
     // final
-    const odd = getOddFor(r, plan.betType, plan.combo);
+    const { odd, source } = getOddWithSource(r, plan.betType, plan.combo);
     const op = oddsPass(plan.betType, odd);
 
     if(!op.ok){
       if(op.reasons.includes("オッズ未取得/未入力")) {
-        return { state:"WAIT", msg:`WAIT：オッズ取得/入力待ち（${plan.betType} ${plan.combo}）`, plan };
+        return { state:"WAIT", msg:`WAIT：オッズ取得/入力待ち（${plan.betType} ${plan.combo}）`, plan, odd, odd_source: source };
       }
-      return { state:"NO", msg:`NO：${op.reasons.join(" / ")}`, plan };
+      return { state:"NO", msg:`NO：${op.reasons.join(" / ")}`, plan, odd, odd_source: source };
     }
 
-    return { state:"BUY", msg:`BUY：${plan.betType} ${plan.combo}（1点）`, plan, odd };
+    return { state:"BUY", msg:`BUY：${plan.betType} ${plan.combo}（1点）`, plan, odd, odd_source: source };
   }
 
   // ----- results helpers -----
@@ -607,7 +600,7 @@
     ` : ``;
 
     const buyLine = isFinal
-      ? `<div class="muted small">買い：<b>${plan.betType} ${plan.combo}</b>${ev.odd ? ` / odds=${ev.odd}` : ``}</div>`
+      ? `<div class="muted small">買い：<b>${plan.betType} ${plan.combo}</b>${Number.isFinite(ev.odd) ? ` / odds=${ev.odd} (${ev.odd_source||"-"})` : ``}</div>`
       : ``;
 
     card.innerHTML = `
@@ -875,12 +868,11 @@
       renderList(LAST_RACES);
 
       await prefetchFinalCandidates();
-      setDownloadStatus("準備OK");
+      setExportStatus("準備OK");
       maybeScheduleAutoRefresh();
     } catch(e){
       setStatus("取得失敗");
-      logLine("取得失敗: " + String(e));
-      setDownloadStatus("取得失敗");
+      setExportStatus("取得失敗");
       maybeScheduleAutoRefresh();
     }
   }
@@ -900,81 +892,50 @@
       maybeScheduleAutoRefresh();
     } catch(e){
       setStatus("軽更新失敗");
-      logLine("軽更新失敗: " + String(e));
       maybeScheduleAutoRefresh();
     }
   }
 
-  // ---- snapshot export (JSON/CSV) ----
-  function nowYmdHmsCompact(){
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth()+1).padStart(2,"0");
-    const da = String(d.getDate()).padStart(2,"0");
-    const hh = String(d.getHours()).padStart(2,"0");
-    const mm = String(d.getMinutes()).padStart(2,"0");
-    const ss = String(d.getSeconds()).padStart(2,"0");
-    return `${y}${m}${da}_${hh}${mm}${ss}`;
-  }
-
-  function currentSettingsSnapshot(){
+  // ---- snapshot export ----
+  function getCurrentSettings(){
     return {
-      thresholds: {
-        minNat2: num("minNat2"),
-        minLoc2: num("minLoc2"),
-        minMotor2: num("minMotor2"),
-        maxTimeRank: num("maxTimeRank"),
-        maxNearCount: num("maxNearCount"),
-        nearEps: num("nearEps"),
-        maxDelta2: num("maxDelta2"),
-        maxDelta3: num("maxDelta3"),
-        min23Gap: num("min23Gap"),
-        oddsFilterOn: $("oddsFilterOn").checked,
-        minOdds3t: num("minOdds3t"),
-        maxOdds3t: num("maxOdds3t"),
-        minOdds3f: num("minOdds3f"),
-        maxOdds3f: num("maxOdds3f"),
-      },
-      enabledStadiums: Array.from(enabledStadiums).sort((a,b)=>a-b),
+      minNat2: num("minNat2"),
+      minLoc2: num("minLoc2"),
+      minMotor2: num("minMotor2"),
+      maxTimeRank: num("maxTimeRank"),
+      maxNearCount: num("maxNearCount"),
+      nearEps: num("nearEps"),
+      maxDelta2: num("maxDelta2"),
+      maxDelta3: num("maxDelta3"),
+      min23Gap: num("min23Gap"),
+      oddsFilterOn: $("oddsFilterOn").checked,
+      minOdds3t: num("minOdds3t"),
+      maxOdds3t: num("maxOdds3t"),
+      minOdds3f: num("minOdds3f"),
+      maxOdds3f: num("maxOdds3f"),
       viewMode: $("viewMode").value,
-      workerBase: WORKER_BASE,
-      exportedAt: new Date().toISOString(),
+      enabledStadiums: Array.from(enabledStadiums).sort((a,b)=>a-b),
     };
   }
 
-  function buildSnapshotRows(){
-    const rows = [];
-    for(const r of LAST_RACES){
+  function buildSnapshot(){
+    const now = new Date();
+    const settings = getCurrentSettings();
+
+    const races = LAST_RACES.map(r=>{
       const ev = evaluate(r);
       const plan = ev.plan || null;
 
-      let oddsFinal = null;
-      let odds_src = "none";
-      let betType = null;
-      let combo = null;
-      let reasons = [];
+      const autoOdds = ODDS_AUTO.get(r.key) || null;
+      const autoBefore = BEFORE_AUTO.get(r.key) || null;
 
-      if(plan){
-        if(plan.level==="final"){
-          betType = plan.betType;
-          combo = plan.combo;
-          oddsFinal = ev.odd ?? null;
-          odds_src = oddsSource(r, plan.betType, plan.combo);
-          reasons = [];
-        }else if(plan.level==="no"){
-          reasons = Array.isArray(plan.reasons) ? plan.reasons.slice() : [];
-        }else if(plan.level==="wait"){
-          reasons = Array.isArray(plan.reasons) ? plan.reasons.slice() : [];
-        }else if(plan.level==="out"){
-          reasons = Array.isArray(plan.reasons) ? plan.reasons.slice() : [];
-        }
-      }
+      const finals = (plan && plan.level==="final");
+      const oddInfo = finals ? getOddWithSource(r, plan.betType, plan.combo) : { odd: null, source: "none" };
 
-      const before = BEFORE_AUTO.get(r.key);
-      const autoOdds = ODDS_AUTO.get(r.key);
+      // 手入力の中身も保存（後で比較できる）
       const manual = getManualOdds(r.key);
 
-      rows.push({
+      return {
         key: r.key,
         date: r.date,
         stadiumId: r.stadium,
@@ -986,48 +947,75 @@
         loc2: r.loc2,
         motor2: r.motor2,
 
-        exh_1: Number.isFinite(Number(r.exh["1"])) ? Number(r.exh["1"]) : null,
-        exh_2: Number.isFinite(Number(r.exh["2"])) ? Number(r.exh["2"]) : null,
-        exh_3: Number.isFinite(Number(r.exh["3"])) ? Number(r.exh["3"]) : null,
-        exh_4: Number.isFinite(Number(r.exh["4"])) ? Number(r.exh["4"]) : null,
-        exh_5: Number.isFinite(Number(r.exh["5"])) ? Number(r.exh["5"]) : null,
-        exh_6: Number.isFinite(Number(r.exh["6"])) ? Number(r.exh["6"]) : null,
+        exh: { ...r.exh },
         exhReady: !!r.exhReady,
 
         state: ev.state,
-        msg: ev.msg,
-        plan_level: plan?.level ?? null,
-        betType,
-        combo,
-        reasons,
+        message: ev.msg,
 
-        odd: Number.isFinite(Number(oddsFinal)) ? Number(oddsFinal) : null,
-        odds_source: odds_src,
+        planLevel: plan ? plan.level : null,
+        betType: plan?.betType ?? null,
+        combo: plan?.combo ?? null,
+        reasons: plan?.reasons ?? (ev.state==="条件外" ? (passFilter1(r).reasons || []) : []),
 
-        manual_o3t123: manual.o3t123 || "",
-        manual_o3t132: manual.o3t132 || "",
-        manual_o3f123: manual.o3f123 || "",
+        // plan details (デバッグ/分析用)
+        rank: plan?.rank ?? null,
+        outerFast: plan?.outerFast ?? null,
+        d2: plan?.d2 ?? null,
+        d3: plan?.d3 ?? null,
+        nc: plan?.nc ?? null,
 
-        auto_odds_scraped_at: autoOdds?.scraped_at ?? null,
-        before_scraped_at: before?.scraped_at ?? null,
-        before_windMs: before?.info?.windMs ?? null,
-        before_waveCm: before?.info?.waveCm ?? null,
-        before_airTempC: before?.info?.airTempC ?? null,
-        before_waterTempC: before?.info?.waterTempC ?? null,
+        odd: oddInfo.odd,
+        odd_source: oddInfo.source,
+        manualOdds: { ...manual },
+        autoOddsScrapedAt: autoOdds?.scraped_at ?? null,
+        autoOdds: autoOdds ? { odds3t: autoOdds.odds3t || null, odds3f: autoOdds.odds3f || null } : null,
+
+        beforeScrapedAt: autoBefore?.scraped_at ?? null,
+        before: autoBefore?.info ?? null,
 
         result_top3: r.result_top3 ?? null,
         final_payout_3t_123: Number.isFinite(r.final_payout_3t_123) ? r.final_payout_3t_123 : null,
         final_payout_3f_123: Number.isFinite(r.final_payout_3f_123) ? r.final_payout_3f_123 : null,
 
-        prog_at: r._progAt ?? null,
-        exh_at: r._exhAt ?? null,
-        res_at: r._resAt ?? null,
-      });
-    }
-    return rows;
+        // update times
+        _progAt: r._progAt || null,
+        _exhAt: r._exhAt || null,
+        _resAt: r._resAt || null,
+      };
+    });
+
+    // 集計も一緒に保存（後で日次比較しやすい）
+    const summary = (() => {
+      const total = races.length;
+      const f1pass = races.filter(x => {
+        const rr = LAST_RACES.find(z => z.key===x.key);
+        return rr ? passFilter1(rr).ok : false;
+      }).length;
+      const buy = races.filter(x=>x.state==="BUY").length;
+      const no = races.filter(x=>x.state==="NO").length;
+      const wait = races.filter(x=>x.state==="WAIT").length;
+      const out = races.filter(x=>x.state==="条件外").length;
+      const finals = races.filter(x=>x.planLevel==="final").length;
+      const oddsReady = races.filter(x=>x.autoOddsScrapedAt!=null).length;
+      const beforeReady = races.filter(x=>x.beforeScrapedAt!=null).length;
+      return { total, f1pass, finals, buy, no, wait, out, oddsReady, beforeReady };
+    })();
+
+    return {
+      meta: {
+        createdAtIso: now.toISOString(),
+        createdAtLocal: now.toLocaleString(),
+        workerBase: WORKER_BASE,
+        note: "kyotei-v2 snapshot (for analysis).",
+      },
+      settings,
+      summary,
+      races,
+    };
   }
 
-  function downloadBlob(filename, mime, content){
+  function downloadFile(filename, content, mime){
     const blob = new Blob([content], { type: mime });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -1039,78 +1027,76 @@
     setTimeout(()=>URL.revokeObjectURL(url), 1000);
   }
 
-  function toCsvValue(v){
-    if (v == null) return "";
-    if (Array.isArray(v)) return `"${String(v.join(" / ")).replace(/"/g,'""')}"`;
-    if (typeof v === "object") return `"${JSON.stringify(v).replace(/"/g,'""')}"`;
-    const s = String(v);
-    if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g,'""')}"`;
-    return s;
+  function pad2(n){ return String(n).padStart(2,"0"); }
+  function formatYmdHmsForFile(d){
+    return `${d.getFullYear()}${pad2(d.getMonth()+1)}${pad2(d.getDate())}_${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`;
   }
 
-  function buildCsv(rows, settings){
-    // settings（閾値）を各行に複製しておくと後日分析がラク
-    const th = settings.thresholds || {};
-    const extra = {
-      set_minNat2: th.minNat2, set_minLoc2: th.minLoc2, set_minMotor2: th.minMotor2,
-      set_maxTimeRank: th.maxTimeRank, set_maxNearCount: th.maxNearCount, set_nearEps: th.nearEps,
-      set_maxDelta2: th.maxDelta2, set_maxDelta3: th.maxDelta3, set_min23Gap: th.min23Gap,
-      set_oddsFilterOn: th.oddsFilterOn, set_minOdds3t: th.minOdds3t, set_maxOdds3t: th.maxOdds3t,
-      set_minOdds3f: th.minOdds3f, set_maxOdds3f: th.maxOdds3f,
-      set_exportedAt: settings.exportedAt,
-    };
+  function csvEscape(s){
+    const v = (s==null) ? "" : String(s);
+    if (/[",\n]/.test(v)) return `"${v.replace(/"/g,'""')}"`;
+    return v;
+  }
 
+  function buildSnapshotCsv(snapshot){
     const header = [
       "key","date","stadiumId","venue","race","title",
       "nat2","loc2","motor2",
-      "exh_1","exh_2","exh_3","exh_4","exh_5","exh_6","exhReady",
-      "state","msg","plan_level","betType","combo","reasons",
-      "odd","odds_source",
-      "manual_o3t123","manual_o3t132","manual_o3f123",
-      "auto_odds_scraped_at","before_scraped_at","before_windMs","before_waveCm","before_airTempC","before_waterTempC",
+      "exh1","exh2","exh3","exh4","exh5","exh6","exhReady",
+      "state","betType","combo","odd","odd_source","reasons",
+      "rank","outerFast","d2","d3","nc",
+      "before_windMs","before_waveCm","before_airTempC","before_waterTempC",
       "result_top3","final_payout_3t_123","final_payout_3f_123",
-      "prog_at","exh_at","res_at",
-      ...Object.keys(extra)
+      "autoOddsScrapedAt","beforeScrapedAt",
+      "_progAt","_exhAt","_resAt",
     ];
 
     const lines = [];
     lines.push(header.join(","));
-    for(const r of rows){
-      const merged = { ...r, ...extra };
-      const line = header.map(k => toCsvValue(merged[k])).join(",");
-      lines.push(line);
+
+    for(const r of snapshot.races){
+      const exh = r.exh || {};
+      const reasons = Array.isArray(r.reasons) ? r.reasons.join(" / ") : "";
+      const row = [
+        r.key, r.date, r.stadiumId, r.venue, r.race, r.title,
+        r.nat2, r.loc2, r.motor2,
+        exh["1"] ?? "", exh["2"] ?? "", exh["3"] ?? "", exh["4"] ?? "", exh["5"] ?? "", exh["6"] ?? "", r.exhReady ? "TRUE" : "FALSE",
+        r.state, r.betType ?? "", r.combo ?? "", r.odd ?? "", r.odd_source ?? "", reasons,
+        r.rank ?? "", r.outerFast ?? "", r.d2 ?? "", r.d3 ?? "", r.nc ?? "",
+        r.before?.windMs ?? "", r.before?.waveCm ?? "", r.before?.airTempC ?? "", r.before?.waterTempC ?? "",
+        r.result_top3 ?? "", r.final_payout_3t_123 ?? "", r.final_payout_3f_123 ?? "",
+        r.autoOddsScrapedAt ?? "", r.beforeScrapedAt ?? "",
+        r._progAt ?? "", r._exhAt ?? "", r._resAt ?? "",
+      ].map(csvEscape);
+
+      lines.push(row.join(","));
     }
     return lines.join("\n");
   }
 
-  function downloadSnapshotJson(){
+  function exportSnapshotJson(){
     if(!LAST_RACES.length){
-      setDownloadStatus("保存不可：レース未取得");
-      logLine("保存不可：レース未取得");
+      setExportStatus("保存不可：データ未取得");
       return;
     }
-    const settings = currentSettingsSnapshot();
-    const rows = buildSnapshotRows();
-    const payload = { meta: settings, rows };
-    const name = `kyotei_snapshot_${nowYmdHmsCompact()}.json`;
-    downloadBlob(name, "application/json;charset=utf-8", JSON.stringify(payload, null, 2));
-    setDownloadStatus("JSON保存OK");
-    logLine(`JSON保存: ${name} / rows=${rows.length}`);
+    const snap = buildSnapshot();
+    const now = new Date();
+    const fn = `kyotei_snapshot_${formatYmdHmsForFile(now)}.json`;
+    downloadFile(fn, JSON.stringify(snap, null, 2), "application/json;charset=utf-8");
+    setExportStatus(`保存OK：${fn}`);
   }
 
-  function downloadSnapshotCsv(){
+  function exportSnapshotCsv(){
     if(!LAST_RACES.length){
-      setDownloadStatus("保存不可：レース未取得");
-      logLine("保存不可：レース未取得");
+      setExportStatus("保存不可：データ未取得");
       return;
     }
-    const settings = currentSettingsSnapshot();
-    const rows = buildSnapshotRows();
-    const csv = buildCsv(rows, settings);
-    const name = `kyotei_snapshot_${nowYmdHmsCompact()}.csv`;
-    downloadBlob(name, "text/csv;charset=utf-8", csv);
-    setDownloadStatus("CSV保存OK");
-    logLine(`CSV保存: ${name} / rows=${rows.length}`);
+    const snap = buildSnapshot();
+    const now = new Date();
+    const fn = `kyotei_snapshot_${formatYmdHmsForFile(now)}.csv`;
+    const csv = buildSnapshotCsv(snap);
+    downloadFile(fn, csv, "text/csv;charset=utf-8");
+    setExportStatus(`保存OK：${fn}`);
   }
 
   // wiring
@@ -1121,21 +1107,18 @@
   $("viewMode").addEventListener("change", ()=>renderList(LAST_RACES));
   $("oddsFilterOn").addEventListener("change", ()=>{ renderSummary(LAST_RACES); renderList(LAST_RACES); });
 
-  $("downloadJsonBtn").addEventListener("click", downloadSnapshotJson);
-  $("downloadCsvBtn").addEventListener("click", downloadSnapshotCsv);
+  $("exportJsonBtn").addEventListener("click", exportSnapshotJson);
+  $("exportCsvBtn").addEventListener("click", exportSnapshotCsv);
 
   $("clearLocalBtn").addEventListener("click", ()=>{
     clearManualOddsAll();
-    setDownloadStatus("手入力オッズを全消去しました");
-    logLine("手入力オッズを全消去");
+    setExportStatus("手入力オッズを全消去しました");
     renderSummary(LAST_RACES);
     renderList(LAST_RACES);
   });
 
   // init
   renderVenueChecks();
-  clearLog();
-  setDownloadStatus("-");
   refreshFull();
 })();
 </script>
