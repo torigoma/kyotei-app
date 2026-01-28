@@ -64,9 +64,14 @@
     <div class="pill">条件</div>
 
     <div class="grid g3" style="margin-top:10px;">
-      <div><label>全国2連率(%) 下限</label><input id="minNat2" type="number" step="0.1" value="42" /></div>
-      <div><label>当地2連率(%) 下限</label><input id="minLoc2" type="number" step="0.1" value="42" /></div>
-      <div><label>モーター2連率(%) 下限</label><input id="minMotor2" type="number" step="0.1" value="40" /></div>
+      <!-- ★CHANGED: デフォルト閾値を緩めて母数が出るように（BUYが0になりにくい） -->
+      <div><label>全国2連率(%) 下限</label><input id="minNat2" type="number" step="0.1" value="35" /></div>
+      <div><label>当地2連率(%) 下限</label><input id="minLoc2" type="number" step="0.1" value="30" /></div>
+      <div><label>モーター2連率(%) 下限</label><input id="minMotor2" type="number" step="0.1" value="34" /></div>
+    </div>
+    <!-- ★CHANGED: 注意書き追加（動作に影響なし） -->
+    <div class="muted small" style="margin-top:8px;">
+      ※「条件①通過」が0〜少数の日は、上の3つ（全国/当地/モーター）を少し下げると候補が出やすいです。
     </div>
 
     <div class="grid g3" style="margin-top:10px;">
@@ -543,8 +548,20 @@
       if(ODDS_AUTO.has(r.key)) oddsReady++;
       if(BEFORE_AUTO.has(r.key)) beforeReady++;
     }
+
+    // ★CHANGED: 条件①通過が少なすぎるときの警告（表示だけ、ロジック影響なし）
+    let warn = "";
+    if(total > 0){
+      const ratio = f1pass / total;
+      if(f1pass === 0){
+        warn = " ⚠ 条件①通過が0です（全国/当地/モーター下限が高すぎる可能性）";
+      } else if(ratio < 0.05){
+        warn = ` ⚠ 条件①通過が少なめです（通過率${Math.round(ratio*100)}%）`;
+      }
+    }
+
     $("summary").textContent =
-      `取得${total}R / 条件①通過${f1pass}R / 最終候補${finals} / BUY${buy} / NO${no} / WAIT${wait} / 条件外${filtered} / odds${oddsReady} / before${beforeReady}`;
+      `取得${total}R / 条件①通過${f1pass}R / 最終候補${finals} / BUY${buy} / NO${no} / WAIT${wait} / 条件外${filtered} / odds${oddsReady} / before${beforeReady}` + warn;
   }
 
   function dispTime(v){
@@ -970,7 +987,6 @@
       races: evals
     };
 
-    // consoleから取りやすいようにglobalにも置く
     window.__KYOTEI_SNAPSHOT__ = snap;
     return snap;
   }
@@ -1011,9 +1027,13 @@
   // snapshot button
   $("saveSnapBtn").addEventListener("click", saveSnapshot_);
 
-  // NOTE: send buttons are kept as-is (your current setup may be non-functional; harmless)
-  // If you want them removed later, we'll delete the whole "シート送信" block safely in a full rewrite.
-  // (Send logic was not included in your pasted snippet; left untouched.)
+  // オッズ手入力 全消去
+  $("clearLocalBtn").addEventListener("click", ()=>{
+    clearManualOddsAll();
+    logSend("manual odds cleared");
+    renderSummary(LAST_RACES);
+    renderList(LAST_RACES);
+  });
 
   // init
   renderVenueChecks();
