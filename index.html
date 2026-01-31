@@ -64,13 +64,9 @@
     <div class="pill">条件</div>
 
     <div class="grid g3" style="margin-top:10px;">
-      <!-- デフォルトは「BUY候補が出る」方向へ（必要ならここはいつでも戻せる） -->
-      <div><label>全国2連率(%) 下限</label><input id="minNat2" type="number" step="0.1" value="35" /></div>
-      <div><label>当地2連率(%) 下限</label><input id="minLoc2" type="number" step="0.1" value="30" /></div>
-      <div><label>モーター2連率(%) 下限</label><input id="minMotor2" type="number" step="0.1" value="34" /></div>
-    </div>
-    <div class="muted small" style="margin-top:8px;">
-      ※「条件①通過」が少なすぎる日は、上の3つ（全国/当地/モーター）を少し下げると候補が出やすいです。
+      <div><label>全国2連率(%) 下限</label><input id="minNat2" type="number" step="0.1" value="42" /></div>
+      <div><label>当地2連率(%) 下限</label><input id="minLoc2" type="number" step="0.1" value="42" /></div>
+      <div><label>モーター2連率(%) 下限</label><input id="minMotor2" type="number" step="0.1" value="40" /></div>
     </div>
 
     <div class="grid g3" style="margin-top:10px;">
@@ -183,24 +179,13 @@
   document.getElementById("workerBase").textContent = WORKER_BASE;
 
   const $ = (id) => document.getElementById(id);
-
-  // ★FIX: 日本語環境でも小数点入力を通すためのゆるい数値パーサ
-  function parseNumLoose(v){
-    if (v == null) return null;
-    const s0 = String(v).trim();
-    if (s0 === "") return null;
-    const s = s0
-      .replace(/[．。]/g, ".")   // 全角/句点 -> .
-      .replace(/,/g, "")         // 桁区切り除去
-      .trim();
-    const x = Number(s);
-    return Number.isFinite(x) ? x : null;
-  }
-
   const num = (id) => {
     const el = $(id);
     if (!el) return null;
-    return parseNumLoose(el.value);
+    const v = el.value;
+    if (v === "" || v == null) return null;
+    const x = Number(v);
+    return Number.isFinite(x) ? x : null;
   };
 
   const VENUES = {
@@ -228,7 +213,7 @@
   }
   function clearManualOddsAll() { try { localStorage.removeItem(ODDS_KEY); } catch {} }
 
-  // in-memory caches to avoid re-fetch
+  // in-memory caches
   const ODDS_AUTO = new Map();      // key -> { odds3t, odds3f, scraped_at }
   const BEFORE_AUTO = new Map();    // key -> { info, scraped_at }
 
@@ -399,14 +384,19 @@
     return null;
   }
 
-  // ★FIX: オッズ入力は text になったので、ここでゆるく数値化
+  function parseOddLoose(v){
+    const s = String(v ?? "").replace(/,/g,"").trim();
+    if(s === "" || s === "." || s === "．") return null;
+    const x = Number(s);
+    return Number.isFinite(x) && x>0 ? x : null;
+  }
+
   function getManualOddFor(r, betType, combo){
     const m = getManualOdds(r.key);
     const v = (betType==="3T")
       ? (combo==="1-2-3" ? m.o3t123 : combo==="1-3-2" ? m.o3t132 : "")
       : (betType==="3F" ? m.o3f123 : "");
-    const x = parseNumLoose(v);
-    return (x!=null && x>0) ? x : null;
+    return parseOddLoose(v);
   }
 
   function getOddFor(r, betType, combo){
@@ -439,7 +429,6 @@
     if(plan.level==="no") return { state:"NO", msg:`NO：${plan.reasons.join(" / ")}`, plan };
     if(plan.level==="out") return { state:"条件外", msg:`条件外：${plan.reasons.join(" / ")}`, plan };
 
-    // final
     const odd = getOddFor(r, plan.betType, plan.combo);
     const op = oddsPass(plan.betType, odd);
 
@@ -559,19 +548,8 @@
       if(ODDS_AUTO.has(r.key)) oddsReady++;
       if(BEFORE_AUTO.has(r.key)) beforeReady++;
     }
-
-    let warn = "";
-    if(total > 0){
-      const ratio = f1pass / total;
-      if(f1pass === 0){
-        warn = " ⚠ 条件①通過が0です（全国/当地/モーター下限が高すぎる可能性）";
-      } else if(ratio < 0.05){
-        warn = ` ⚠ 条件①通過が少なめです（通過率${Math.round(ratio*100)}%）`;
-      }
-    }
-
     $("summary").textContent =
-      `取得${total}R / 条件①通過${f1pass}R / 最終候補${finals} / BUY${buy} / NO${no} / WAIT${wait} / 条件外${filtered} / odds${oddsReady} / before${beforeReady}` + warn;
+      `取得${total}R / 条件①通過${f1pass}R / 最終候補${finals} / BUY${buy} / NO${no} / WAIT${wait} / 条件外${filtered} / odds${oddsReady} / before${beforeReady}`;
   }
 
   function dispTime(v){
@@ -581,34 +559,31 @@
   }
 
   function badgeClassFor(state){
-    return state==="BUY" ? "badge b-buy"
-      : state==="NO" ? "badge b-no"
-      : state==="WAIT" ? "badge b-wait"
-      : "badge b-filter";
+    return state==="BUY" ? "badge b-buy" :
+           state==="NO" ? "badge b-no" :
+           state==="WAIT" ? "badge b-wait" : "badge b-filter";
   }
 
-  // ★FIX: 入力中に list を再描画しない（カードが吹っ飛ばないように）
-  function updateRaceCardStateInPlace(card, r){
-    if(!card) return;
+  function updateCardUI_(card, r){
     const ev = evaluate(r);
+    const badge = card.querySelector("[data-state-badge]");
+    const msgEl = card.querySelector("[data-ev-msg]");
+    const buyLine = card.querySelector("[data-buy-line]");
 
-    const badge = card.querySelector("[data-statebadge]");
     if(badge){
       badge.className = badgeClassFor(ev.state);
       badge.textContent = ev.state;
     }
-    const msgEl = card.querySelector("[data-evmsg]");
     if(msgEl) msgEl.textContent = ev.msg;
 
-    const buyLineEl = card.querySelector("[data-buyline]");
-    if(buyLineEl){
-      const plan = ev.plan;
-      const isFinal = plan && plan.level==="final";
+    const plan = ev.plan;
+    const isFinal = plan && plan.level==="final";
+    if(buyLine){
       if(isFinal){
-        const oddText = (ev.odd!=null) ? ` / odds=${ev.odd}` : "";
-        buyLineEl.innerHTML = `買い：<b>${plan.betType} ${plan.combo}</b>${oddText}`;
-      } else {
-        buyLineEl.innerHTML = "";
+        const odd = ev.odd;
+        buyLine.innerHTML = `買い：<b>${plan.betType} ${plan.combo}</b>${Number.isFinite(odd) ? ` / odds=${odd}` : ``}`;
+      }else{
+        buyLine.innerHTML = "";
       }
     }
   }
@@ -619,6 +594,7 @@
 
     const card = document.createElement("div");
     card.className = "raceCard";
+    card.dataset.key = r.key;
 
     const plan = ev.plan;
     const isFinal = plan && plan.level==="final";
@@ -636,15 +612,15 @@
       <div class="grid g3" style="margin-top:10px;">
         <div>
           <label>3連単 1-2-3（auto/手）</label>
-          <input data-o3t123 type="text" inputmode="decimal" autocomplete="off" placeholder="例: 12.3">
+          <input data-o3t123 type="text" inputmode="decimal" placeholder="例: 13.9">
         </div>
         <div>
           <label>3連単 1-3-2（auto/手）</label>
-          <input data-o3t132 type="text" inputmode="decimal" autocomplete="off" placeholder="例: 10.8">
+          <input data-o3t132 type="text" inputmode="decimal" placeholder="例: 21.4">
         </div>
         <div>
           <label>3連複 1-2-3（auto/手）</label>
-          <input data-o3f123 type="text" inputmode="decimal" autocomplete="off" placeholder="例: 2.4">
+          <input data-o3f123 type="text" inputmode="decimal" placeholder="例: 3.4">
         </div>
       </div>
 
@@ -653,15 +629,11 @@
       </div>
     ` : ``;
 
-    const buyLine = isFinal
-      ? `<div class="muted small" data-buyline>買い：<b>${plan.betType} ${plan.combo}</b>${ev.odd ? ` / odds=${ev.odd}` : ``}</div>`
-      : `<div class="muted small" data-buyline></div>`;
-
     card.innerHTML = `
       <div class="row">
         <div>
           <span class="pill">${r.venue} ${r.race}R</span>
-          <span class="${badgeClassFor(ev.state)}" data-statebadge>${ev.state}</span>
+          <span data-state-badge class="${badgeClassFor(ev.state)}">${ev.state}</span>
           <span class="tag">${r.date}</span>
           <span class="tag">${r.title}</span>
           <span class="tag mono">prog:${r._progAt||"-"} exh:${r._exhAt||"-"} res:${r._resAt||"-"}</span>
@@ -676,12 +648,12 @@
           ${r.result_top3 ? `<div class="resultLine">結果（参考）: ${r.result_top3}</div>` : ``}
           <div class="resultLine">払戻123（100円/自動）: 3連単=${Number.isFinite(r.final_payout_3t_123)?r.final_payout_3t_123:"未取得"} / 3連複=${Number.isFinite(r.final_payout_3f_123)?r.final_payout_3f_123:"未取得"}</div>
         </div>
-        <div>
-          ${buyLine}
+        <div class="muted small">
+          <div data-buy-line>${isFinal ? `買い：<b>${plan.betType} ${plan.combo}</b>${Number.isFinite(ev.odd) ? ` / odds=${ev.odd}` : ``}` : ``}</div>
         </div>
       </div>
 
-      <div class="muted" style="margin-top:8px;" data-evmsg>${ev.msg}</div>
+      <div class="muted" style="margin-top:8px;" data-ev-msg>${ev.msg}</div>
       ${oddsBlock}
     `;
 
@@ -698,27 +670,26 @@
       inp3t132.value = manual.o3t132 || (Number.isFinite(a3t132) ? String(a3t132) : "");
       inp3f123.value = manual.o3f123 || (Number.isFinite(a3f123) ? String(a3f123) : "");
 
-      // ★FIX: 入力中は「このカードだけ更新」+ summary更新（list再描画しない）
-      let debounceTimer = null;
       const onInput = () => {
+        // ここで renderList() を呼ばない（＝入力中に吹っ飛ばない）
         setManualOdds(r.key, {
           o3t123: inp3t123.value,
           o3t132: inp3t132.value,
           o3f123: inp3f123.value
         });
-
-        if(debounceTimer) clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-          updateRaceCardStateInPlace(card, r);
-          renderSummary(LAST_RACES);
-        }, 80);
+        updateCardUI_(card, r);
+        renderSummary(LAST_RACES);
       };
 
-      // ★FIX: 入力が終わった（blur）タイミングだけ並び替えを反映（カードが飛ばない）
       const onBlur = () => {
-        updateRaceCardStateInPlace(card, r);
-        renderSummary(LAST_RACES);
-        renderList(LAST_RACES);
+        // 入力が終わったタイミングでだけ、全体再描画（並び替え含む）
+        setTimeout(() => {
+          // 他のオッズ欄に移動中なら再描画しない
+          const ae = document.activeElement;
+          if(ae && card.contains(ae)) return;
+          renderSummary(LAST_RACES);
+          renderList(LAST_RACES);
+        }, 0);
       };
 
       inp3t123.addEventListener("input", onInput);
@@ -968,24 +939,7 @@
     }
   }
 
-  // ---- send to sheets ----
-  async function postToSheet(payload){
-    const body = JSON.stringify(payload);
-    try{
-      const res = await fetch(GAS_URL, { method:"POST", headers:{ "Content-Type":"application/json" }, body });
-      const text = await res.text();
-      return { ok:true, mode:"cors", text };
-    }catch(e){
-      try{
-        await fetch(GAS_URL, { method:"POST", mode:"no-cors", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body });
-        return { ok:true, mode:"no-cors", text:"(no-cors)" };
-      }catch(e2){
-        return { ok:false, mode:"fail", text:String(e2) };
-      }
-    }
-  }
-
-  // ====== Snapshot (NEW) ======
+  // ---- Snapshot ----
   function snapshotNow_(){
     const evals = LAST_RACES.map(r=>{
       const ev = evaluate(r);
@@ -1078,15 +1032,15 @@
   $("viewMode").addEventListener("change", ()=>renderList(LAST_RACES));
   $("oddsFilterOn").addEventListener("change", ()=>{ renderSummary(LAST_RACES); renderList(LAST_RACES); });
 
-  // snapshot button
   $("saveSnapBtn").addEventListener("click", saveSnapshot_);
 
-  // manual odds clear
   $("clearLocalBtn").addEventListener("click", ()=>{
+    if(!confirm("オッズ手入力（ローカル保存）を全消去します。よろしいですか？")) return;
     clearManualOddsAll();
-    logSend("manual odds cleared");
     renderSummary(LAST_RACES);
     renderList(LAST_RACES);
+    setSendStatus("manual odds cleared");
+    logSend("manual odds cleared");
   });
 
   // init
