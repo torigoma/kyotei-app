@@ -139,6 +139,7 @@
         <button class="btn2" id="sendTestBtn">テスト送信（1行）</button>
         <button class="btn2" id="saveSnapBtn">スナップショット保存（JSON）</button>
         <button class="btnDanger" id="clearLocalBtn">オッズ手入力を全消去</button>
+        <button class="btn2" id="clearAutoCacheBtn">自動取得キャッシュ消去</button>
       </div>
       <div class="muted mono" id="sendStatus">-</div>
     </div>
@@ -172,13 +173,16 @@
 
 <script>
 (() => {
-  // ====== CONFIG ======
   const WORKER_BASE = "https://kyotei-worker.tanabedaichi0831.workers.dev";
   const GAS_URL = "https://script.google.com/macros/s/AKfycbw5C8p_tw_dK9m5OWPrekxfbHz1mNq949fjBq1ymTo8xNCjtIGTRGbmVZYQyO3-O3fo/exec";
 
-  // beforeinfo の自動取得（展示が空のレースだけ）用
-  const BEFORE_FILL_LIMIT = 18;          // 1回の更新で最大何レース取りに行くか
-  const BEFORE_FILL_CONCURRENCY = 2;     // 並列数（上げすぎると重い/ブロックされやすい）
+  // 展示が空のレースを beforeinfo で埋める
+  const BEFORE_FILL_LIMIT = 24;
+  const BEFORE_FILL_CONCURRENCY = 2;
+
+  // ★空キャッシュ対策（重要）
+  // beforeinfo が「空」だった場合、一定時間経過後は再取得を許す
+  const BEFORE_EMPTY_RETRY_MS = 15000;
 
   document.getElementById("workerBase").textContent = WORKER_BASE;
 
@@ -200,7 +204,6 @@
 
   let enabledStadiums = new Set(Array.from({length:24}, (_,i)=>i+1));
   let LAST_RACES = [];
-  let LAST_PROGRAMS_SNAPSHOT = null; // programs固定用
 
   // manual odds cache
   const ODDS_KEY = "kyotei_odds_manual_v2";
@@ -218,8 +221,8 @@
   function clearManualOddsAll() { try { localStorage.removeItem(ODDS_KEY); } catch {} }
 
   // in-memory caches
-  const ODDS_AUTO = new Map();      // key -> { odds3t, odds3f, scraped_at }
-  const BEFORE_AUTO = new Map();    // key -> { info, scraped_at, ... }   ※展示/ST/環境
+  const ODDS_AUTO = new Map();      // key -> { odds3t, odds3f, scraped_at, __fetched_at_ms }
+  const BEFORE_AUTO = new Map();    // key -> { info, scraped_at, __fetched_at_ms }
 
   function setStatus(msg){ $("status").textContent = msg; }
   function setAutoStatus(msg){ $("autoStatus").textContent = msg; }
@@ -233,162 +236,32 @@
   function ymdToHd(ymd){
     return String(ymd || "").replace(/-/g,"");
   }
+  function nowHms_(){
+    return new Date().toLocaleTimeString();
+  }
 
   async function fetchJson(url){
     const res = await fetch(url, { cache:"no-store" });
     if(!res.ok) throw new Error(`fetch failed ${res.status}: ${url}`);
     return await res.json();
   }
-
   async function fetchTodayBundle(){
     return await fetchJson(`${WORKER_BASE}/api/today?v=${Date.now()}`);
-  }
-
-  function nowHms_(){
-    return new Date().toLocaleTimeString();
-  }
-
-  function findRaceByKey_(key){
-    return LAST_RACES.find(r => r.key === key) || null;
-  }
-
-  // ===== BEFOREINFO -> race へ反映（重要）=====
-  function applyBeforeToRace_(r, beforeJs){
-    if(!r || !beforeJs || !beforeJs.ok) return false;
-    const info = beforeJs.info || beforeJs.data || null;
-    if(!info || typeof info !== "object") return false;
-
-    const exhTimes = info.exhTimes || {};
-    const stTimes  = info.stTimes  || {};
-
-    if(!r.exh || typeof r.exh !== "object") r.exh = {};
-    let changed = false;
-
-    for(let lane=1; lane<=6; lane++){
-      const v = exhTimes[String(lane)];
-      const t = Number(v);
-      if(Number.isFinite(t) && t > 0){
-        if(r.exh[String(lane)] !== t){
-          r.exh[String(lane)] = t;
-          changed = true;
-        }
-      }
-    }
-
-    if(!r.st || typeof r.st !== "object") r.st = {};
-    for(let lane=1; lane<=6; lane++){
-      const s = stTimes[String(lane)];
-      if(typeof s === "string" && s.trim()){
-        if(r.st[String(lane)] !== s.trim()){
-          r.st[String(lane)] = s.trim();
-          changed = true;
-        }
-      }
-    }
-
-    r.env = r.env || {};
-    r.env.windMs = (info.windMs ?? r.env.windMs ?? null);
-    r.env.waveCm = (info.waveCm ?? r.env.waveCm ?? null);
-    r.env.airTempC = (info.airTempC ?? r.env.airTempC ?? null);
-    r.env.waterTempC = (info.waterTempC ?? r.env.waterTempC ?? null);
-    r.env.weatherText = (info.weatherText ?? r.env.weatherText ?? "");
-
-    r._beforeAt = (beforeJs.scraped_at ? String(beforeJs.scraped_at).slice(11,19) : nowHms_());
-    r.exhReady = exhReady(r.exh);
-
-    return changed;
-  }
-
-  function applyBeforeMapToAllRaces_(){
-    let any=false;
-    for(const r of LAST_RACES){
-      const b = BEFORE_AUTO.get(r.key);
-      if(b && b.ok){
-        const changed = applyBeforeToRace_(r, b);
-        if(changed) any=true;
-      }
-    }
-    return any;
-  }
-
-  async function ensureOddsAuto(r){
-    const key = r.key;
-    if (ODDS_AUTO.has(key)) return ODDS_AUTO.get(key);
-    const hd = ymdToHd(r.date);
-    const url = `${WORKER_BASE}/api/odds?hd=${hd}&jcd=${r.stadium}&rno=${r.race}&v=${Date.now()}`;
-    const js = await fetchJson(url);
-    if (js && js.ok) {
-      ODDS_AUTO.set(key, js);
-      return js;
-    }
-    return null;
-  }
-
-  async function ensureBeforeAuto(r){
-    const key = r.key;
-    if (BEFORE_AUTO.has(key)) {
-      const b = BEFORE_AUTO.get(key);
-      applyBeforeToRace_(r, b);
-      return b;
-    }
-    const hd = ymdToHd(r.date);
-    const url = `${WORKER_BASE}/api/beforeinfo?hd=${hd}&jcd=${r.stadium}&rno=${r.race}&v=${Date.now()}`;
-    const js = await fetchJson(url);
-    if (js && js.ok) {
-      BEFORE_AUTO.set(key, js);
-
-      const rr = findRaceByKey_(key) || r;
-      const changed = applyBeforeToRace_(rr, js);
-
-      if(changed){
-        renderSummary(LAST_RACES);
-        renderList(LAST_RACES);
-      }
-      return js;
-    }
-    return null;
-  }
-
-  // ★ 展示が空のレースだけ beforeinfo で埋める（今回の追加）
-  async function fillMissingExhByBeforeinfo_(){
-    // exhReady=false かつ まだ before 未取得
-    const targets = LAST_RACES
-      .filter(r => enabledStadiums.has(r.stadium))
-      .filter(r => !r.exhReady)
-      .filter(r => !BEFORE_AUTO.has(r.key))
-      .sort((a,b)=> (a.stadium-b.stadium) || (a.race-b.race))
-      .slice(0, BEFORE_FILL_LIMIT);
-
-    if(targets.length === 0) return;
-
-    const limit = BEFORE_FILL_CONCURRENCY;
-    let i=0;
-    const running = new Set();
-
-    async function runOne(r){
-      try{
-        await ensureBeforeAuto(r);
-      }catch(e){}
-    }
-
-    while(i<targets.length || running.size){
-      while(i<targets.length && running.size<limit){
-        const p = runOne(targets[i++]).finally(()=>running.delete(p));
-        running.add(p);
-      }
-      if(running.size) await Promise.race(running);
-    }
-
-    // 反映漏れ防止
-    applyBeforeMapToAllRaces_();
-    renderSummary(LAST_RACES);
-    renderList(LAST_RACES);
   }
 
   // ----- base metrics -----
   function exhReady(exh){
     for(let lane=1; lane<=3; lane++){
       const t = Number(exh?.[String(lane)]);
+      if(!Number.isFinite(t) || t<=0) return false;
+    }
+    return true;
+  }
+  function beforeHasExh13_(beforeJs){
+    if(!beforeJs || !beforeJs.ok) return false;
+    const exh = beforeJs.info?.exhTimes || beforeJs.data?.exhTimes || {};
+    for(let lane=1; lane<=3; lane++){
+      const t = Number(exh[String(lane)]);
       if(!Number.isFinite(t) || t<=0) return false;
     }
     return true;
@@ -444,7 +317,6 @@
     return c;
   }
 
-  // ①/② plan
   function computePlan(r){
     const f1 = passFilter1(r);
     if(!f1.ok) return { level:"out", reasons:f1.reasons };
@@ -488,7 +360,6 @@
       betType = "3T";
       combo = (e2 < e3) ? "1-2-3" : "1-3-2";
     }
-
     return { level:"final", betType, combo, rank, outerFast, d2, d3, nc };
   }
 
@@ -554,8 +425,138 @@
       }
       return { state:"NO", msg:`NO：${op.reasons.join(" / ")}`, plan };
     }
-
     return { state:"BUY", msg:`BUY：${plan.betType} ${plan.combo}（1点）`, plan, odd };
+  }
+
+  // ===== BEFOREINFO -> race へ反映 =====
+  function applyBeforeToRace_(r, beforeJs){
+    if(!r || !beforeJs || !beforeJs.ok) return false;
+    const info = beforeJs.info || beforeJs.data || null;
+    if(!info || typeof info !== "object") return false;
+
+    const exhTimes = info.exhTimes || {};
+    const stTimes  = info.stTimes  || {};
+
+    if(!r.exh || typeof r.exh !== "object") r.exh = {};
+    let changed = false;
+
+    for(let lane=1; lane<=6; lane++){
+      const v = exhTimes[String(lane)];
+      const t = Number(v);
+      if(Number.isFinite(t) && t > 0){
+        if(r.exh[String(lane)] !== t){
+          r.exh[String(lane)] = t;
+          changed = true;
+        }
+      }
+    }
+
+    if(!r.st || typeof r.st !== "object") r.st = {};
+    for(let lane=1; lane<=6; lane++){
+      const s = stTimes[String(lane)];
+      if(typeof s === "string" && s.trim()){
+        if(r.st[String(lane)] !== s.trim()){
+          r.st[String(lane)] = s.trim();
+          changed = true;
+        }
+      }
+    }
+
+    r.env = r.env || {};
+    r.env.windMs = (info.windMs ?? r.env.windMs ?? null);
+    r.env.waveCm = (info.waveCm ?? r.env.waveCm ?? null);
+    r.env.airTempC = (info.airTempC ?? r.env.airTempC ?? null);
+    r.env.waterTempC = (info.waterTempC ?? r.env.waterTempC ?? null);
+    r.env.weatherText = (info.weatherText ?? r.env.weatherText ?? "");
+
+    r._beforeAt = (beforeJs.scraped_at ? String(beforeJs.scraped_at).slice(11,19) : nowHms_());
+    r.exhReady = exhReady(r.exh);
+
+    return changed;
+  }
+
+  // ---- fetch helpers ----
+  async function ensureOddsAuto(r){
+    const key = r.key;
+    if (ODDS_AUTO.has(key)) return ODDS_AUTO.get(key);
+    const hd = ymdToHd(r.date);
+    const url = `${WORKER_BASE}/api/odds?hd=${hd}&jcd=${r.stadium}&rno=${r.race}&v=${Date.now()}`;
+    const js = await fetchJson(url);
+    if (js && js.ok) {
+      js.__fetched_at_ms = Date.now();
+      ODDS_AUTO.set(key, js);
+      return js;
+    }
+    return null;
+  }
+
+  async function ensureBeforeAuto(r){
+    const key = r.key;
+    const now = Date.now();
+
+    // ★ 既にキャッシュがある場合：空なら一定時間で捨てて再取得
+    if (BEFORE_AUTO.has(key)) {
+      const cached = BEFORE_AUTO.get(key);
+      const age = now - (cached.__fetched_at_ms || 0);
+
+      // レース側に反映だけは毎回やる
+      applyBeforeToRace_(r, cached);
+
+      const ready = beforeHasExh13_(cached);
+      if(!ready && age > BEFORE_EMPTY_RETRY_MS){
+        // 空が続いてたら一旦捨てて再取得
+        BEFORE_AUTO.delete(key);
+      } else {
+        return cached;
+      }
+    }
+
+    const hd = ymdToHd(r.date);
+    const url = `${WORKER_BASE}/api/beforeinfo?hd=${hd}&jcd=${r.stadium}&rno=${r.race}&v=${Date.now()}`;
+
+    const js = await fetchJson(url);
+    if (js && js.ok) {
+      js.__fetched_at_ms = Date.now();
+      BEFORE_AUTO.set(key, js);
+
+      const changed = applyBeforeToRace_(r, js);
+      if(changed){
+        renderSummary(LAST_RACES);
+        renderList(LAST_RACES);
+      }
+      return js;
+    }
+    return null;
+  }
+
+  // ★ 展示が空のレースだけ beforeinfo で埋める（空キャッシュでも再取得）
+  async function fillMissingExhByBeforeinfo_(){
+    const targets = LAST_RACES
+      .filter(r => enabledStadiums.has(r.stadium))
+      .filter(r => !r.exhReady)
+      .sort((a,b)=> (a.stadium-b.stadium) || (a.race-b.race))
+      .slice(0, BEFORE_FILL_LIMIT);
+
+    if(targets.length === 0) return;
+
+    const limit = BEFORE_FILL_CONCURRENCY;
+    let i=0;
+    const running = new Set();
+
+    async function runOne(r){
+      try{ await ensureBeforeAuto(r); }catch(e){}
+    }
+
+    while(i<targets.length || running.size){
+      while(i<targets.length && running.size<limit){
+        const p = runOne(targets[i++]).finally(()=>running.delete(p));
+        running.add(p);
+      }
+      if(running.size) await Promise.race(running);
+    }
+
+    renderSummary(LAST_RACES);
+    renderList(LAST_RACES);
   }
 
   // ----- results helpers -----
@@ -674,7 +675,6 @@
     if(!Number.isFinite(x) || x<=0) return "-";
     return String(x);
   }
-
   function dispSt(v){
     const s = String(v ?? "").trim();
     return s ? s : "-";
@@ -684,30 +684,6 @@
     return state==="BUY" ? "badge b-buy" :
            state==="NO" ? "badge b-no" :
            state==="WAIT" ? "badge b-wait" : "badge b-filter";
-  }
-
-  function updateCardUI_(card, r){
-    const ev = evaluate(r);
-    const badge = card.querySelector("[data-state-badge]");
-    const msgEl = card.querySelector("[data-ev-msg]");
-    const buyLine = card.querySelector("[data-buy-line]");
-
-    if(badge){
-      badge.className = badgeClassFor(ev.state);
-      badge.textContent = ev.state;
-    }
-    if(msgEl) msgEl.textContent = ev.msg;
-
-    const plan = ev.plan;
-    const isFinal = plan && plan.level==="final";
-    if(buyLine){
-      if(isFinal){
-        const odd = ev.odd;
-        buyLine.innerHTML = `買い：<b>${plan.betType} ${plan.combo}</b>${Number.isFinite(odd) ? ` / odds=${odd}` : ``}`;
-      }else{
-        buyLine.innerHTML = "";
-      }
-    }
   }
 
   function makeRaceCard(r){
@@ -762,7 +738,7 @@
           <span data-state-badge class="${badgeClassFor(ev.state)}">${ev.state}</span>
           <span class="tag">${r.date}</span>
           <span class="tag">${r.title}</span>
-          <span class="tag mono">prog:${r._progAt||"-"} exh:${r._exhAt||"-"} before:${r._beforeAt||"-"} res:${r._resAt||"-"}</span>
+          <span class="tag mono">exh:${r._exhAt||"-"} before:${r._beforeAt||"-"}</span>
         </div>
         <div class="muted">全国${r.nat2}% / 当地${r.loc2}% / M${r.motor2}%</div>
       </div>
@@ -803,26 +779,13 @@
           o3t132: inp3t132.value,
           o3f123: inp3f123.value
         });
-        updateCardUI_(card, r);
         renderSummary(LAST_RACES);
-      };
-
-      const onBlur = () => {
-        setTimeout(() => {
-          const ae = document.activeElement;
-          if(ae && card.contains(ae)) return;
-          renderSummary(LAST_RACES);
-          renderList(LAST_RACES);
-        }, 0);
+        renderList(LAST_RACES);
       };
 
       inp3t123.addEventListener("input", onInput);
       inp3t132.addEventListener("input", onInput);
       inp3f123.addEventListener("input", onInput);
-
-      inp3t123.addEventListener("blur", onBlur);
-      inp3t132.addEventListener("blur", onBlur);
-      inp3f123.addEventListener("blur", onBlur);
     }
 
     return card;
@@ -844,29 +807,9 @@
 
     const list = $("list");
     list.innerHTML="";
-    if(show.length===0){
-      const box = document.createElement("div");
-      box.className="muted";
-      box.style.padding="10px";
-      box.innerHTML = `
-        表示できるレースがありません。<br/>
-        ・候補のみ：条件①通過が0件の可能性<br/>
-        <div style="margin-top:8px;">
-          <button class="btn2" id="toAllBtn">全件表示に切り替える</button>
-        </div>
-      `;
-      list.appendChild(box);
-      box.querySelector("#toAllBtn").addEventListener("click", ()=>{
-        $("viewMode").value="all";
-        renderList(LAST_RACES);
-      });
-      return;
-    }
-
     for(const r of show) list.appendChild(makeRaceCard(r));
   }
 
-  // ---- build races from bundle (full refresh) ----
   function buildRacesFromBundle(bundle){
     const programs = bundle.programs?.programs || [];
     const previews = bundle.previews?.previews || [];
@@ -884,6 +827,7 @@
 
     const races=[];
     const t = new Date().toLocaleTimeString();
+
     for(const pr of programs){
       const stadium = pr.race_stadium_number;
       if(!enabledStadiums.has(stadium)) continue;
@@ -906,7 +850,7 @@
       const top3 = rr ? extractTop3(rr) : null;
       const pay = rr ? extractPayout123(rr) : {pay3t123:null, pay3f123:null};
 
-      const r = {
+      races.push({
         key,
         stadium,
         venue: VENUES[stadium],
@@ -923,67 +867,11 @@
         result_top3: top3,
         final_payout_3t_123: pay.pay3t123,
         final_payout_3f_123: pay.pay3f123,
-        _progAt: t,
         _exhAt: t,
         _beforeAt: null,
-        _resAt: t,
-      };
-
-      const b = BEFORE_AUTO.get(r.key);
-      if(b && b.ok) applyBeforeToRace_(r, b);
-
-      races.push(r);
+      });
     }
     return races;
-  }
-
-  // ---- lite refresh merges previews/results only ----
-  function mergePreviewsResultsIntoExisting(bundle){
-    const previews = bundle.previews?.previews || [];
-    const resultsObj = bundle.results || {};
-    const results = resultsObj.results || resultsObj.races || [];
-
-    const prevMap = new Map();
-    for(const p of previews){
-      prevMap.set(`${p.race_date}-${p.race_stadium_number}-${p.race_number}`, p);
-    }
-    const resMap = new Map();
-    for(const rr of results){
-      resMap.set(`${rr.race_date}-${rr.race_stadium_number}-${rr.race_number}`, rr);
-    }
-
-    const t = new Date().toLocaleTimeString();
-
-    for(const r of LAST_RACES){
-      const pv = prevMap.get(r.key);
-
-      if(pv && pv.boats){
-        const base = { ...(r.exh || {}) };
-        for(let lane=1; lane<=6; lane++){
-          const obj = pv.boats[String(lane)] || pv.boats[lane] || null;
-          const tt = obj?.racer_exhibition_time ?? obj?.exhibition_time ?? null;
-          if(tt!=null){
-            const v = Number(tt);
-            if(Number.isFinite(v) && v > 0) base[String(lane)] = v;
-          }
-        }
-        r.exh = base;
-        r.exhReady = exhReady(r.exh);
-        r._exhAt = t;
-      }
-
-      const rr = resMap.get(r.key);
-      if(rr){
-        r.result_top3 = extractTop3(rr);
-        const pay = extractPayout123(rr);
-        r.final_payout_3t_123 = pay.pay3t123;
-        r.final_payout_3f_123 = pay.pay3f123;
-        r._resAt = t;
-      }
-
-      const b = BEFORE_AUTO.get(r.key);
-      if(b && b.ok) applyBeforeToRace_(r, b);
-    }
   }
 
   async function prefetchFinalCandidates(){
@@ -1008,13 +896,10 @@
       if(running.size) await Promise.race(running);
     }
 
-    applyBeforeMapToAllRaces_();
-
     renderSummary(LAST_RACES);
     renderList(LAST_RACES);
   }
 
-  // ---- auto refresh controls ----
   let AUTO_TIMER=null;
   function clearAutoTimer(){ if(AUTO_TIMER){ clearTimeout(AUTO_TIMER); AUTO_TIMER=null; } }
 
@@ -1025,43 +910,39 @@
 
     const need = LAST_RACES.some(r=>{
       if(!enabledStadiums.has(r.stadium)) return false;
-      // 展示が空なら beforeinfo 埋めがまだ必要
-      if(!r.exhReady && !BEFORE_AUTO.has(r.key)) return true;
-
+      if(!r.exhReady) return true;
       if(!passFilter1(r).ok) return false;
       const plan = computePlan(r);
       if(plan.level==="wait") return true;
       if(plan.level==="final"){
         if(!ODDS_AUTO.has(r.key)) return true;
-        if(!BEFORE_AUTO.has(r.key)) return true;
+        // beforeは空キャッシュがあり得るので、readyで判定
+        const b = BEFORE_AUTO.get(r.key);
+        if(!b || !beforeHasExh13_(b)) return true;
       }
       return false;
     });
 
     if(!need){ setAutoStatus("対象なし"); return; }
-    setAutoStatus("20秒後に軽更新（previews/results）");
+    setAutoStatus("20秒後に更新");
     AUTO_TIMER = setTimeout(refreshLite, 20000);
   }
 
   async function refreshFull(){
     try{
-      setStatus("更新中（programs含む）…");
+      setStatus("更新中…");
       const bundle = await fetchTodayBundle();
-      LAST_PROGRAMS_SNAPSHOT = bundle.programs;
-
       LAST_RACES = buildRacesFromBundle(bundle);
 
-      applyBeforeMapToAllRaces_();
-
-      setStatus(`取得OK：${LAST_RACES.length}R / ${new Date().toLocaleTimeString()}`);
       renderSummary(LAST_RACES);
       renderList(LAST_RACES);
 
-      // ★ 展示が空なら beforeinfo で埋める（追加）
+      // ★展示が空なら beforeinfo で埋める（空キャッシュも再取得）
       await fillMissingExhByBeforeinfo_();
 
       await prefetchFinalCandidates();
       setSendStatus("準備OK");
+      setStatus(`取得OK / ${nowHms_()}`);
       maybeScheduleAutoRefresh();
     } catch(e){
       setStatus("取得失敗");
@@ -1072,125 +953,51 @@
 
   async function refreshLite(){
     try{
-      setStatus("軽更新中（previews/results）…");
+      setStatus("更新中…");
       const bundle = await fetchTodayBundle();
+      // programs固定思想は省略（今は展示埋め優先）
+      LAST_RACES = buildRacesFromBundle(bundle);
 
-      mergePreviewsResultsIntoExisting(bundle);
-
-      applyBeforeMapToAllRaces_();
-
-      setStatus(`軽更新OK / ${new Date().toLocaleTimeString()}`);
       renderSummary(LAST_RACES);
       renderList(LAST_RACES);
 
-      // ★ 軽更新でも「展示が空」だけは埋めに行く（追加）
       await fillMissingExhByBeforeinfo_();
-
       await prefetchFinalCandidates();
+
+      setStatus(`更新OK / ${nowHms_()}`);
       maybeScheduleAutoRefresh();
     } catch(e){
-      setStatus("軽更新失敗");
-      logSend("軽更新失敗: " + String(e));
+      setStatus("更新失敗");
+      logSend("更新失敗: " + String(e));
       maybeScheduleAutoRefresh();
     }
   }
 
-  // ---- Snapshot ----
-  function snapshotNow_(){
-    const evals = LAST_RACES.map(r=>{
-      const ev = evaluate(r);
-      return {
-        key: r.key,
-        date: r.date,
-        stadium: r.stadium,
-        venue: r.venue,
-        race: r.race,
-        title: r.title,
-        nat2: r.nat2, loc2: r.loc2, motor2: r.motor2,
-        exh: r.exh,
-        st: r.st || null,
-        env: r.env || null,
-        exhReady: r.exhReady,
-        result_top3: r.result_top3 ?? null,
-        final_payout_3t_123: r.final_payout_3t_123 ?? null,
-        final_payout_3f_123: r.final_payout_3f_123 ?? null,
-        state: ev.state,
-        msg: ev.msg,
-        plan: ev.plan ?? null,
-        odd: (ev.odd ?? null),
-        auto: {
-          odds: ODDS_AUTO.get(r.key) || null,
-          before: BEFORE_AUTO.get(r.key) || null
-        },
-        manualOdds: getManualOdds(r.key) || null,
-        stamps: { progAt:r._progAt||null, exhAt:r._exhAt||null, beforeAt:r._beforeAt||null, resAt:r._resAt||null }
-      };
-    });
-
-    const snap = {
-      version: "kyotei_snapshot_v1",
-      saved_at: new Date().toISOString(),
-      worker_base: WORKER_BASE,
-      ui: {
-        minNat2: $("minNat2").value,
-        minLoc2: $("minLoc2").value,
-        minMotor2: $("minMotor2").value,
-        maxTimeRank: $("maxTimeRank").value,
-        maxNearCount: $("maxNearCount").value,
-        nearEps: $("nearEps").value,
-        maxDelta2: $("maxDelta2").value,
-        maxDelta3: $("maxDelta3").value,
-        min23Gap: $("min23Gap").value,
-        oddsFilterOn: $("oddsFilterOn").checked,
-        minOdds3t: $("minOdds3t").value,
-        maxOdds3t: $("maxOdds3t").value,
-        minOdds3f: $("minOdds3f").value,
-        maxOdds3f: $("maxOdds3f").value,
-        viewMode: $("viewMode").value,
-        enabledStadiums: Array.from(enabledStadiums),
-      },
-      summary: $("summary").textContent,
-      races: evals
-    };
-
-    window.__KYOTEI_SNAPSHOT__ = snap;
-    return snap;
+  function renderVenueChecks(){
+    const box = $("venueChecks");
+    box.innerHTML="";
+    const entries = Object.entries(VENUES).map(([k,v])=>({k:Number(k), v})).sort((a,b)=>a.k-b.k);
+    for(const {k,v} of entries){
+      const el = document.createElement("label");
+      el.className="cb";
+      el.innerHTML = `<input type="checkbox" data-st="${k}"> ${k}:${v}`;
+      const cb = el.querySelector("input");
+      cb.checked = enabledStadiums.has(k);
+      cb.addEventListener("change", ()=>{
+        if(cb.checked) enabledStadiums.add(k); else enabledStadiums.delete(k);
+        refreshFull();
+      });
+      box.appendChild(el);
+    }
   }
 
-  function downloadJson_(filename, obj){
-    const blob = new Blob([JSON.stringify(obj, null, 2)], {type:"application/json"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    setTimeout(()=>URL.revokeObjectURL(url), 1000);
-  }
-
-  function ymdHms_(){
-    const d = new Date();
-    const ymd = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;
-    const hms = `${String(d.getHours()).padStart(2,"0")}${String(d.getMinutes()).padStart(2,"0")}${String(d.getSeconds()).padStart(2,"0")}`;
-    return { ymd, hms };
-  }
-
-  function saveSnapshot_(){
-    const snap = snapshotNow_();
-    const { ymd, hms } = ymdHms_();
-    downloadJson_(`kyotei_snapshot_${ymd}_${hms}.json`, snap);
-    setSendStatus(`snapshot saved: ${ymd}_${hms}`);
-    logSend(`snapshot saved: kyotei_snapshot_${ymd}_${hms}.json`);
-  }
-
-  // ====== wiring ======
+  // ===== wiring =====
   $("refreshBtn").addEventListener("click", refreshFull);
   $("applyBtn").addEventListener("click", ()=>{ renderSummary(LAST_RACES); renderList(LAST_RACES); });
 
   $("autoRefresh").addEventListener("change", maybeScheduleAutoRefresh);
   $("viewMode").addEventListener("change", ()=>renderList(LAST_RACES));
   $("oddsFilterOn").addEventListener("change", ()=>{ renderSummary(LAST_RACES); renderList(LAST_RACES); });
-
-  $("saveSnapBtn").addEventListener("click", saveSnapshot_);
 
   $("clearLocalBtn").addEventListener("click", ()=>{
     if(!confirm("オッズ手入力（ローカル保存）を全消去します。よろしいですか？")) return;
@@ -1199,6 +1006,15 @@
     renderList(LAST_RACES);
     setSendStatus("manual odds cleared");
     logSend("manual odds cleared");
+  });
+
+  $("clearAutoCacheBtn").addEventListener("click", async ()=>{
+    if(!confirm("自動取得キャッシュ（odds/before）を消去して再取得します。よろしいですか？")) return;
+    ODDS_AUTO.clear();
+    BEFORE_AUTO.clear();
+    setSendStatus("auto cache cleared");
+    logSend("auto cache cleared");
+    await refreshFull();
   });
 
   // init
