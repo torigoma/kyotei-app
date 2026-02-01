@@ -215,7 +215,7 @@
 
   // in-memory caches
   const ODDS_AUTO = new Map();      // key -> { odds3t, odds3f, scraped_at }
-  const BEFORE_AUTO = new Map();    // key -> { info, scraped_at }
+  const BEFORE_AUTO = new Map();    // key -> { info, scraped_at, ... }   ※展示/ST/環境
 
   function setStatus(msg){ $("status").textContent = msg; }
   function setAutoStatus(msg){ $("autoStatus").textContent = msg; }
@@ -241,6 +241,85 @@
     return await fetchJson(`${WORKER_BASE}/api/today?v=${Date.now()}`);
   }
 
+  function nowHms_(){
+    return new Date().toLocaleTimeString();
+  }
+
+  function findRaceByKey_(key){
+    return LAST_RACES.find(r => r.key === key) || null;
+  }
+
+  // ===== BEFOREINFO -> race へ反映（重要）=====
+  function applyBeforeToRace_(r, beforeJs){
+    if(!r || !beforeJs || !beforeJs.ok) return false;
+    const info = beforeJs.info || beforeJs.data || null;
+    if(!info || typeof info !== "object") return false;
+
+    // exhTimes は { "1":6.70, ... } 形式
+    const exhTimes = info.exhTimes || {};
+    const stTimes  = info.stTimes  || {};
+
+    // r.exh は「表示/判定の主ソース」にする（beforeがあれば上書き）
+    if(!r.exh || typeof r.exh !== "object") r.exh = {};
+    let changed = false;
+
+    for(let lane=1; lane<=6; lane++){
+      const v = exhTimes[String(lane)];
+      const t = Number(v);
+      if(Number.isFinite(t) && t > 0){
+        if(r.exh[String(lane)] !== t){
+          r.exh[String(lane)] = t;
+          changed = true;
+        }
+      }
+    }
+
+    // STは別保持（今は表示/将来の重み付け用）
+    if(!r.st || typeof r.st !== "object") r.st = {};
+    for(let lane=1; lane<=6; lane++){
+      const s = stTimes[String(lane)];
+      if(typeof s === "string" && s.trim()){
+        if(r.st[String(lane)] !== s.trim()){
+          r.st[String(lane)] = s.trim();
+          changed = true;
+        }
+      }
+    }
+
+    // 環境
+    r.env = r.env || {};
+    const windMs = info.windMs;
+    const waveCm = info.waveCm;
+    const airTempC = info.airTempC;
+    const waterTempC = info.waterTempC;
+    const weatherText = info.weatherText;
+
+    // nullでも保持したいが、UIは "-" 表示なのでそのまま入れる
+    r.env.windMs = windMs ?? r.env.windMs ?? null;
+    r.env.waveCm = waveCm ?? r.env.waveCm ?? null;
+    r.env.airTempC = airTempC ?? r.env.airTempC ?? null;
+    r.env.waterTempC = waterTempC ?? r.env.waterTempC ?? null;
+    r.env.weatherText = (weatherText ?? r.env.weatherText ?? "");
+
+    // スタンプ
+    r._beforeAt = (beforeJs.scraped_at ? String(beforeJs.scraped_at).slice(11,19) : nowHms_());
+    r.exhReady = exhReady(r.exh);
+
+    return changed;
+  }
+
+  function applyBeforeMapToAllRaces_(){
+    let any=false;
+    for(const r of LAST_RACES){
+      const b = BEFORE_AUTO.get(r.key);
+      if(b && b.ok){
+        const changed = applyBeforeToRace_(r, b);
+        if(changed) any=true;
+      }
+    }
+    return any;
+  }
+
   async function ensureOddsAuto(r){
     const key = r.key;
     if (ODDS_AUTO.has(key)) return ODDS_AUTO.get(key);
@@ -256,12 +335,28 @@
 
   async function ensureBeforeAuto(r){
     const key = r.key;
-    if (BEFORE_AUTO.has(key)) return BEFORE_AUTO.get(key);
+    if (BEFORE_AUTO.has(key)) {
+      const b = BEFORE_AUTO.get(key);
+      // 既にあるなら念のため適用（更新で消えた対策）
+      applyBeforeToRace_(r, b);
+      return b;
+    }
     const hd = ymdToHd(r.date);
     const url = `${WORKER_BASE}/api/beforeinfo?hd=${hd}&jcd=${r.stadium}&rno=${r.race}&v=${Date.now()}`;
     const js = await fetchJson(url);
     if (js && js.ok) {
       BEFORE_AUTO.set(key, js);
+
+      // ★ 取得直後にレースへ反映（ここが今まで無かった）
+      const rr = findRaceByKey_(key) || r;
+      const changed = applyBeforeToRace_(rr, js);
+
+      // 反映されたらUI再描画（軽めに）
+      if(changed){
+        renderSummary(LAST_RACES);
+        renderList(LAST_RACES);
+      }
+
       return js;
     }
     return null;
@@ -270,7 +365,7 @@
   // ----- base metrics -----
   function exhReady(exh){
     for(let lane=1; lane<=3; lane++){
-      const t = Number(exh[String(lane)]);
+      const t = Number(exh?.[String(lane)]);
       if(!Number.isFinite(t) || t<=0) return false;
     }
     return true;
@@ -288,7 +383,7 @@
   }
 
   function exhibitionRank(exh){
-    const arr = Object.entries(exh)
+    const arr = Object.entries(exh || {})
       .map(([lane,t])=>({lane:Number(lane), t:Number(t)}))
       .filter(x=>Number.isFinite(x.lane) && Number.isFinite(x.t) && x.t>0)
       .sort((a,b)=>a.t-b.t);
@@ -297,29 +392,29 @@
   }
 
   function fasterOppLanes(exh){
-    const t1 = Number(exh["1"]);
+    const t1 = Number(exh?.["1"]);
     if(!Number.isFinite(t1) || t1<=0) return [];
     const lanes=[];
     for(let lane=2; lane<=6; lane++){
-      const t = Number(exh[String(lane)]);
+      const t = Number(exh?.[String(lane)]);
       if(Number.isFinite(t) && t>0 && t < t1) lanes.push(lane);
     }
     return lanes;
   }
 
   function deltaLane(exh, lane){
-    const t1 = Number(exh["1"]);
-    const tx = Number(exh[String(lane)]);
+    const t1 = Number(exh?.["1"]);
+    const tx = Number(exh?.[String(lane)]);
     if(!Number.isFinite(t1) || !Number.isFinite(tx) || t1<=0 || tx<=0) return null;
     return tx - t1;
   }
 
   function nearCount(exh, eps){
-    const t1 = Number(exh["1"]);
+    const t1 = Number(exh?.["1"]);
     if(!Number.isFinite(t1) || t1<=0 || !Number.isFinite(eps)) return null;
     let c=0;
     for(let lane=2; lane<=6; lane++){
-      const t = Number(exh[String(lane)]);
+      const t = Number(exh?.[String(lane)]);
       if(!Number.isFinite(t) || t<=0) continue;
       if(t <= t1 + eps) c++;
     }
@@ -558,6 +653,11 @@
     return String(x);
   }
 
+  function dispSt(v){
+    const s = String(v ?? "").trim();
+    return s ? s : "-";
+  }
+
   function badgeClassFor(state){
     return state==="BUY" ? "badge b-buy" :
            state==="NO" ? "badge b-no" :
@@ -625,7 +725,11 @@
       </div>
 
       <div class="muted small" style="margin-top:8px;">
-        直前（auto）：風=${autoBefore?.info?.windMs ?? "-"}m/s / 波=${autoBefore?.info?.waveCm ?? "-"}cm / 気温=${autoBefore?.info?.airTempC ?? "-"}℃ / 水温=${autoBefore?.info?.waterTempC ?? "-"}℃
+        直前（auto）：
+        風=${r.env?.windMs ?? "-"}m/s /
+        波=${r.env?.waveCm ?? "-"}cm /
+        気温=${r.env?.airTempC ?? "-"}℃ /
+        水温=${r.env?.waterTempC ?? "-"}℃
       </div>
     ` : ``;
 
@@ -636,15 +740,16 @@
           <span data-state-badge class="${badgeClassFor(ev.state)}">${ev.state}</span>
           <span class="tag">${r.date}</span>
           <span class="tag">${r.title}</span>
-          <span class="tag mono">prog:${r._progAt||"-"} exh:${r._exhAt||"-"} res:${r._resAt||"-"}</span>
+          <span class="tag mono">prog:${r._progAt||"-"} exh:${r._exhAt||"-"} before:${r._beforeAt||"-"} res:${r._resAt||"-"}</span>
         </div>
         <div class="muted">全国${r.nat2}% / 当地${r.loc2}% / M${r.motor2}%</div>
       </div>
 
       <div class="grid g2" style="margin-top:10px;">
         <div class="muted">
-          展示 1:${dispTime(r.exh["1"])} 2:${dispTime(r.exh["2"])} 3:${dispTime(r.exh["3"])}
-          4:${dispTime(r.exh["4"])} 5:${dispTime(r.exh["5"])} 6:${dispTime(r.exh["6"])}
+          展示 1:${dispTime(r.exh?.["1"])} 2:${dispTime(r.exh?.["2"])} 3:${dispTime(r.exh?.["3"])}
+          4:${dispTime(r.exh?.["4"])} 5:${dispTime(r.exh?.["5"])} 6:${dispTime(r.exh?.["6"])}
+          <div class="resultLine">ST 1:${dispSt(r.st?.["1"])} 2:${dispSt(r.st?.["2"])} 3:${dispSt(r.st?.["3"])} 4:${dispSt(r.st?.["4"])} 5:${dispSt(r.st?.["5"])} 6:${dispSt(r.st?.["6"])}</div>
           ${r.result_top3 ? `<div class="resultLine">結果（参考）: ${r.result_top3}</div>` : ``}
           <div class="resultLine">払戻123（100円/自動）: 3連単=${Number.isFinite(r.final_payout_3t_123)?r.final_payout_3t_123:"未取得"} / 3連複=${Number.isFinite(r.final_payout_3f_123)?r.final_payout_3f_123:"未取得"}</div>
         </div>
@@ -671,7 +776,6 @@
       inp3f123.value = manual.o3f123 || (Number.isFinite(a3f123) ? String(a3f123) : "");
 
       const onInput = () => {
-        // ここで renderList() を呼ばない（＝入力中に吹っ飛ばない）
         setManualOdds(r.key, {
           o3t123: inp3t123.value,
           o3t132: inp3t132.value,
@@ -682,9 +786,7 @@
       };
 
       const onBlur = () => {
-        // 入力が終わったタイミングでだけ、全体再描画（並び替え含む）
         setTimeout(() => {
-          // 他のオッズ欄に移動中なら再描画しない
           const ae = document.activeElement;
           if(ae && card.contains(ae)) return;
           renderSummary(LAST_RACES);
@@ -759,6 +861,7 @@
     }
 
     const races=[];
+    const t = new Date().toLocaleTimeString();
     for(const pr of programs){
       const stadium = pr.race_stadium_number;
       if(!enabledStadiums.has(stadium)) continue;
@@ -767,13 +870,14 @@
       const b1 = (pr.boats || []).find(b=>b.racer_boat_number===1);
       if(!b1) continue;
 
+      // previews由来
       const pv = prevMap.get(key);
-      const exh={};
+      const exh = {};
       if(pv && pv.boats){
         for(let lane=1; lane<=6; lane++){
           const obj = pv.boats[String(lane)] || pv.boats[lane] || null;
-          const t = obj?.racer_exhibition_time ?? obj?.exhibition_time ?? null;
-          if(t!=null) exh[String(lane)] = Number(t);
+          const tt = obj?.racer_exhibition_time ?? obj?.exhibition_time ?? null;
+          if(tt!=null) exh[String(lane)] = Number(tt);
         }
       }
 
@@ -781,7 +885,7 @@
       const top3 = rr ? extractTop3(rr) : null;
       const pay = rr ? extractPayout123(rr) : {pay3t123:null, pay3f123:null};
 
-      races.push({
+      const r = {
         key,
         stadium,
         venue: VENUES[stadium],
@@ -792,14 +896,23 @@
         loc2: Number(b1.racer_local_top_2_percent ?? 0),
         motor2: Number(b1.racer_assigned_motor_top_2_percent ?? 0),
         exh,
+        st: {},
+        env: {},
         exhReady: exhReady(exh),
         result_top3: top3,
         final_payout_3t_123: pay.pay3t123,
         final_payout_3f_123: pay.pay3f123,
-        _progAt: new Date().toLocaleTimeString(),
-        _exhAt: new Date().toLocaleTimeString(),
-        _resAt: new Date().toLocaleTimeString(),
-      });
+        _progAt: t,
+        _exhAt: t,
+        _beforeAt: null,
+        _resAt: t,
+      };
+
+      // ★ 既にbeforeが取れているなら、ここで上書きして「更新で消えない」
+      const b = BEFORE_AUTO.get(r.key);
+      if(b && b.ok) applyBeforeToRace_(r, b);
+
+      races.push(r);
     }
     return races;
   }
@@ -823,15 +936,20 @@
 
     for(const r of LAST_RACES){
       const pv = prevMap.get(r.key);
+
+      // previews由来で「ある分だけ」上書き（無い場合は既存を保持）
       if(pv && pv.boats){
-        const exh={};
+        const base = { ...(r.exh || {}) };
         for(let lane=1; lane<=6; lane++){
           const obj = pv.boats[String(lane)] || pv.boats[lane] || null;
           const tt = obj?.racer_exhibition_time ?? obj?.exhibition_time ?? null;
-          if(tt!=null) exh[String(lane)] = Number(tt);
+          if(tt!=null){
+            const v = Number(tt);
+            if(Number.isFinite(v) && v > 0) base[String(lane)] = v;
+          }
         }
-        r.exh = exh;
-        r.exhReady = exhReady(exh);
+        r.exh = base;
+        r.exhReady = exhReady(r.exh);
         r._exhAt = t;
       }
 
@@ -843,6 +961,10 @@
         r.final_payout_3f_123 = pay.pay3f123;
         r._resAt = t;
       }
+
+      // ★ ここで必ずbeforeを再適用（これがないと軽更新で“空に戻る”）
+      const b = BEFORE_AUTO.get(r.key);
+      if(b && b.ok) applyBeforeToRace_(r, b);
     }
   }
 
@@ -867,6 +989,9 @@
       }
       if(running.size) await Promise.race(running);
     }
+
+    // beforeが取れた分を全体に反映（念のため）
+    applyBeforeMapToAllRaces_();
 
     renderSummary(LAST_RACES);
     renderList(LAST_RACES);
@@ -905,6 +1030,9 @@
 
       LAST_RACES = buildRacesFromBundle(bundle);
 
+      // ★ 先に持ってるbeforeを全適用（保険）
+      applyBeforeMapToAllRaces_();
+
       setStatus(`取得OK：${LAST_RACES.length}R / ${new Date().toLocaleTimeString()}`);
       renderSummary(LAST_RACES);
       renderList(LAST_RACES);
@@ -925,6 +1053,9 @@
       const bundle = await fetchTodayBundle();
 
       mergePreviewsResultsIntoExisting(bundle);
+
+      // ★ 念のため
+      applyBeforeMapToAllRaces_();
 
       setStatus(`軽更新OK / ${new Date().toLocaleTimeString()}`);
       renderSummary(LAST_RACES);
@@ -952,6 +1083,8 @@
         title: r.title,
         nat2: r.nat2, loc2: r.loc2, motor2: r.motor2,
         exh: r.exh,
+        st: r.st || null,
+        env: r.env || null,
         exhReady: r.exhReady,
         result_top3: r.result_top3 ?? null,
         final_payout_3t_123: r.final_payout_3t_123 ?? null,
@@ -965,7 +1098,7 @@
           before: BEFORE_AUTO.get(r.key) || null
         },
         manualOdds: getManualOdds(r.key) || null,
-        stamps: { progAt:r._progAt||null, exhAt:r._exhAt||null, resAt:r._resAt||null }
+        stamps: { progAt:r._progAt||null, exhAt:r._exhAt||null, beforeAt:r._beforeAt||null, resAt:r._resAt||null }
       };
     });
 
