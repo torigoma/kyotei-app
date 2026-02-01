@@ -176,6 +176,10 @@
   const WORKER_BASE = "https://kyotei-worker.tanabedaichi0831.workers.dev";
   const GAS_URL = "https://script.google.com/macros/s/AKfycbw5C8p_tw_dK9m5OWPrekxfbHz1mNq949fjBq1ymTo8xNCjtIGTRGbmVZYQyO3-O3fo/exec";
 
+  // beforeinfo の自動取得（展示が空のレースだけ）用
+  const BEFORE_FILL_LIMIT = 18;          // 1回の更新で最大何レース取りに行くか
+  const BEFORE_FILL_CONCURRENCY = 2;     // 並列数（上げすぎると重い/ブロックされやすい）
+
   document.getElementById("workerBase").textContent = WORKER_BASE;
 
   const $ = (id) => document.getElementById(id);
@@ -225,7 +229,6 @@
     el.textContent += line + "\n";
     el.scrollTop = el.scrollHeight;
   }
-  function clearSendLog(){ $("sendLog").textContent = "ログ：\n"; }
 
   function ymdToHd(ymd){
     return String(ymd || "").replace(/-/g,"");
@@ -255,11 +258,9 @@
     const info = beforeJs.info || beforeJs.data || null;
     if(!info || typeof info !== "object") return false;
 
-    // exhTimes は { "1":6.70, ... } 形式
     const exhTimes = info.exhTimes || {};
     const stTimes  = info.stTimes  || {};
 
-    // r.exh は「表示/判定の主ソース」にする（beforeがあれば上書き）
     if(!r.exh || typeof r.exh !== "object") r.exh = {};
     let changed = false;
 
@@ -274,7 +275,6 @@
       }
     }
 
-    // STは別保持（今は表示/将来の重み付け用）
     if(!r.st || typeof r.st !== "object") r.st = {};
     for(let lane=1; lane<=6; lane++){
       const s = stTimes[String(lane)];
@@ -286,22 +286,13 @@
       }
     }
 
-    // 環境
     r.env = r.env || {};
-    const windMs = info.windMs;
-    const waveCm = info.waveCm;
-    const airTempC = info.airTempC;
-    const waterTempC = info.waterTempC;
-    const weatherText = info.weatherText;
+    r.env.windMs = (info.windMs ?? r.env.windMs ?? null);
+    r.env.waveCm = (info.waveCm ?? r.env.waveCm ?? null);
+    r.env.airTempC = (info.airTempC ?? r.env.airTempC ?? null);
+    r.env.waterTempC = (info.waterTempC ?? r.env.waterTempC ?? null);
+    r.env.weatherText = (info.weatherText ?? r.env.weatherText ?? "");
 
-    // nullでも保持したいが、UIは "-" 表示なのでそのまま入れる
-    r.env.windMs = windMs ?? r.env.windMs ?? null;
-    r.env.waveCm = waveCm ?? r.env.waveCm ?? null;
-    r.env.airTempC = airTempC ?? r.env.airTempC ?? null;
-    r.env.waterTempC = waterTempC ?? r.env.waterTempC ?? null;
-    r.env.weatherText = (weatherText ?? r.env.weatherText ?? "");
-
-    // スタンプ
     r._beforeAt = (beforeJs.scraped_at ? String(beforeJs.scraped_at).slice(11,19) : nowHms_());
     r.exhReady = exhReady(r.exh);
 
@@ -337,7 +328,6 @@
     const key = r.key;
     if (BEFORE_AUTO.has(key)) {
       const b = BEFORE_AUTO.get(key);
-      // 既にあるなら念のため適用（更新で消えた対策）
       applyBeforeToRace_(r, b);
       return b;
     }
@@ -347,19 +337,52 @@
     if (js && js.ok) {
       BEFORE_AUTO.set(key, js);
 
-      // ★ 取得直後にレースへ反映（ここが今まで無かった）
       const rr = findRaceByKey_(key) || r;
       const changed = applyBeforeToRace_(rr, js);
 
-      // 反映されたらUI再描画（軽めに）
       if(changed){
         renderSummary(LAST_RACES);
         renderList(LAST_RACES);
       }
-
       return js;
     }
     return null;
+  }
+
+  // ★ 展示が空のレースだけ beforeinfo で埋める（今回の追加）
+  async function fillMissingExhByBeforeinfo_(){
+    // exhReady=false かつ まだ before 未取得
+    const targets = LAST_RACES
+      .filter(r => enabledStadiums.has(r.stadium))
+      .filter(r => !r.exhReady)
+      .filter(r => !BEFORE_AUTO.has(r.key))
+      .sort((a,b)=> (a.stadium-b.stadium) || (a.race-b.race))
+      .slice(0, BEFORE_FILL_LIMIT);
+
+    if(targets.length === 0) return;
+
+    const limit = BEFORE_FILL_CONCURRENCY;
+    let i=0;
+    const running = new Set();
+
+    async function runOne(r){
+      try{
+        await ensureBeforeAuto(r);
+      }catch(e){}
+    }
+
+    while(i<targets.length || running.size){
+      while(i<targets.length && running.size<limit){
+        const p = runOne(targets[i++]).finally(()=>running.delete(p));
+        running.add(p);
+      }
+      if(running.size) await Promise.race(running);
+    }
+
+    // 反映漏れ防止
+    applyBeforeMapToAllRaces_();
+    renderSummary(LAST_RACES);
+    renderList(LAST_RACES);
   }
 
   // ----- base metrics -----
@@ -453,7 +476,6 @@
       return { level:"no", reasons, rank, outerFast, d2, d3, nc };
     }
 
-    // final candidate -> decide 3T or 3F
     const e2 = Number(r.exh["2"]);
     const e3 = Number(r.exh["3"]);
     const min23Gap = num("min23Gap") ?? 0.03;
@@ -462,7 +484,6 @@
     let betType = "3F";
     let combo = "1-2-3";
 
-    // ① (3T) if order looks stable: 1 is fastest AND 2-3 gap big enough
     if(rank === 1 && gap >= min23Gap){
       betType = "3T";
       combo = (e2 < e3) ? "1-2-3" : "1-3-2";
@@ -632,7 +653,7 @@
   function renderSummary(races){
     const total = races.length;
     const f1pass = races.filter(r => passFilter1(r).ok).length;
-    let buy=0,no=0,wait=0,filtered=0,finals=0,oddsReady=0,beforeReady=0;
+    let buy=0,no=0,wait=0,filtered=0,finals=0,oddsReady=0,beforeReady=0,exhReadyCount=0;
     for(const r of races){
       const ev = evaluate(r);
       if(ev.plan && ev.plan.level==="final") finals++;
@@ -642,9 +663,10 @@
       else filtered++;
       if(ODDS_AUTO.has(r.key)) oddsReady++;
       if(BEFORE_AUTO.has(r.key)) beforeReady++;
+      if(r.exhReady) exhReadyCount++;
     }
     $("summary").textContent =
-      `取得${total}R / 条件①通過${f1pass}R / 最終候補${finals} / BUY${buy} / NO${no} / WAIT${wait} / 条件外${filtered} / odds${oddsReady} / before${beforeReady}`;
+      `取得${total}R / 展示Ready${exhReadyCount}R / 条件①通過${f1pass}R / 最終候補${finals} / BUY${buy} / NO${no} / WAIT${wait} / 条件外${filtered} / odds${oddsReady} / before${beforeReady}`;
   }
 
   function dispTime(v){
@@ -870,7 +892,6 @@
       const b1 = (pr.boats || []).find(b=>b.racer_boat_number===1);
       if(!b1) continue;
 
-      // previews由来
       const pv = prevMap.get(key);
       const exh = {};
       if(pv && pv.boats){
@@ -908,7 +929,6 @@
         _resAt: t,
       };
 
-      // ★ 既にbeforeが取れているなら、ここで上書きして「更新で消えない」
       const b = BEFORE_AUTO.get(r.key);
       if(b && b.ok) applyBeforeToRace_(r, b);
 
@@ -917,7 +937,7 @@
     return races;
   }
 
-  // ---- lite refresh merges previews/results only (programs fixed) ----
+  // ---- lite refresh merges previews/results only ----
   function mergePreviewsResultsIntoExisting(bundle){
     const previews = bundle.previews?.previews || [];
     const resultsObj = bundle.results || {};
@@ -937,7 +957,6 @@
     for(const r of LAST_RACES){
       const pv = prevMap.get(r.key);
 
-      // previews由来で「ある分だけ」上書き（無い場合は既存を保持）
       if(pv && pv.boats){
         const base = { ...(r.exh || {}) };
         for(let lane=1; lane<=6; lane++){
@@ -962,7 +981,6 @@
         r._resAt = t;
       }
 
-      // ★ ここで必ずbeforeを再適用（これがないと軽更新で“空に戻る”）
       const b = BEFORE_AUTO.get(r.key);
       if(b && b.ok) applyBeforeToRace_(r, b);
     }
@@ -990,7 +1008,6 @@
       if(running.size) await Promise.race(running);
     }
 
-    // beforeが取れた分を全体に反映（念のため）
     applyBeforeMapToAllRaces_();
 
     renderSummary(LAST_RACES);
@@ -1007,6 +1024,10 @@
     if(!LAST_RACES.length){ setAutoStatus("-"); return; }
 
     const need = LAST_RACES.some(r=>{
+      if(!enabledStadiums.has(r.stadium)) return false;
+      // 展示が空なら beforeinfo 埋めがまだ必要
+      if(!r.exhReady && !BEFORE_AUTO.has(r.key)) return true;
+
       if(!passFilter1(r).ok) return false;
       const plan = computePlan(r);
       if(plan.level==="wait") return true;
@@ -1030,12 +1051,14 @@
 
       LAST_RACES = buildRacesFromBundle(bundle);
 
-      // ★ 先に持ってるbeforeを全適用（保険）
       applyBeforeMapToAllRaces_();
 
       setStatus(`取得OK：${LAST_RACES.length}R / ${new Date().toLocaleTimeString()}`);
       renderSummary(LAST_RACES);
       renderList(LAST_RACES);
+
+      // ★ 展示が空なら beforeinfo で埋める（追加）
+      await fillMissingExhByBeforeinfo_();
 
       await prefetchFinalCandidates();
       setSendStatus("準備OK");
@@ -1054,12 +1077,14 @@
 
       mergePreviewsResultsIntoExisting(bundle);
 
-      // ★ 念のため
       applyBeforeMapToAllRaces_();
 
       setStatus(`軽更新OK / ${new Date().toLocaleTimeString()}`);
       renderSummary(LAST_RACES);
       renderList(LAST_RACES);
+
+      // ★ 軽更新でも「展示が空」だけは埋めに行く（追加）
+      await fillMissingExhByBeforeinfo_();
 
       await prefetchFinalCandidates();
       maybeScheduleAutoRefresh();
