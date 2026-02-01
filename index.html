@@ -131,29 +131,14 @@
 
     <div class="hr"></div>
 
-    <div class="pill">シート送信</div>
-    <div class="row" style="margin-top:10px;">
-      <div class="rowL">
-        <button class="btn" id="sendBuyBtn">送信：BUYのみ</button>
-        <button class="btn2" id="sendCandBtn">送信：候補（条件①通過）</button>
-        <button class="btn2" id="sendTestBtn">テスト送信（1行）</button>
-        <button class="btn2" id="saveSnapBtn">スナップショット保存（JSON）</button>
-        <button class="btnDanger" id="clearLocalBtn">オッズ手入力を全消去</button>
-        <button class="btn2" id="clearAutoCacheBtn">自動取得キャッシュ消去</button>
-      </div>
-      <div class="muted mono" id="sendStatus">-</div>
-    </div>
-    <div class="log" id="sendLog">ログ：\n</div>
-
-    <div class="hr"></div>
-
     <div class="row">
       <div class="rowL">
         <button class="btn" id="refreshBtn">更新（programs更新）</button>
         <label class="cb" style="margin:0;">
           <input type="checkbox" id="autoRefresh" checked />
-          自動更新（20秒：previews/resultsのみ）
+          自動更新（20秒）
         </label>
+        <button class="btn2" id="clearAutoCacheBtn">自動取得キャッシュ消去</button>
       </div>
       <div class="muted mono">
         <span id="status">-</span> / <span id="autoStatus">-</span>
@@ -174,14 +159,12 @@
 <script>
 (() => {
   const WORKER_BASE = "https://kyotei-worker.tanabedaichi0831.workers.dev";
-  const GAS_URL = "https://script.google.com/macros/s/AKfycbw5C8p_tw_dK9m5OWPrekxfbHz1mNq949fjBq1ymTo8xNCjtIGTRGbmVZYQyO3-O3fo/exec";
 
-  // 展示が空のレースを beforeinfo で埋める
-  const BEFORE_FILL_LIMIT = 24;
-  const BEFORE_FILL_CONCURRENCY = 2;
+  // ★ここが重要：朝は対象が大量なので上限を上げる＆締切近い順にする
+  const BEFORE_FILL_LIMIT = 120;
+  const BEFORE_FILL_CONCURRENCY = 4;
 
-  // ★空キャッシュ対策（重要）
-  // beforeinfo が「空」だった場合、一定時間経過後は再取得を許す
+  // beforeinfo が空だったら一定時間で再取得
   const BEFORE_EMPTY_RETRY_MS = 15000;
 
   document.getElementById("workerBase").textContent = WORKER_BASE;
@@ -205,33 +188,11 @@
   let enabledStadiums = new Set(Array.from({length:24}, (_,i)=>i+1));
   let LAST_RACES = [];
 
-  // manual odds cache
-  const ODDS_KEY = "kyotei_odds_manual_v2";
-  function loadOddsCache() { try { return JSON.parse(localStorage.getItem(ODDS_KEY) || "{}"); } catch { return {}; } }
-  function saveOddsCache(cache) { try { localStorage.setItem(ODDS_KEY, JSON.stringify(cache)); } catch {} }
-  function getManualOdds(key) {
-    const c = loadOddsCache();
-    return c[key] || { o3t123:"", o3t132:"", o3f123:"" };
-  }
-  function setManualOdds(key, patch) {
-    const c = loadOddsCache();
-    c[key] = { ...(c[key]||{o3t123:"",o3t132:"",o3f123:""}), ...patch };
-    saveOddsCache(c);
-  }
-  function clearManualOddsAll() { try { localStorage.removeItem(ODDS_KEY); } catch {} }
-
   // in-memory caches
-  const ODDS_AUTO = new Map();      // key -> { odds3t, odds3f, scraped_at, __fetched_at_ms }
-  const BEFORE_AUTO = new Map();    // key -> { info, scraped_at, __fetched_at_ms }
+  const BEFORE_AUTO = new Map(); // key -> beforeJson (+ __fetched_at_ms)
 
   function setStatus(msg){ $("status").textContent = msg; }
   function setAutoStatus(msg){ $("autoStatus").textContent = msg; }
-  function setSendStatus(msg){ $("sendStatus").textContent = msg; }
-  function logSend(line){
-    const el=$("sendLog");
-    el.textContent += line + "\n";
-    el.scrollTop = el.scrollHeight;
-  }
 
   function ymdToHd(ymd){
     return String(ymd || "").replace(/-/g,"");
@@ -249,7 +210,6 @@
     return await fetchJson(`${WORKER_BASE}/api/today?v=${Date.now()}`);
   }
 
-  // ----- base metrics -----
   function exhReady(exh){
     for(let lane=1; lane<=3; lane++){
       const t = Number(exh?.[String(lane)]);
@@ -259,7 +219,7 @@
   }
   function beforeHasExh13_(beforeJs){
     if(!beforeJs || !beforeJs.ok) return false;
-    const exh = beforeJs.info?.exhTimes || beforeJs.data?.exhTimes || {};
+    const exh = beforeJs.info?.exhTimes || {};
     for(let lane=1; lane<=3; lane++){
       const t = Number(exh[String(lane)]);
       if(!Number.isFinite(t) || t<=0) return false;
@@ -267,172 +227,10 @@
     return true;
   }
 
-  function passFilter1(r){
-    const minNat2 = num("minNat2");
-    const minLoc2 = num("minLoc2");
-    const minMotor2 = num("minMotor2");
-    const reasons=[];
-    if(minNat2!=null && r.nat2 < minNat2) reasons.push("全国2連率不足");
-    if(minLoc2!=null && r.loc2 < minLoc2) reasons.push("当地2連率不足");
-    if(minMotor2!=null && r.motor2 < minMotor2) reasons.push("モーター2連率不足");
-    return { ok: reasons.length===0, reasons };
-  }
-
-  function exhibitionRank(exh){
-    const arr = Object.entries(exh || {})
-      .map(([lane,t])=>({lane:Number(lane), t:Number(t)}))
-      .filter(x=>Number.isFinite(x.lane) && Number.isFinite(x.t) && x.t>0)
-      .sort((a,b)=>a.t-b.t);
-    const idx = arr.findIndex(x=>x.lane===1);
-    return idx>=0 ? idx+1 : null;
-  }
-
-  function fasterOppLanes(exh){
-    const t1 = Number(exh?.["1"]);
-    if(!Number.isFinite(t1) || t1<=0) return [];
-    const lanes=[];
-    for(let lane=2; lane<=6; lane++){
-      const t = Number(exh?.[String(lane)]);
-      if(Number.isFinite(t) && t>0 && t < t1) lanes.push(lane);
-    }
-    return lanes;
-  }
-
-  function deltaLane(exh, lane){
-    const t1 = Number(exh?.["1"]);
-    const tx = Number(exh?.[String(lane)]);
-    if(!Number.isFinite(t1) || !Number.isFinite(tx) || t1<=0 || tx<=0) return null;
-    return tx - t1;
-  }
-
-  function nearCount(exh, eps){
-    const t1 = Number(exh?.["1"]);
-    if(!Number.isFinite(t1) || t1<=0 || !Number.isFinite(eps)) return null;
-    let c=0;
-    for(let lane=2; lane<=6; lane++){
-      const t = Number(exh?.[String(lane)]);
-      if(!Number.isFinite(t) || t<=0) continue;
-      if(t <= t1 + eps) c++;
-    }
-    return c;
-  }
-
-  function computePlan(r){
-    const f1 = passFilter1(r);
-    if(!f1.ok) return { level:"out", reasons:f1.reasons };
-
-    if(!r.exhReady) return { level:"wait", reasons:["展示待ち"] };
-
-    const reasons=[];
-    const rank = exhibitionRank(r.exh);
-    const maxTimeRank = num("maxTimeRank");
-    if(rank!=null && maxTimeRank!=null && rank>maxTimeRank) reasons.push("展示順位NG");
-
-    const fasterL = fasterOppLanes(r.exh);
-    const outerFast = fasterL.length>0 && fasterL.some(l=>l!==2 && l!==3);
-    if(outerFast) reasons.push("外枠が速い");
-
-    const d2 = deltaLane(r.exh,2);
-    const d3 = deltaLane(r.exh,3);
-    const maxDelta2 = num("maxDelta2");
-    const maxDelta3 = num("maxDelta3");
-    if(d2!=null && maxDelta2!=null && d2>maxDelta2) reasons.push("2号艇が遅い");
-    if(d3!=null && maxDelta3!=null && d3>maxDelta3) reasons.push("3号艇が遅い");
-
-    const eps = num("nearEps") ?? 0.03;
-    const nc = nearCount(r.exh, eps);
-    const maxNearCount = num("maxNearCount");
-    if(nc!=null && maxNearCount!=null && nc>maxNearCount) reasons.push("混戦（1に近い艇が多い）");
-
-    if(reasons.length){
-      return { level:"no", reasons, rank, outerFast, d2, d3, nc };
-    }
-
-    const e2 = Number(r.exh["2"]);
-    const e3 = Number(r.exh["3"]);
-    const min23Gap = num("min23Gap") ?? 0.03;
-    const gap = (Number.isFinite(e2) && Number.isFinite(e3)) ? Math.abs(e2-e3) : 0;
-
-    let betType = "3F";
-    let combo = "1-2-3";
-
-    if(rank === 1 && gap >= min23Gap){
-      betType = "3T";
-      combo = (e2 < e3) ? "1-2-3" : "1-3-2";
-    }
-    return { level:"final", betType, combo, rank, outerFast, d2, d3, nc };
-  }
-
-  function getAutoOddsFor(r, betType, combo){
-    const ao = ODDS_AUTO.get(r.key);
-    if(!ao) return null;
-    if(betType==="3T") return ao.odds3t ? ao.odds3t[combo] : null;
-    if(betType==="3F") return ao.odds3f ? ao.odds3f[combo] : null;
-    return null;
-  }
-
-  function parseOddLoose(v){
-    const s = String(v ?? "").replace(/,/g,"").trim();
-    if(s === "" || s === "." || s === "．") return null;
-    const x = Number(s);
-    return Number.isFinite(x) && x>0 ? x : null;
-  }
-
-  function getManualOddFor(r, betType, combo){
-    const m = getManualOdds(r.key);
-    const v = (betType==="3T")
-      ? (combo==="1-2-3" ? m.o3t123 : combo==="1-3-2" ? m.o3t132 : "")
-      : (betType==="3F" ? m.o3f123 : "");
-    return parseOddLoose(v);
-  }
-
-  function getOddFor(r, betType, combo){
-    return getManualOddFor(r, betType, combo) ?? getAutoOddsFor(r, betType, combo);
-  }
-
-  function oddsPass(betType, odd){
-    if(!$("oddsFilterOn").checked) return { ok:true, reasons:[] };
-    const reasons=[];
-    if(!Number.isFinite(odd) || odd<=0) return { ok:false, reasons:["オッズ未取得/未入力"] };
-
-    if(betType==="3T"){
-      const mn = num("minOdds3t"); const mx = num("maxOdds3t");
-      if(mn!=null && odd<mn) reasons.push("3連単オッズ低すぎ");
-      if(mx!=null && odd>mx) reasons.push("3連単オッズ高すぎ");
-    } else {
-      const mn = num("minOdds3f"); const mx = num("maxOdds3f");
-      if(mn!=null && odd<mn) reasons.push("3連複オッズ低すぎ");
-      if(mx!=null && odd>mx) reasons.push("3連複オッズ高すぎ");
-    }
-    return { ok: reasons.length===0, reasons };
-  }
-
-  function evaluate(r){
-    const f1 = passFilter1(r);
-    if(!f1.ok) return { state:"条件外", msg:`条件外：${f1.reasons.join(" / ")}` };
-
-    const plan = computePlan(r);
-    if(plan.level==="wait") return { state:"WAIT", msg:"WAIT：展示（1〜3）待ち", plan };
-    if(plan.level==="no") return { state:"NO", msg:`NO：${plan.reasons.join(" / ")}`, plan };
-    if(plan.level==="out") return { state:"条件外", msg:`条件外：${plan.reasons.join(" / ")}`, plan };
-
-    const odd = getOddFor(r, plan.betType, plan.combo);
-    const op = oddsPass(plan.betType, odd);
-
-    if(!op.ok){
-      if(op.reasons.includes("オッズ未取得/未入力")) {
-        return { state:"WAIT", msg:`WAIT：オッズ取得/入力待ち（${plan.betType} ${plan.combo}）`, plan };
-      }
-      return { state:"NO", msg:`NO：${op.reasons.join(" / ")}`, plan };
-    }
-    return { state:"BUY", msg:`BUY：${plan.betType} ${plan.combo}（1点）`, plan, odd };
-  }
-
-  // ===== BEFOREINFO -> race へ反映 =====
   function applyBeforeToRace_(r, beforeJs){
     if(!r || !beforeJs || !beforeJs.ok) return false;
-    const info = beforeJs.info || beforeJs.data || null;
-    if(!info || typeof info !== "object") return false;
+    const info = beforeJs.info || null;
+    if(!info) return false;
 
     const exhTimes = info.exhTimes || {};
     const stTimes  = info.stTimes  || {};
@@ -441,9 +239,8 @@
     let changed = false;
 
     for(let lane=1; lane<=6; lane++){
-      const v = exhTimes[String(lane)];
-      const t = Number(v);
-      if(Number.isFinite(t) && t > 0){
+      const t = Number(exhTimes[String(lane)]);
+      if(Number.isFinite(t) && t>0){
         if(r.exh[String(lane)] !== t){
           r.exh[String(lane)] = t;
           changed = true;
@@ -469,72 +266,65 @@
     r.env.waterTempC = (info.waterTempC ?? r.env.waterTempC ?? null);
     r.env.weatherText = (info.weatherText ?? r.env.weatherText ?? "");
 
-    r._beforeAt = (beforeJs.scraped_at ? String(beforeJs.scraped_at).slice(11,19) : nowHms_());
+    r._beforeAt = beforeJs.scraped_at ? String(beforeJs.scraped_at).slice(11,19) : nowHms_();
     r.exhReady = exhReady(r.exh);
+
+    // debug表示用
+    r._beforeOk13 = beforeHasExh13_(beforeJs);
 
     return changed;
   }
 
-  // ---- fetch helpers ----
-  async function ensureOddsAuto(r){
-    const key = r.key;
-    if (ODDS_AUTO.has(key)) return ODDS_AUTO.get(key);
-    const hd = ymdToHd(r.date);
-    const url = `${WORKER_BASE}/api/odds?hd=${hd}&jcd=${r.stadium}&rno=${r.race}&v=${Date.now()}`;
-    const js = await fetchJson(url);
-    if (js && js.ok) {
-      js.__fetched_at_ms = Date.now();
-      ODDS_AUTO.set(key, js);
-      return js;
-    }
-    return null;
-  }
-
-  async function ensureBeforeAuto(r){
+  async function ensureBeforeAuto(r, force=false){
     const key = r.key;
     const now = Date.now();
 
-    // ★ 既にキャッシュがある場合：空なら一定時間で捨てて再取得
-    if (BEFORE_AUTO.has(key)) {
+    if(!force && BEFORE_AUTO.has(key)){
       const cached = BEFORE_AUTO.get(key);
-      const age = now - (cached.__fetched_at_ms || 0);
-
-      // レース側に反映だけは毎回やる
       applyBeforeToRace_(r, cached);
 
+      const age = now - (cached.__fetched_at_ms || 0);
       const ready = beforeHasExh13_(cached);
+
       if(!ready && age > BEFORE_EMPTY_RETRY_MS){
-        // 空が続いてたら一旦捨てて再取得
         BEFORE_AUTO.delete(key);
-      } else {
+      }else{
         return cached;
       }
+    } else if (force) {
+      BEFORE_AUTO.delete(key);
     }
 
     const hd = ymdToHd(r.date);
     const url = `${WORKER_BASE}/api/beforeinfo?hd=${hd}&jcd=${r.stadium}&rno=${r.race}&v=${Date.now()}`;
 
     const js = await fetchJson(url);
-    if (js && js.ok) {
+    if(js && js.ok){
       js.__fetched_at_ms = Date.now();
       BEFORE_AUTO.set(key, js);
-
-      const changed = applyBeforeToRace_(r, js);
-      if(changed){
-        renderSummary(LAST_RACES);
-        renderList(LAST_RACES);
-      }
+      applyBeforeToRace_(r, js);
       return js;
     }
     return null;
   }
 
-  // ★ 展示が空のレースだけ beforeinfo で埋める（空キャッシュでも再取得）
+  // ★締切が近い順に beforeinfo を叩く（これが今回のキモ）
+  function parseCloseMs_(race_closed_at){
+    if(!race_closed_at) return Number.POSITIVE_INFINITY;
+    const ms = Date.parse(race_closed_at);
+    return Number.isFinite(ms) ? ms : Number.POSITIVE_INFINITY;
+  }
+
   async function fillMissingExhByBeforeinfo_(){
     const targets = LAST_RACES
       .filter(r => enabledStadiums.has(r.stadium))
       .filter(r => !r.exhReady)
-      .sort((a,b)=> (a.stadium-b.stadium) || (a.race-b.race))
+      .sort((a,b)=>{
+        const am = parseCloseMs_(a.race_closed_at);
+        const bm = parseCloseMs_(b.race_closed_at);
+        if(am !== bm) return am - bm;
+        return (a.stadium-b.stadium) || (a.race-b.race);
+      })
       .slice(0, BEFORE_FILL_LIMIT);
 
     if(targets.length === 0) return;
@@ -554,83 +344,24 @@
       }
       if(running.size) await Promise.race(running);
     }
-
-    renderSummary(LAST_RACES);
-    renderList(LAST_RACES);
   }
 
-  // ----- results helpers -----
-  function extractTop3(rr){
-    if (!rr || typeof rr !== "object") return null;
-    const stack=[rr];
-    while(stack.length){
-      const cur=stack.pop();
-      if(cur==null) continue;
-      if(typeof cur==="string"){
-        const m=cur.match(/\b([1-6])[-–]([1-6])[-–]([1-6])\b/);
-        if(m) return `${m[1]}-${m[2]}-${m[3]}`;
-      } else if(Array.isArray(cur)){
-        for(const x of cur) stack.push(x);
-      } else if(typeof cur==="object"){
-        for(const k of Object.keys(cur)) stack.push(cur[k]);
-      }
-    }
-    return null;
+  function passFilter1(r){
+    const minNat2 = num("minNat2");
+    const minLoc2 = num("minLoc2");
+    const minMotor2 = num("minMotor2");
+    const reasons=[];
+    if(minNat2!=null && r.nat2 < minNat2) reasons.push("全国2連率不足");
+    if(minLoc2!=null && r.loc2 < minLoc2) reasons.push("当地2連率不足");
+    if(minMotor2!=null && r.motor2 < minMotor2) reasons.push("モーター2連率不足");
+    return { ok: reasons.length===0, reasons };
   }
 
-  function normalizeComboDigits(s){
-    const digits = String(s).match(/[1-6]/g);
-    if (!digits || digits.length < 3) return "";
-    return digits.slice(0,3).join("-");
-  }
-  function toNumberLoose(v){
-    if (v == null) return null;
-    if (typeof v === "object") v = v.value ?? v.amount ?? v.payout ?? v.pay ?? v.money ?? null;
-    const s = String(v).replace(/,/g,"").trim();
-    if (s === "") return null;
-    const numv = Number(s);
-    return Number.isFinite(numv) ? numv : null;
-  }
-  function findPayoutInArray(arr, targetCombo){
-    if(!Array.isArray(arr)) return null;
-    const tgt = normalizeComboDigits(targetCombo);
-    for(const it of arr){
-      if(!it || typeof it!=="object") continue;
-      const combo = it.combination ?? it.combo ?? it.kumi ?? it.kumiawase ?? it.pattern;
-      const pay   = it.payout ?? it.pay ?? it.refund ?? it.amount ?? it.money ?? it.value;
-      if(combo==null) continue;
-      if(normalizeComboDigits(combo) === tgt){
-        return toNumberLoose(pay);
-      }
-    }
-    return null;
-  }
-  function extractPayout123(rr){
-    const out={pay3t123:null,pay3f123:null};
-    if(!rr || typeof rr!=="object") return out;
-
-    const payouts = rr.payouts || rr.payout || rr.pay || rr.refunds || rr.refund || rr.haraimodoshi || rr.refund_list || rr.payout_list || null;
-
-    const trifectaArr =
-      (payouts && (payouts.trifecta || payouts.sanrentan || payouts["3t"] || payouts["3tan"])) ||
-      rr.trifecta || rr.sanrentan || rr["3t"] || null;
-
-    const trioArr =
-      (payouts && (payouts.trio || payouts.sanrenpuku || payouts["3f"] || payouts["3fuku"])) ||
-      rr.trio || rr.sanrenpuku || rr["3f"] || null;
-
-    const hasTri  = Array.isArray(trifectaArr) && trifectaArr.length > 0;
-    const hasTrio = Array.isArray(trioArr)     && trioArr.length > 0;
-
-    const v3t = findPayoutInArray(trifectaArr, "1-2-3");
-    const v3f = findPayoutInArray(trioArr,     "1-2-3");
-
-    out.pay3t123 = (v3t == null && hasTri)  ? 0 : v3t;
-    out.pay3f123 = (v3f == null && hasTrio) ? 0 : v3f;
-
-    if (!Number.isFinite(out.pay3t123)) out.pay3t123 = null;
-    if (!Number.isFinite(out.pay3f123)) out.pay3f123 = null;
-    return out;
+  function evaluate(r){
+    const f1 = passFilter1(r);
+    if(!f1.ok) return { state:"条件外", msg:`条件外：${f1.reasons.join(" / ")}` };
+    if(!r.exhReady) return { state:"WAIT", msg:"WAIT：展示（1〜3）待ち" };
+    return { state:"候補", msg:"展示OK（以降の判定は別ロジックへ）" };
   }
 
   function renderVenueChecks(){
@@ -653,21 +384,8 @@
 
   function renderSummary(races){
     const total = races.length;
-    const f1pass = races.filter(r => passFilter1(r).ok).length;
-    let buy=0,no=0,wait=0,filtered=0,finals=0,oddsReady=0,beforeReady=0,exhReadyCount=0;
-    for(const r of races){
-      const ev = evaluate(r);
-      if(ev.plan && ev.plan.level==="final") finals++;
-      if(ev.state==="BUY") buy++;
-      else if(ev.state==="NO") no++;
-      else if(ev.state==="WAIT") wait++;
-      else filtered++;
-      if(ODDS_AUTO.has(r.key)) oddsReady++;
-      if(BEFORE_AUTO.has(r.key)) beforeReady++;
-      if(r.exhReady) exhReadyCount++;
-    }
-    $("summary").textContent =
-      `取得${total}R / 展示Ready${exhReadyCount}R / 条件①通過${f1pass}R / 最終候補${finals} / BUY${buy} / NO${no} / WAIT${wait} / 条件外${filtered} / odds${oddsReady} / before${beforeReady}`;
+    const exhOk = races.filter(r=>r.exhReady).length;
+    $("summary").textContent = `取得${total}R / 展示Ready${exhOk}R / beforeCache=${BEFORE_AUTO.size}`;
   }
 
   function dispTime(v){
@@ -688,48 +406,12 @@
 
   function makeRaceCard(r){
     const ev = evaluate(r);
-    const manual = getManualOdds(r.key);
-
     const card = document.createElement("div");
     card.className = "raceCard";
     card.dataset.key = r.key;
 
-    const plan = ev.plan;
-    const isFinal = plan && plan.level==="final";
-    const autoOdds = ODDS_AUTO.get(r.key);
-    const autoBefore = BEFORE_AUTO.get(r.key);
-
-    const oddsBlock = isFinal ? `
-      <div class="hr"></div>
-      <div class="muted small">
-        <b>最終候補</b>：${plan.betType} ${plan.combo}（1点）
-        ${autoOdds ? `<span class="tag mono">odds@${autoOdds.scraped_at?.slice(11,19) || "-"}</span>` : `<span class="tag">odds未取得</span>`}
-        ${autoBefore ? `<span class="tag mono">before@${autoBefore.scraped_at?.slice(11,19) || "-"}</span>` : `<span class="tag">before未取得</span>`}
-      </div>
-
-      <div class="grid g3" style="margin-top:10px;">
-        <div>
-          <label>3連単 1-2-3（auto/手）</label>
-          <input data-o3t123 type="text" inputmode="decimal" placeholder="例: 13.9">
-        </div>
-        <div>
-          <label>3連単 1-3-2（auto/手）</label>
-          <input data-o3t132 type="text" inputmode="decimal" placeholder="例: 21.4">
-        </div>
-        <div>
-          <label>3連複 1-2-3（auto/手）</label>
-          <input data-o3f123 type="text" inputmode="decimal" placeholder="例: 3.4">
-        </div>
-      </div>
-
-      <div class="muted small" style="margin-top:8px;">
-        直前（auto）：
-        風=${r.env?.windMs ?? "-"}m/s /
-        波=${r.env?.waveCm ?? "-"}cm /
-        気温=${r.env?.airTempC ?? "-"}℃ /
-        水温=${r.env?.waterTempC ?? "-"}℃
-      </div>
-    ` : ``;
+    const closeTag = r.race_closed_at ? `<span class="tag mono">締切:${String(r.race_closed_at).slice(11,16)}</span>` : `<span class="tag mono">締切:-</span>`;
+    const beforeTag = `<span class="tag mono">before:${r._beforeAt||"-"} ok13:${r._beforeOk13 ? "Y":"N"}</span>`;
 
     card.innerHTML = `
       <div class="row">
@@ -737,10 +419,12 @@
           <span class="pill">${r.venue} ${r.race}R</span>
           <span data-state-badge class="${badgeClassFor(ev.state)}">${ev.state}</span>
           <span class="tag">${r.date}</span>
-          <span class="tag">${r.title}</span>
-          <span class="tag mono">exh:${r._exhAt||"-"} before:${r._beforeAt||"-"}</span>
+          ${closeTag}
+          ${beforeTag}
         </div>
-        <div class="muted">全国${r.nat2}% / 当地${r.loc2}% / M${r.motor2}%</div>
+        <div class="rowL">
+          <button class="btn2" data-fetch-before>before取得</button>
+        </div>
       </div>
 
       <div class="grid g2" style="margin-top:10px;">
@@ -748,45 +432,30 @@
           展示 1:${dispTime(r.exh?.["1"])} 2:${dispTime(r.exh?.["2"])} 3:${dispTime(r.exh?.["3"])}
           4:${dispTime(r.exh?.["4"])} 5:${dispTime(r.exh?.["5"])} 6:${dispTime(r.exh?.["6"])}
           <div class="resultLine">ST 1:${dispSt(r.st?.["1"])} 2:${dispSt(r.st?.["2"])} 3:${dispSt(r.st?.["3"])} 4:${dispSt(r.st?.["4"])} 5:${dispSt(r.st?.["5"])} 6:${dispSt(r.st?.["6"])}</div>
-          ${r.result_top3 ? `<div class="resultLine">結果（参考）: ${r.result_top3}</div>` : ``}
-          <div class="resultLine">払戻123（100円/自動）: 3連単=${Number.isFinite(r.final_payout_3t_123)?r.final_payout_3t_123:"未取得"} / 3連複=${Number.isFinite(r.final_payout_3f_123)?r.final_payout_3f_123:"未取得"}</div>
         </div>
         <div class="muted small">
-          <div data-buy-line>${isFinal ? `買い：<b>${plan.betType} ${plan.combo}</b>${Number.isFinite(ev.odd) ? ` / odds=${ev.odd}` : ``}` : ``}</div>
+          <div>${ev.msg}</div>
+          <div class="small">race_key: <span class="mono">${r.key}</span></div>
         </div>
       </div>
 
-      <div class="muted" style="margin-top:8px;" data-ev-msg>${ev.msg}</div>
-      ${oddsBlock}
+      <div class="muted small" style="margin-top:8px;">
+        env: 風=${r.env?.windMs ?? "-"} / 波=${r.env?.waveCm ?? "-"} / 気温=${r.env?.airTempC ?? "-"} / 水温=${r.env?.waterTempC ?? "-"}
+      </div>
     `;
 
-    if(isFinal){
-      const inp3t123 = card.querySelector("[data-o3t123]");
-      const inp3t132 = card.querySelector("[data-o3t132]");
-      const inp3f123 = card.querySelector("[data-o3f123]");
-
-      const a3t123 = autoOdds?.odds3t?.["1-2-3"];
-      const a3t132 = autoOdds?.odds3t?.["1-3-2"];
-      const a3f123 = autoOdds?.odds3f?.["1-2-3"];
-
-      inp3t123.value = manual.o3t123 || (Number.isFinite(a3t123) ? String(a3t123) : "");
-      inp3t132.value = manual.o3t132 || (Number.isFinite(a3t132) ? String(a3t132) : "");
-      inp3f123.value = manual.o3f123 || (Number.isFinite(a3f123) ? String(a3f123) : "");
-
-      const onInput = () => {
-        setManualOdds(r.key, {
-          o3t123: inp3t123.value,
-          o3t132: inp3t132.value,
-          o3f123: inp3f123.value
-        });
-        renderSummary(LAST_RACES);
-        renderList(LAST_RACES);
-      };
-
-      inp3t123.addEventListener("input", onInput);
-      inp3t132.addEventListener("input", onInput);
-      inp3f123.addEventListener("input", onInput);
-    }
+    const btn = card.querySelector("[data-fetch-before]");
+    btn.addEventListener("click", async ()=>{
+      btn.disabled = true;
+      btn.textContent = "取得中…";
+      try{
+        await ensureBeforeAuto(r, true); // ★強制
+      }catch(e){}
+      btn.textContent = "before取得";
+      btn.disabled = false;
+      renderSummary(LAST_RACES);
+      renderList(LAST_RACES);
+    });
 
     return card;
   }
@@ -796,14 +465,13 @@
     let show = races.slice();
     if(mode==="candidates") show = show.filter(r => passFilter1(r).ok);
 
-    function stateRank(r){
-      const ev = evaluate(r);
-      if(ev.state==="BUY") return 0;
-      if(ev.state==="WAIT") return 1;
-      if(ev.state==="NO") return 2;
-      return 3;
-    }
-    show.sort((a,b)=>(stateRank(a)-stateRank(b)) || a.venue.localeCompare(b.venue) || a.race-b.race);
+    // 締切近い順表示
+    show.sort((a,b)=>{
+      const am = parseCloseMs_(a.race_closed_at);
+      const bm = parseCloseMs_(b.race_closed_at);
+      if(am !== bm) return am - bm;
+      return (a.stadium-b.stadium) || (a.race-b.race);
+    });
 
     const list = $("list");
     list.innerHTML="";
@@ -813,21 +481,13 @@
   function buildRacesFromBundle(bundle){
     const programs = bundle.programs?.programs || [];
     const previews = bundle.previews?.previews || [];
-    const resultsObj = bundle.results || {};
-    const results = resultsObj.results || resultsObj.races || [];
 
     const prevMap = new Map();
     for(const p of previews){
       prevMap.set(`${p.race_date}-${p.race_stadium_number}-${p.race_number}`, p);
     }
-    const resMap = new Map();
-    for(const rr of results){
-      resMap.set(`${rr.race_date}-${rr.race_stadium_number}-${rr.race_number}`, rr);
-    }
 
     const races=[];
-    const t = new Date().toLocaleTimeString();
-
     for(const pr of programs){
       const stadium = pr.race_stadium_number;
       if(!enabledStadiums.has(stadium)) continue;
@@ -837,26 +497,22 @@
       if(!b1) continue;
 
       const pv = prevMap.get(key);
-      const exh = {};
+      const exh={};
       if(pv && pv.boats){
         for(let lane=1; lane<=6; lane++){
           const obj = pv.boats[String(lane)] || pv.boats[lane] || null;
-          const tt = obj?.racer_exhibition_time ?? obj?.exhibition_time ?? null;
-          if(tt!=null) exh[String(lane)] = Number(tt);
+          const t = obj?.racer_exhibition_time ?? obj?.exhibition_time ?? null;
+          if(t!=null) exh[String(lane)] = Number(t);
         }
       }
 
-      const rr = resMap.get(key);
-      const top3 = rr ? extractTop3(rr) : null;
-      const pay = rr ? extractPayout123(rr) : {pay3t123:null, pay3f123:null};
-
-      races.push({
+      const r = {
         key,
         stadium,
         venue: VENUES[stadium],
         race: pr.race_number,
         date: pr.race_date,
-        title: pr.race_title || "一般戦",
+        race_closed_at: pr.race_closed_at ?? null, // ★これが優先順位の鍵
         nat2: Number(b1.racer_national_top_2_percent ?? 0),
         loc2: Number(b1.racer_local_top_2_percent ?? 0),
         motor2: Number(b1.racer_assigned_motor_top_2_percent ?? 0),
@@ -864,42 +520,21 @@
         st: {},
         env: {},
         exhReady: exhReady(exh),
-        result_top3: top3,
-        final_payout_3t_123: pay.pay3t123,
-        final_payout_3f_123: pay.pay3f123,
-        _exhAt: t,
         _beforeAt: null,
-      });
+        _beforeOk13: false,
+      };
+
+      // 既に before キャッシュがあれば即反映（再描画不要）
+      if(BEFORE_AUTO.has(key)){
+        applyBeforeToRace_(r, BEFORE_AUTO.get(key));
+      }
+
+      races.push(r);
     }
     return races;
   }
 
-  async function prefetchFinalCandidates(){
-    const finals = LAST_RACES
-      .map(r => ({r, plan: computePlan(r)}))
-      .filter(x => x.plan.level==="final")
-      .map(x => x.r);
-
-    const limit = 3;
-    let i=0;
-    const running = new Set();
-    async function runOne(r){
-      try{
-        await Promise.allSettled([ensureOddsAuto(r), ensureBeforeAuto(r)]);
-      }catch(e){}
-    }
-    while(i<finals.length || running.size){
-      while(i<finals.length && running.size<limit){
-        const p = runOne(finals[i++]).finally(()=>running.delete(p));
-        running.add(p);
-      }
-      if(running.size) await Promise.race(running);
-    }
-
-    renderSummary(LAST_RACES);
-    renderList(LAST_RACES);
-  }
-
+  // ---- auto refresh ----
   let AUTO_TIMER=null;
   function clearAutoTimer(){ if(AUTO_TIMER){ clearTimeout(AUTO_TIMER); AUTO_TIMER=null; } }
 
@@ -908,24 +543,11 @@
     if(!$("autoRefresh").checked){ setAutoStatus("自動更新OFF"); return; }
     if(!LAST_RACES.length){ setAutoStatus("-"); return; }
 
-    const need = LAST_RACES.some(r=>{
-      if(!enabledStadiums.has(r.stadium)) return false;
-      if(!r.exhReady) return true;
-      if(!passFilter1(r).ok) return false;
-      const plan = computePlan(r);
-      if(plan.level==="wait") return true;
-      if(plan.level==="final"){
-        if(!ODDS_AUTO.has(r.key)) return true;
-        // beforeは空キャッシュがあり得るので、readyで判定
-        const b = BEFORE_AUTO.get(r.key);
-        if(!b || !beforeHasExh13_(b)) return true;
-      }
-      return false;
-    });
-
+    const need = LAST_RACES.some(r => enabledStadiums.has(r.stadium) && !r.exhReady);
     if(!need){ setAutoStatus("対象なし"); return; }
+
     setAutoStatus("20秒後に更新");
-    AUTO_TIMER = setTimeout(refreshLite, 20000);
+    AUTO_TIMER = setTimeout(refreshFull, 20000);
   }
 
   async function refreshFull(){
@@ -934,86 +556,33 @@
       const bundle = await fetchTodayBundle();
       LAST_RACES = buildRacesFromBundle(bundle);
 
+      // まず表示（まだ空でも）
       renderSummary(LAST_RACES);
       renderList(LAST_RACES);
 
-      // ★展示が空なら beforeinfo で埋める（空キャッシュも再取得）
+      // ★展示が空なら締切近い順に beforeinfo で埋める
       await fillMissingExhByBeforeinfo_();
-
-      await prefetchFinalCandidates();
-      setSendStatus("準備OK");
-      setStatus(`取得OK / ${nowHms_()}`);
-      maybeScheduleAutoRefresh();
-    } catch(e){
-      setStatus("取得失敗");
-      logSend("取得失敗: " + String(e));
-      maybeScheduleAutoRefresh();
-    }
-  }
-
-  async function refreshLite(){
-    try{
-      setStatus("更新中…");
-      const bundle = await fetchTodayBundle();
-      // programs固定思想は省略（今は展示埋め優先）
-      LAST_RACES = buildRacesFromBundle(bundle);
 
       renderSummary(LAST_RACES);
       renderList(LAST_RACES);
 
-      await fillMissingExhByBeforeinfo_();
-      await prefetchFinalCandidates();
-
-      setStatus(`更新OK / ${nowHms_()}`);
+      setStatus(`OK / ${nowHms_()}`);
       maybeScheduleAutoRefresh();
     } catch(e){
-      setStatus("更新失敗");
-      logSend("更新失敗: " + String(e));
-      maybeScheduleAutoRefresh();
-    }
-  }
-
-  function renderVenueChecks(){
-    const box = $("venueChecks");
-    box.innerHTML="";
-    const entries = Object.entries(VENUES).map(([k,v])=>({k:Number(k), v})).sort((a,b)=>a.k-b.k);
-    for(const {k,v} of entries){
-      const el = document.createElement("label");
-      el.className="cb";
-      el.innerHTML = `<input type="checkbox" data-st="${k}"> ${k}:${v}`;
-      const cb = el.querySelector("input");
-      cb.checked = enabledStadiums.has(k);
-      cb.addEventListener("change", ()=>{
-        if(cb.checked) enabledStadiums.add(k); else enabledStadiums.delete(k);
-        refreshFull();
-      });
-      box.appendChild(el);
+      setStatus("失敗");
+      setAutoStatus("-");
     }
   }
 
   // ===== wiring =====
   $("refreshBtn").addEventListener("click", refreshFull);
   $("applyBtn").addEventListener("click", ()=>{ renderSummary(LAST_RACES); renderList(LAST_RACES); });
-
   $("autoRefresh").addEventListener("change", maybeScheduleAutoRefresh);
   $("viewMode").addEventListener("change", ()=>renderList(LAST_RACES));
-  $("oddsFilterOn").addEventListener("change", ()=>{ renderSummary(LAST_RACES); renderList(LAST_RACES); });
-
-  $("clearLocalBtn").addEventListener("click", ()=>{
-    if(!confirm("オッズ手入力（ローカル保存）を全消去します。よろしいですか？")) return;
-    clearManualOddsAll();
-    renderSummary(LAST_RACES);
-    renderList(LAST_RACES);
-    setSendStatus("manual odds cleared");
-    logSend("manual odds cleared");
-  });
 
   $("clearAutoCacheBtn").addEventListener("click", async ()=>{
-    if(!confirm("自動取得キャッシュ（odds/before）を消去して再取得します。よろしいですか？")) return;
-    ODDS_AUTO.clear();
+    if(!confirm("beforeキャッシュを消去して再取得します。よろしいですか？")) return;
     BEFORE_AUTO.clear();
-    setSendStatus("auto cache cleared");
-    logSend("auto cache cleared");
     await refreshFull();
   });
 
