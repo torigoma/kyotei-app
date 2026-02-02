@@ -60,14 +60,7 @@
   </div>
 
   <div class="card">
-    <div class="row" style="margin-bottom:8px;">
-      <div class="pill">条件</div>
-      <!-- ★JSON書き出しボタン復活（崩さない：右上のツール群） -->
-      <div class="rowL">
-        <button class="btn2" id="exportJsonBtn">.json書き出し</button>
-        <button class="btn2" id="copyJsonBtn">JSONコピー</button>
-      </div>
-    </div>
+    <div class="pill">条件</div>
 
     <div class="grid g3" style="margin-top:10px;">
       <div><label>全国2連率(%) 下限</label><input id="minNat2" type="number" step="0.1" value="42" /></div>
@@ -247,6 +240,25 @@
     return true;
   }
 
+  // ★追加：env/st が空のままにならないよう「取得できているか」を判定
+  function envReady_(r){
+    const e = r?.env || {};
+    const hasWind = (e.windMs != null && e.windMs !== "");
+    const hasWave = (e.waveCm != null && e.waveCm !== "");
+    const hasWeather = (typeof e.weatherText === "string" && e.weatherText.trim());
+    const hasAir = (e.airTempC != null && e.airTempC !== "");
+    const hasWater = (e.waterTempC != null && e.waterTempC !== "");
+    return !!(hasWind || hasWave || hasWeather || hasAir || hasWater);
+  }
+  function stReady13_(r){
+    const st = r?.st || {};
+    for(let lane=1; lane<=3; lane++){
+      const s = String(st[String(lane)] ?? "").trim();
+      if(!s) return false;
+    }
+    return true;
+  }
+
   function applyBeforeToRace_(r, beforeJs){
     if(!r || !beforeJs || !beforeJs.ok) return false;
     const info = beforeJs.info || null;
@@ -352,7 +364,8 @@
   async function fillMissingExhByBeforeinfo_(){
     const targets = LAST_RACES
       .filter(r => enabledStadiums.has(r.stadium))
-      .filter(r => !r.exhReady)
+      // ★ここが修正点：展示が埋まっていても env/st が空なら beforeinfo を取りに行く
+      .filter(r => (!r.exhReady) || (!envReady_(r)) || (!stReady13_(r)))
       .sort((a,b)=>{
         const am = parseCloseMs_(a.race_closed_at);
         const bm = parseCloseMs_(b.race_closed_at);
@@ -965,7 +978,11 @@
     if(!$("autoRefresh").checked){ setAutoStatus("自動更新OFF"); return; }
     if(!LAST_RACES.length){ setAutoStatus("-"); return; }
 
-    const need = LAST_RACES.some(r => enabledStadiums.has(r.stadium) && (!r.exhReady));
+    // ★ここも修正：展示が埋まっていても env/st が空なら更新対象にする
+    const need = LAST_RACES.some(r =>
+      enabledStadiums.has(r.stadium) &&
+      ((!r.exhReady) || (!envReady_(r)) || (!stReady13_(r)))
+    );
     if(!need){ setAutoStatus("対象なし"); return; }
 
     setAutoStatus("20秒後に更新");
@@ -983,6 +1000,7 @@
       renderList(LAST_RACES);
 
       // ★いい状態の肝：展示が空なら締切近い順に beforeinfo で埋める
+      // ★さらに：env/st が空でも締切近い順に beforeinfo で埋める（今回の修正点）
       await fillMissingExhByBeforeinfo_();
 
       // finalが増えたら odds を取りに行く（オッズ欄を出すため）
@@ -999,104 +1017,6 @@
     }
   }
 
-  // ===== JSON書き出し（復活） =====
-  function getUiSettingsSnapshot_(){
-    const fields = [
-      "minNat2","minLoc2","minMotor2",
-      "maxTimeRank","maxNearCount","nearEps",
-      "maxDelta2","maxDelta3","min23Gap",
-      "minOdds3t","maxOdds3t","minOdds3f","maxOdds3f",
-      "viewMode"
-    ];
-    const out = {};
-    for(const id of fields){
-      const el = $(id);
-      if(!el) continue;
-      if(el.tagName === "SELECT") out[id] = el.value;
-      else out[id] = el.value;
-    }
-    out.oddsFilterOn = !!$("oddsFilterOn")?.checked;
-    out.autoRefresh  = !!$("autoRefresh")?.checked;
-
-    // venue checks
-    out.enabledStadiums = Array.from(enabledStadiums.values()).sort((a,b)=>a-b);
-    return out;
-  }
-
-  function snapshotCaches_(map){
-    // Map -> plain object
-    const obj = {};
-    for(const [k,v] of map.entries()){
-      obj[k] = v;
-    }
-    return obj;
-  }
-
-  function buildSnapshotJson_(){
-    return {
-      kind: "kyotei_ui_snapshot_v2",
-      created_at: new Date().toISOString(),
-      worker_base: WORKER_BASE,
-      ui: getUiSettingsSnapshot_(),
-      races: LAST_RACES,
-      caches: {
-        before_auto: snapshotCaches_(BEFORE_AUTO),
-        odds_auto: snapshotCaches_(ODDS_AUTO)
-      },
-      manual_odds_localstorage: (() => {
-        try { return JSON.parse(localStorage.getItem(ODDS_KEY) || "{}"); } catch { return {}; }
-      })()
-    };
-  }
-
-  function downloadJson_(data, filename){
-    const txt = JSON.stringify(data, null, 2);
-    const blob = new Blob([txt], { type:"application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url), 1000);
-  }
-
-  async function copyJson_(data){
-    const txt = JSON.stringify(data, null, 2);
-    if(navigator.clipboard && window.isSecureContext){
-      await navigator.clipboard.writeText(txt);
-      return true;
-    }
-    // fallback
-    const ta = document.createElement("textarea");
-    ta.value = txt;
-    ta.style.position = "fixed";
-    ta.style.left = "-9999px";
-    document.body.appendChild(ta);
-    ta.select();
-    try{
-      const ok = document.execCommand("copy");
-      ta.remove();
-      return ok;
-    }catch{
-      ta.remove();
-      return false;
-    }
-  }
-
-  function makeSnapshotFilename_(){
-    const pad = (n)=>String(n).padStart(2,"0");
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = pad(d.getMonth()+1);
-    const dd = pad(d.getDate());
-    const hh = pad(d.getHours());
-    const mm = pad(d.getMinutes());
-    const ss = pad(d.getSeconds());
-    return `snapshot_${y}${m}${dd}_${hh}${mm}${ss}.json`;
-  }
-
   // ===== wiring =====
   $("refreshBtn").addEventListener("click", refreshFull);
   $("applyBtn").addEventListener("click", ()=>{ renderSummary(LAST_RACES); renderList(LAST_RACES); });
@@ -1109,28 +1029,6 @@
     BEFORE_AUTO.clear();
     ODDS_AUTO.clear();
     await refreshFull();
-  });
-
-  // ★JSON書き出しボタン（復活）
-  $("exportJsonBtn").addEventListener("click", ()=>{
-    try{
-      const snap = buildSnapshotJson_();
-      downloadJson_(snap, makeSnapshotFilename_());
-      setStatus(`snapshot exported / ${nowHms_()}`);
-    }catch(e){
-      setStatus("snapshot export failed");
-    }
-  });
-
-  // ★JSONコピー（おまけ：貼り付け用）
-  $("copyJsonBtn").addEventListener("click", async ()=>{
-    try{
-      const snap = buildSnapshotJson_();
-      const ok = await copyJson_(snap);
-      setStatus(ok ? `snapshot copied / ${nowHms_()}` : "snapshot copy failed");
-    }catch(e){
-      setStatus("snapshot copy failed");
-    }
   });
 
   // init
