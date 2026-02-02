@@ -133,6 +133,10 @@
     <div class="row">
       <div class="rowL">
         <button class="btn" id="refreshBtn">更新（programs更新）</button>
+
+        <!-- ★復活：.json書き出し -->
+        <button class="btn2" id="exportBtn">.json書き出し</button>
+
         <label class="cb" style="margin:0;">
           <input type="checkbox" id="autoRefresh" checked />
           自動更新（20秒）
@@ -240,7 +244,7 @@
     return true;
   }
 
-  // ★追加：env/st が空のままにならないよう「取得できているか」を判定
+  // ★env/st が空のままにならないよう「取得できているか」を判定
   function envReady_(r){
     const e = r?.env || {};
     const hasWind = (e.windMs != null && e.windMs !== "");
@@ -364,7 +368,6 @@
   async function fillMissingExhByBeforeinfo_(){
     const targets = LAST_RACES
       .filter(r => enabledStadiums.has(r.stadium))
-      // ★ここが修正点：展示が埋まっていても env/st が空なら beforeinfo を取りに行く
       .filter(r => (!r.exhReady) || (!envReady_(r)) || (!stReady13_(r)))
       .sort((a,b)=>{
         const am = parseCloseMs_(a.race_closed_at);
@@ -573,14 +576,12 @@
   function extractTop3(rr){
     if(!rr || typeof rr !== "object") return null;
 
-    // 1) 直で入ってる系（ここで 0-0-0 は弾く）
     const direct =
       rr.result_top3 ?? rr.resultTop3 ?? rr.top3 ?? rr.kekka ?? rr.result ?? null;
 
     const s1 = pickTop3FromString_(direct);
     if(s1) return s1;
 
-    // 2) よくある 1着/2着/3着 フィールド（0を弾く）
     const candA =
       rr.first ?? rr["1st"] ?? rr.rank1 ?? rr.win ??
       rr.race_first ?? rr.race_1st ?? rr.racer_1st ?? null;
@@ -594,7 +595,6 @@
     const n1 = normalizeTop3Strict_(candA, candB, candC);
     if(n1) return n1;
 
-    // 3) 深掘り探索：オブジェクト/配列を走査して "1-2-3" を拾う（0-0-0は拾わない）
     const stack=[rr];
     while(stack.length){
       const cur = stack.pop();
@@ -603,7 +603,6 @@
       const s = pickTop3FromString_(cur);
       if(s) return s;
 
-      // 数字っぽい1-3着が3つまとまってるケース
       if(typeof cur === "object" && !Array.isArray(cur)){
         const a = cur.first ?? cur["1st"] ?? cur.rank1 ?? cur.win ?? cur.r1 ?? cur.one ?? null;
         const b = cur.second ?? cur["2nd"] ?? cur.rank2 ?? cur.place ?? cur.r2 ?? cur.two ?? null;
@@ -712,7 +711,6 @@
     card.className = "raceCard";
     card.dataset.key = r.key;
 
-    // ★「開催時間が書いてある」を復活：あなたの土台通り race_closed_at を表示（締切）
     const closeTag = r.race_closed_at
       ? `<span class="tag mono">締切:${String(r.race_closed_at).slice(11,16)}</span>`
       : `<span class="tag mono">締切:-</span>`;
@@ -756,7 +754,6 @@
           ${beforeTag}
         </div>
         <div class="rowL">
-          <!-- ★before取得ボタンを確実に復活 -->
           <button class="btn2" data-fetch-before>before取得</button>
         </div>
       </div>
@@ -782,7 +779,6 @@
       ${oddsBlock}
     `;
 
-    // before取得（強制）＋ 展示が埋まって final なら odds も取得
     const btn = card.querySelector("[data-fetch-before]");
     btn.addEventListener("click", async ()=>{
       btn.disabled = true;
@@ -800,7 +796,6 @@
       renderList(LAST_RACES);
     });
 
-    // odds inputs
     if(isFinal){
       const manual = getManualOdds(r.key);
       const autoOdds = ODDS_AUTO.get(r.key);
@@ -853,7 +848,6 @@
     let show = races.slice();
     if(mode==="candidates") show = show.filter(r => passFilter1(r).ok);
 
-    // 締切近い順
     show.sort((a,b)=>{
       const am = parseCloseMs_(a.race_closed_at);
       const bm = parseCloseMs_(b.race_closed_at);
@@ -903,8 +897,6 @@
 
       const rr = resMap.get(key);
       const top3 = rr ? extractTop3(rr) : null;
-
-      // 終了フラグ（results側が入ってるなら終了扱い）
       const isFinished = !!rr;
 
       const r = {
@@ -931,7 +923,6 @@
         _beforeOk13: false,
       };
 
-      // before cache反映（壊さない）
       if(BEFORE_AUTO.has(key)){
         applyBeforeToRace_(r, BEFORE_AUTO.get(key));
       }
@@ -978,7 +969,6 @@
     if(!$("autoRefresh").checked){ setAutoStatus("自動更新OFF"); return; }
     if(!LAST_RACES.length){ setAutoStatus("-"); return; }
 
-    // ★ここも修正：展示が埋まっていても env/st が空なら更新対象にする
     const need = LAST_RACES.some(r =>
       enabledStadiums.has(r.stadium) &&
       ((!r.exhReady) || (!envReady_(r)) || (!stReady13_(r)))
@@ -995,15 +985,10 @@
       const bundle = await fetchTodayBundle();
       LAST_RACES = buildRacesFromBundle(bundle);
 
-      // まず表示
       renderSummary(LAST_RACES);
       renderList(LAST_RACES);
 
-      // ★いい状態の肝：展示が空なら締切近い順に beforeinfo で埋める
-      // ★さらに：env/st が空でも締切近い順に beforeinfo で埋める（今回の修正点）
       await fillMissingExhByBeforeinfo_();
-
-      // finalが増えたら odds を取りに行く（オッズ欄を出すため）
       await prefetchOddsForFinals_();
 
       renderSummary(LAST_RACES);
@@ -1015,6 +1000,68 @@
       setStatus("失敗");
       setAutoStatus("-");
     }
+  }
+
+  // ===== .json 書き出し（復活） =====
+  function pad2(n){ return String(n).padStart(2,"0"); }
+  function makeTimestamp_(){
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = pad2(d.getMonth()+1);
+    const da = pad2(d.getDate());
+    const hh = pad2(d.getHours());
+    const mm = pad2(d.getMinutes());
+    const ss = pad2(d.getSeconds());
+    return `${y}${m}${da}_${hh}${mm}${ss}`;
+  }
+  function mapToObj_(mp){
+    const o = {};
+    for(const [k,v] of mp.entries()) o[k] = v;
+    return o;
+  }
+  function collectSettings_(){
+    const ids = [
+      "minNat2","minLoc2","minMotor2",
+      "maxTimeRank","maxNearCount","nearEps",
+      "maxDelta2","maxDelta3","min23Gap",
+      "minOdds3t","maxOdds3t","minOdds3f","maxOdds3f",
+      "viewMode","oddsFilterOn","autoRefresh"
+    ];
+    const out = {};
+    for(const id of ids){
+      const el = $(id);
+      if(!el) continue;
+      out[id] = (el.type === "checkbox") ? !!el.checked : el.value;
+    }
+    return out;
+  }
+  function downloadJson_(obj, filename){
+    const text = JSON.stringify(obj, null, 2);
+    const blob = new Blob([text], { type:"application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 1000);
+  }
+  function exportSnapshot_(){
+    const snap = {
+      generated_at: new Date().toISOString(),
+      worker_base: WORKER_BASE,
+      enabled_stadiums: Array.from(enabledStadiums).sort((a,b)=>a-b),
+      settings: collectSettings_(),
+      races: LAST_RACES,
+      caches: {
+        before_auto: mapToObj_(BEFORE_AUTO),
+        odds_auto: mapToObj_(ODDS_AUTO),
+        manual_odds: loadOddsCache()
+      }
+    };
+    const fname = `kyotei_snapshot_${makeTimestamp_()}.json`;
+    downloadJson_(snap, fname);
   }
 
   // ===== wiring =====
@@ -1030,6 +1077,9 @@
     ODDS_AUTO.clear();
     await refreshFull();
   });
+
+  // ★復活：書き出しボタン
+  $("exportBtn").addEventListener("click", exportSnapshot_);
 
   // init
   renderVenueChecks();
