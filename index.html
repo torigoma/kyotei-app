@@ -82,6 +82,36 @@
 
     <div class="hr"></div>
 
+    <div class="pill">利益寄りガード（外れ削減）</div>
+    <div class="grid g2" style="margin-top:10px;">
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="profitGuardsOn" checked />
+        ガードを有効化（推奨）
+      </label>
+      <div class="muted small" style="align-self:center;">
+        ※当たりを削らず外れを落とす目的の追加判定（3T格下げ/荒れ回避/ST出負け回避）
+      </div>
+    </div>
+
+    <div class="grid g3" style="margin-top:10px;">
+      <div><label>荒れ判定：風速 >=（m）</label><input id="roughWind" type="number" step="0.1" value="5" /></div>
+      <div><label>荒れ判定：波高 >=（cm）</label><input id="roughWave" type="number" step="0.1" value="5" /></div>
+      <div><label>荒れ×ST優位なし → 見送り</label>
+        <select id="roughNoMode">
+          <option value="no" selected>NOにする（推奨）</option>
+          <option value="downgrade">3Fへ格下げ</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="grid g3" style="margin-top:10px;">
+      <div><label>ST出負け：st1 - min(st2,st3) >（秒）</label><input id="stOutmuscle" type="number" step="0.01" value="0.05" /></div>
+      <div><label>3T格下げ：|st2-st3| <（秒）</label><input id="st23Tie" type="number" step="0.01" value="0.05" /></div>
+      <div><label>3T格下げ：|exh2-exh3| <（秒）</label><input id="exh23Tie" type="number" step="0.01" value="0.02" /></div>
+    </div>
+
+    <div class="hr"></div>
+
     <div class="pill">オッズフィルタ（任意）</div>
     <div class="grid g2" style="margin-top:10px;">
       <label class="cb" style="margin:0;">
@@ -134,7 +164,6 @@
       <div class="rowL">
         <button class="btn" id="refreshBtn">更新（programs更新）</button>
 
-        <!-- ★復活：.json書き出し -->
         <button class="btn2" id="exportBtn">.json書き出し</button>
 
         <label class="cb" style="margin:0;">
@@ -163,7 +192,7 @@
 (() => {
   const WORKER_BASE = "https://kyotei-worker.tanabedaichi0831.workers.dev";
 
-  // ★いい状態の土台：締切近い順 before 埋め
+  // ★締切近い順 before 埋め
   const BEFORE_FILL_LIMIT = 120;
   const BEFORE_FILL_CONCURRENCY = 4;
   const BEFORE_EMPTY_RETRY_MS = 15000;
@@ -244,7 +273,7 @@
     return true;
   }
 
-  // ★env/st が空のままにならないよう「取得できているか」を判定
+  // env/st が空のままにならないよう「取得できているか」を判定
   function envReady_(r){
     const e = r?.env || {};
     const hasWind = (e.windMs != null && e.windMs !== "");
@@ -261,6 +290,49 @@
       if(!s) return false;
     }
     return true;
+  }
+
+  // ST token -> number (F.03 -> -0.03, .12 -> 0.12, 0.12 -> 0.12)
+  function parseStToNum_(s){
+    const t = String(s ?? "").trim().toUpperCase();
+    if(!t) return null;
+    if(t.startsWith("F.")){
+      const x = Number(t.slice(1)); // ".03" => 0.03
+      return Number.isFinite(x) ? -x : null;
+    }
+    if(t.startsWith(".")){
+      const x = Number(t);
+      return Number.isFinite(x) ? x : null;
+    }
+    const x = Number(t);
+    return Number.isFinite(x) ? x : null;
+  }
+
+  function stBestAmong123_(r){
+    const s1 = parseStToNum_(r?.st?.["1"]);
+    const s2 = parseStToNum_(r?.st?.["2"]);
+    const s3 = parseStToNum_(r?.st?.["3"]);
+    if(!Number.isFinite(s1) || !Number.isFinite(s2) || !Number.isFinite(s3)) return null;
+    const best = Math.min(s1,s2,s3);
+    return (s1 === best);
+  }
+  function stMin23_(r){
+    const s2 = parseStToNum_(r?.st?.["2"]);
+    const s3 = parseStToNum_(r?.st?.["3"]);
+    if(!Number.isFinite(s2) || !Number.isFinite(s3)) return null;
+    return Math.min(s2,s3);
+  }
+  function st1Outmuscled_(r, thr){
+    const s1 = parseStToNum_(r?.st?.["1"]);
+    const m23 = stMin23_(r);
+    if(!Number.isFinite(s1) || !Number.isFinite(m23) || !Number.isFinite(thr)) return null;
+    return (s1 - m23) > thr;
+  }
+  function st23AbsGap_(r){
+    const s2 = parseStToNum_(r?.st?.["2"]);
+    const s3 = parseStToNum_(r?.st?.["3"]);
+    if(!Number.isFinite(s2) || !Number.isFinite(s3)) return null;
+    return Math.abs(s2 - s3);
   }
 
   function applyBeforeToRace_(r, beforeJs){
@@ -396,7 +468,7 @@
     }
   }
 
-  // ====== 判定ロジック（オッズ欄を出すための final を維持） ======
+  // ====== 判定ロジック ======
   function passFilter1(r){
     const minNat2 = num("minNat2");
     const minLoc2 = num("minLoc2");
@@ -477,6 +549,7 @@
       return { level:"no", reasons, rank, outerFast, d2, d3, nc };
     }
 
+    // --- ここから最終候補 ---
     const e2 = Number(r.exh["2"]);
     const e3 = Number(r.exh["3"]);
     const min23Gap = num("min23Gap") ?? 0.03;
@@ -488,6 +561,53 @@
     if(rank === 1 && gap >= min23Gap){
       betType = "3T";
       combo = (e2 < e3) ? "1-2-3" : "1-3-2";
+    }
+
+    // ====== 利益寄りガード（外れ削減） ======
+    if($("profitGuardsOn")?.checked){
+      const windThr = num("roughWind") ?? 5;
+      const waveThr = num("roughWave") ?? 5;
+      const stOut = num("stOutmuscle") ?? 0.05;
+      const st23Tie = num("st23Tie") ?? 0.05;
+      const exh23Tie = num("exh23Tie") ?? 0.02;
+      const roughMode = $("roughNoMode")?.value || "no";
+
+      const wind = Number(r?.env?.windMs);
+      const wave = Number(r?.env?.waveCm);
+      const isRough = (Number.isFinite(wind) && wind >= windThr) || (Number.isFinite(wave) && wave >= waveThr);
+
+      const st1best = stBestAmong123_(r); // true/false/null
+      const outmuscled = st1Outmuscled_(r, stOut); // true/false/null
+      const st23gap = st23AbsGap_(r); // number|null
+      const exh23gap = (Number.isFinite(e2) && Number.isFinite(e3)) ? Math.abs(e2-e3) : null;
+
+      // 1) 荒れ水面×ST優位なし → 見送り（最重要）
+      if(isRough && st1best === false){
+        if(roughMode === "downgrade"){
+          betType = "3F";
+          combo = "1-2-3";
+          // そのまま続行（評価は3Fとして）
+        }else{
+          return { level:"no", reasons:["荒れ水面×ST優位なし"], rank, outerFast, d2, d3, nc, betType, combo, _guard:"rough_no" };
+        }
+      }
+
+      // 2) 1号艇出負け（2/3に対して遅い） → 見送り
+      if(outmuscled === true){
+        return { level:"no", reasons:["ST出負け（1が2/3より遅い）"], rank, outerFast, d2, d3, nc, betType, combo, _guard:"st_out" };
+      }
+
+      // 3) 3Tの順序ブレ対策：拮抗なら3Fへ格下げ
+      if(betType === "3T"){
+        const shouldDowngrade =
+          (st23gap == null) || (st23gap < st23Tie) ||
+          (exh23gap != null && exh23gap < exh23Tie);
+
+        if(shouldDowngrade){
+          betType = "3F";
+          combo = "1-2-3";
+        }
+      }
     }
 
     return { level:"final", betType, combo, rank, outerFast, d2, d3, nc };
@@ -543,7 +663,9 @@
 
     const plan = computePlan(r);
     if(plan.level==="wait") return { state:"WAIT", msg:"WAIT：展示（1〜3）待ち", plan };
-    if(plan.level==="no")   return { state:"NO", msg:`NO：${plan.reasons.join(" / ")}`, plan };
+    if(plan.level==="no"){
+      return { state:"NO", msg:`NO：${plan.reasons.join(" / ")}`, plan };
+    }
     if(plan.level==="out")  return { state:"条件外", msg:`条件外：${plan.reasons.join(" / ")}`, plan };
 
     const odd = getOddFor(r, plan.betType, plan.combo);
@@ -1002,7 +1124,7 @@
     }
   }
 
-  // ===== .json 書き出し（復活） =====
+  // ===== .json 書き出し =====
   function pad2(n){ return String(n).padStart(2,"0"); }
   function makeTimestamp_(){
     const d = new Date();
@@ -1024,6 +1146,7 @@
       "minNat2","minLoc2","minMotor2",
       "maxTimeRank","maxNearCount","nearEps",
       "maxDelta2","maxDelta3","min23Gap",
+      "profitGuardsOn","roughWind","roughWave","roughNoMode","stOutmuscle","st23Tie","exh23Tie",
       "minOdds3t","maxOdds3t","minOdds3f","maxOdds3f",
       "viewMode","oddsFilterOn","autoRefresh"
     ];
@@ -1078,7 +1201,6 @@
     await refreshFull();
   });
 
-  // ★復活：書き出しボタン
   $("exportBtn").addEventListener("click", exportSnapshot_);
 
   // init
