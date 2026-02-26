@@ -98,6 +98,17 @@
       </div>
     </div>
 
+    <!-- ★追加（最小変更）：ソフトNO理由は 3Fへ安全化 -->
+    <div class="grid g2" style="margin-top:10px;">
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="softNoTo3fOn" checked />
+        展示順位NG/外枠が速い/混戦 は NOにせず 3F固定へ安全化（推奨）
+      </label>
+      <div class="muted small" style="align-self:center;">
+        ※「NOで{1,2,3}を削る」機会損失を減らす（今日の分析反映）
+      </div>
+    </div>
+
     <div class="grid g3" style="margin-top:10px;">
       <div><label>荒れ判定：風速 >=（m）</label><input id="roughWind" type="number" step="0.1" value="5" /></div>
       <div><label>荒れ判定：波高 >=（cm）</label><input id="roughWave" type="number" step="0.1" value="5" /></div>
@@ -534,10 +545,17 @@
     const minLoc2 = num("minLoc2");
     const minMotor2 = num("minMotor2");
     const reasons=[];
+
     if(minNat2!=null && r.nat2 < minNat2) reasons.push("全国2連率不足");
-    if(minLoc2!=null && r.loc2 < minLoc2) reasons.push("当地2連率不足");
+
+    // ★最小変更：loc2=0 は欠損扱い（当地チェックをスキップ）
+    const locMissing = (Number(r.loc2) === 0);
+    if(!locMissing){
+      if(minLoc2!=null && r.loc2 < minLoc2) reasons.push("当地2連率不足");
+    }
+
     if(minMotor2!=null && r.motor2 < minMotor2) reasons.push("モーター2連率不足");
-    return { ok: reasons.length===0, reasons };
+    return { ok: reasons.length===0, reasons, _locMissing: locMissing };
   }
 
   function exhibitionRank(exh){
@@ -595,8 +613,8 @@
 
   function computePlan(r){
     const f1 = passFilter1(r);
-    if(!f1.ok) return { level:"out", reasons:f1.reasons };
-    if(!r.exhReady) return { level:"wait", reasons:["展示待ち"] };
+    if(!f1.ok) return { level:"out", reasons:f1.reasons, _locMissing: f1._locMissing };
+    if(!r.exhReady) return { level:"wait", reasons:["展示待ち"], _locMissing: f1._locMissing };
 
     const reasons=[];
     const rank = exhibitionRank(r.exh);
@@ -619,8 +637,26 @@
     const maxNearCount = num("maxNearCount");
     if(nc!=null && maxNearCount!=null && nc>maxNearCount) reasons.push("混戦（1に近い艇が多い）");
 
+    // ★最小変更：ソフトNO理由は 3F固定へ安全化（ON時）
     if(reasons.length){
-      return { level:"no", reasons, rank, outerFast, d2, d3, nc };
+      const softOn = $("softNoTo3fOn")?.checked;
+      if(softOn){
+        const SOFT = new Set(["展示順位NG","外枠が速い","混戦（1に近い艇が多い）"]);
+        const allSoft = reasons.every(x => SOFT.has(x));
+        if(allSoft){
+          return {
+            level:"final",
+            betType:"3F",
+            combo:"1-2-3",
+            rank, outerFast, d2, d3, nc,
+            _softSafe:true,
+            _softReasons: reasons.slice(),
+            _locMissing: f1._locMissing
+          };
+        }
+      }
+
+      return { level:"no", reasons, rank, outerFast, d2, d3, nc, _locMissing: f1._locMissing };
     }
 
     // --- ここから最終候補 ---
@@ -663,9 +699,8 @@
           if(hwMode === "downgrade"){
             betType = "3F";
             combo = "1-2-3";
-            // 続行（3Fとして評価）
           }else{
-            return { level:"no", reasons:[`波高>=${hw}cm（hard）`], rank, outerFast, d2, d3, nc, betType, combo, _guard:"wave_hard" };
+            return { level:"no", reasons:[`波高>=${hw}cm（hard）`], rank, outerFast, d2, d3, nc, betType, combo, _guard:"wave_hard", _locMissing: f1._locMissing };
           }
         }
       }
@@ -675,15 +710,14 @@
         if(roughMode === "downgrade"){
           betType = "3F";
           combo = "1-2-3";
-          // 続行（3Fとして評価）
         }else{
-          return { level:"no", reasons:["荒れ水面×ST優位なし"], rank, outerFast, d2, d3, nc, betType, combo, _guard:"rough_no" };
+          return { level:"no", reasons:["荒れ水面×ST優位なし"], rank, outerFast, d2, d3, nc, betType, combo, _guard:"rough_no", _locMissing: f1._locMissing };
         }
       }
 
       // 2) 1号艇出負け（2/3に対して遅い） → 見送り
       if(outmuscled === true){
-        return { level:"no", reasons:["ST出負け（1が2/3より遅い）"], rank, outerFast, d2, d3, nc, betType, combo, _guard:"st_out" };
+        return { level:"no", reasons:["ST出負け（1が2/3より遅い）"], rank, outerFast, d2, d3, nc, betType, combo, _guard:"st_out", _locMissing: f1._locMissing };
       }
 
       // 3) 3Tの順序ブレ対策：拮抗なら3Fへ格下げ
@@ -699,7 +733,7 @@
       }
     }
 
-    return { level:"final", betType, combo, rank, outerFast, d2, d3, nc };
+    return { level:"final", betType, combo, rank, outerFast, d2, d3, nc, _locMissing: f1._locMissing };
   }
 
   function parseOddLoose(v){
@@ -860,17 +894,11 @@
       const wouldWin3T123 = isExact_(top3, "1-2-3");
       const wouldWin3T132 = isExact_(top3, "1-3-2");
 
-      // NO時点で「このレースは当たってたか」を判定（あなたの検証基準）
-      // ・NOでも、3Fなら拾えた/3Tなら拾えた、の可能性を見る
-      const isHitIf3F = wouldWin3F;
-      const isHitIf3T = wouldWin3T123 || wouldWin3T132;
-
-      const hit = isHitIf3F || isHitIf3T;
+      const hit = wouldWin3F || wouldWin3T123 || wouldWin3T132;
 
       let rescue = "-";
-      // rough_no は「3F格下げ」なら拾える可能性が高い（あなたの方針）
       if(g === "rough_no"){
-        rescue = wouldWin3F ? "3F固定なら拾えた" : (isHitIf3T ? "3Tなら拾えた可能性" : "-");
+        rescue = wouldWin3F ? "3F固定なら拾えた" : (wouldWin3T123||wouldWin3T132 ? "3Tなら拾えた可能性" : "-");
       } else if(g === "wave_hard"){
         rescue = wouldWin3F ? "3F固定なら拾えた" : "-";
       } else if(g === "st_out"){
@@ -901,7 +929,6 @@
       else noMiss.push(item);
     }
 
-    // 見やすさ：締切→会場→R
     const sortFn = (a,b)=>{
       if(a.closed !== b.closed) return String(a.closed).localeCompare(String(b.closed));
       if(a.stadium !== b.stadium) return a.stadium - b.stadium;
@@ -982,7 +1009,6 @@
     $("summary").textContent =
       `取得${total}R / 条件①通過${f1pass}R / 最終候補${finals} / BUY${buy} / NO${no} / WAIT${wait} / 条件外${filtered} / odds${oddsReady} / before${beforeReady} / result${resReady}`;
 
-    // NO検証を開いている時は自動更新
     renderNoDiagnostics_(races);
   }
 
@@ -1068,6 +1094,10 @@
       </div>
     ` : ``;
 
+    const softBadge = (plan && plan._softSafe)
+      ? `<span class="tag mono">safe:3F（softNO）</span>`
+      : ``;
+
     card.innerHTML = `
       <div class="row">
         <div>
@@ -1076,6 +1106,8 @@
           <span class="tag">${r.date}</span>
           ${closeTag}
           ${beforeTag}
+          ${softBadge}
+          ${(plan && plan._locMissing) ? `<span class="tag mono">loc2:missing</span>` : ``}
         </div>
         <div class="rowL">
           <button class="btn2" data-fetch-before>before取得</button>
@@ -1348,7 +1380,7 @@
       "minNat2","minLoc2","minMotor2",
       "maxTimeRank","maxNearCount","nearEps",
       "maxDelta2","maxDelta3","min23Gap",
-      "profitGuardsOn","roughWind","roughWave","roughNoMode","stOutmuscle","st23Tie","exh23Tie",
+      "profitGuardsOn","softNoTo3fOn","roughWind","roughWave","roughNoMode","stOutmuscle","st23Tie","exh23Tie",
       "hardWaveOn","hardWave","hardWaveMode",
       "minOdds3t","maxOdds3t","minOdds3f","maxOdds3f",
       "viewMode","oddsFilterOn","autoRefresh"
