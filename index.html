@@ -98,7 +98,6 @@
       </div>
     </div>
 
-    <!-- ★追加（最小変更）：ソフトNO理由は 3Fへ安全化 -->
     <div class="grid g2" style="margin-top:10px;">
       <label class="cb" style="margin:0;">
         <input type="checkbox" id="softNoTo3fOn" checked />
@@ -267,6 +266,9 @@
   const BEFORE_FILL_LIMIT = 120;
   const BEFORE_FILL_CONCURRENCY = 4;
   const BEFORE_EMPTY_RETRY_MS = 15000;
+
+  // ★Δ2の「条件付き0.14」上限（UIは増やさずロジックだけ）
+  const DELTA2_GREY_MAX = 0.14;
 
   document.getElementById("workerBase").textContent = WORKER_BASE;
 
@@ -548,7 +550,7 @@
 
     if(minNat2!=null && r.nat2 < minNat2) reasons.push("全国2連率不足");
 
-    // ★最小変更：loc2=0 は欠損扱い（当地チェックをスキップ）
+    // loc2=0 は欠損扱い（当地チェックをスキップ）
     const locMissing = (Number(r.loc2) === 0);
     if(!locMissing){
       if(minLoc2!=null && r.loc2 < minLoc2) reasons.push("当地2連率不足");
@@ -611,6 +613,25 @@
     return typeof top3==="string" && top3 === combo;
   }
 
+  // ★追加：Δ2グレー帯( maxDelta2〜0.14 )を許すかの安全判定
+  function canAllowDelta2Grey_(r, ctx){
+    // ctx: { rankOk, outerFast, ncOk, hasEnv, isRough, hasSt13, outmuscled }
+    // 必須：env/STが取れていること（欠損なら「安全」と言えないので許可しない）
+    if(!ctx.hasEnv) return false;
+    if(!ctx.hasSt13) return false;
+
+    // 荒れ・ST出負けはNG
+    if(ctx.isRough) return false;
+    if(ctx.outmuscled === true) return false;
+
+    // 展示順位・外枠・混戦があるならNG
+    if(!ctx.rankOk) return false;
+    if(ctx.outerFast) return false;
+    if(!ctx.ncOk) return false;
+
+    return true;
+  }
+
   function computePlan(r){
     const f1 = passFilter1(r);
     if(!f1.ok) return { level:"out", reasons:f1.reasons, _locMissing: f1._locMissing };
@@ -619,25 +640,63 @@
     const reasons=[];
     const rank = exhibitionRank(r.exh);
     const maxTimeRank = num("maxTimeRank");
-    if(rank!=null && maxTimeRank!=null && rank>maxTimeRank) reasons.push("展示順位NG");
+    const rankOk = (rank==null || maxTimeRank==null) ? true : (rank <= maxTimeRank);
+    if(!rankOk) reasons.push("展示順位NG");
 
     const fasterL = fasterOppLanes(r.exh);
     const outerFast = fasterL.length>0 && fasterL.some(l=>l!==2 && l!==3);
     if(outerFast) reasons.push("外枠が速い");
 
+    const eps = num("nearEps") ?? 0.03;
+    const nc = nearCount(r.exh, eps);
+    const maxNearCount = num("maxNearCount");
+    const ncOk = (nc==null || maxNearCount==null) ? true : (nc <= maxNearCount);
+    if(!ncOk) reasons.push("混戦（1に近い艇が多い）");
+
     const d2 = deltaLane(r.exh,2);
     const d3 = deltaLane(r.exh,3);
     const maxDelta2 = num("maxDelta2");
     const maxDelta3 = num("maxDelta3");
-    if(d2!=null && maxDelta2!=null && d2>maxDelta2) reasons.push("2号艇が遅い");
+
+    // env/STコンテキスト（Δ2グレー帯許可に必要）
+    const hasEnv = envReady_(r);
+    const hasSt13 = stReady13_(r);
+    const windThr = num("roughWind") ?? 5;
+    const waveThr = num("roughWave") ?? 5;
+    const wind = Number(r?.env?.windMs);
+    const wave = Number(r?.env?.waveCm);
+    const isRough = (Number.isFinite(wind) && wind >= windThr) || (Number.isFinite(wave) && wave >= waveThr);
+
+    const stOut = num("stOutmuscle") ?? 0.05;
+    const outmuscled = st1Outmuscled_(r, stOut); // true/false/null
+
+    // Δ3は通常通り
     if(d3!=null && maxDelta3!=null && d3>maxDelta3) reasons.push("3号艇が遅い");
 
-    const eps = num("nearEps") ?? 0.03;
-    const nc = nearCount(r.exh, eps);
-    const maxNearCount = num("maxNearCount");
-    if(nc!=null && maxNearCount!=null && nc>maxNearCount) reasons.push("混戦（1に近い艇が多い）");
+    // ★最小変更：Δ2の「条件付き0.14」
+    // - 基本は maxDelta2 を守る
+    // - ただし maxDelta2 < 0.14 で、maxDelta2 < d2 <= 0.14 のグレー帯は
+    //   “安全条件”を満たし、かつ（この時点で）他のNG理由が無い場合だけ許可
+    let d2WouldBeNg = false;
+    if(d2!=null && maxDelta2!=null && d2>maxDelta2){
+      d2WouldBeNg = true;
+      const inGrey = (d2 <= DELTA2_GREY_MAX) && (maxDelta2 < DELTA2_GREY_MAX);
+      if(inGrey){
+        const ctx = { rankOk, outerFast, ncOk, hasEnv, isRough, hasSt13, outmuscled };
+        const safeGrey = canAllowDelta2Grey_(r, ctx);
 
-    // ★最小変更：ソフトNO理由は 3F固定へ安全化（ON時）
+        // “Δ2以外のNGが無い”なら許可（=Δ2単独原因のときだけ拾う）
+        // ※現時点で reasons に入っているのは 展示順位/外枠/混戦/Δ3 など
+        const otherNgExists = reasons.length > 0;
+
+        if(safeGrey && !otherNgExists){
+          d2WouldBeNg = false; // 許可（理由に入れない）
+        }
+      }
+      if(d2WouldBeNg) reasons.push("2号艇が遅い");
+    }
+
+    // ★ソフトNO理由は 3F固定へ安全化（ON時）
     if(reasons.length){
       const softOn = $("softNoTo3fOn")?.checked;
       if(softOn){
@@ -675,19 +734,12 @@
 
     // ====== 利益寄りガード（外れ削減） ======
     if($("profitGuardsOn")?.checked){
-      const windThr = num("roughWind") ?? 5;
-      const waveThr = num("roughWave") ?? 5;
-      const stOut = num("stOutmuscle") ?? 0.05;
+      const waveThr2 = num("roughWave") ?? 5;
+      const roughMode = $("roughNoMode")?.value || "downgrade";
       const st23Tie = num("st23Tie") ?? 0.05;
       const exh23Tie = num("exh23Tie") ?? 0.02;
-      const roughMode = $("roughNoMode")?.value || "downgrade";
-
-      const wind = Number(r?.env?.windMs);
-      const wave = Number(r?.env?.waveCm);
-      const isRough = (Number.isFinite(wind) && wind >= windThr) || (Number.isFinite(wave) && wave >= waveThr);
 
       const st1best = stBestAmong123_(r); // true/false/null
-      const outmuscled = st1Outmuscled_(r, stOut); // true/false/null
       const st23gap = st23AbsGap_(r); // number|null
       const exh23gap = (Number.isFinite(e2) && Number.isFinite(e3)) ? Math.abs(e2-e3) : null;
 
