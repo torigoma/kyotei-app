@@ -613,22 +613,15 @@
     return typeof top3==="string" && top3 === combo;
   }
 
-  // ★追加：Δ2グレー帯( maxDelta2〜0.14 )を許すかの安全判定
+  // ★Δ2グレー帯( maxDelta2〜0.14 )を許すかの安全判定
   function canAllowDelta2Grey_(r, ctx){
-    // ctx: { rankOk, outerFast, ncOk, hasEnv, isRough, hasSt13, outmuscled }
-    // 必須：env/STが取れていること（欠損なら「安全」と言えないので許可しない）
     if(!ctx.hasEnv) return false;
     if(!ctx.hasSt13) return false;
-
-    // 荒れ・ST出負けはNG
     if(ctx.isRough) return false;
     if(ctx.outmuscled === true) return false;
-
-    // 展示順位・外枠・混戦があるならNG
     if(!ctx.rankOk) return false;
     if(ctx.outerFast) return false;
     if(!ctx.ncOk) return false;
-
     return true;
   }
 
@@ -673,10 +666,7 @@
     // Δ3は通常通り
     if(d3!=null && maxDelta3!=null && d3>maxDelta3) reasons.push("3号艇が遅い");
 
-    // ★最小変更：Δ2の「条件付き0.14」
-    // - 基本は maxDelta2 を守る
-    // - ただし maxDelta2 < 0.14 で、maxDelta2 < d2 <= 0.14 のグレー帯は
-    //   “安全条件”を満たし、かつ（この時点で）他のNG理由が無い場合だけ許可
+    // Δ2の「条件付き0.14」
     let d2WouldBeNg = false;
     if(d2!=null && maxDelta2!=null && d2>maxDelta2){
       d2WouldBeNg = true;
@@ -684,13 +674,9 @@
       if(inGrey){
         const ctx = { rankOk, outerFast, ncOk, hasEnv, isRough, hasSt13, outmuscled };
         const safeGrey = canAllowDelta2Grey_(r, ctx);
-
-        // “Δ2以外のNGが無い”なら許可（=Δ2単独原因のときだけ拾う）
-        // ※現時点で reasons に入っているのは 展示順位/外枠/混戦/Δ3 など
         const otherNgExists = reasons.length > 0;
-
         if(safeGrey && !otherNgExists){
-          d2WouldBeNg = false; // 許可（理由に入れない）
+          d2WouldBeNg = false;
         }
       }
       if(d2WouldBeNg) reasons.push("2号艇が遅い");
@@ -714,7 +700,6 @@
           };
         }
       }
-
       return { level:"no", reasons, rank, outerFast, d2, d3, nc, _locMissing: f1._locMissing };
     }
 
@@ -734,7 +719,6 @@
 
     // ====== 利益寄りガード（外れ削減） ======
     if($("profitGuardsOn")?.checked){
-      const waveThr2 = num("roughWave") ?? 5;
       const roughMode = $("roughNoMode")?.value || "downgrade";
       const st23Tie = num("st23Tie") ?? 0.05;
       const exh23Tie = num("exh23Tie") ?? 0.02;
@@ -767,9 +751,15 @@
         }
       }
 
-      // 2) 1号艇出負け（2/3に対して遅い） → 見送り
+      // 2) ★最小変更：ST出負けは「荒れの時だけNO」、荒れじゃない時は3Fへ安全化
       if(outmuscled === true){
-        return { level:"no", reasons:["ST出負け（1が2/3より遅い）"], rank, outerFast, d2, d3, nc, betType, combo, _guard:"st_out", _locMissing: f1._locMissing };
+        if(isRough){
+          return { level:"no", reasons:["ST出負け（荒れ水面）"], rank, outerFast, d2, d3, nc, betType, combo, _guard:"st_out", _locMissing: f1._locMissing };
+        }else{
+          betType = "3F";
+          combo = "1-2-3";
+          // 続行（3Fとして評価）
+        }
       }
 
       // 3) 3Tの順序ブレ対策：拮抗なら3Fへ格下げ
@@ -904,7 +894,7 @@
         const a = cur.first ?? cur["1st"] ?? cur.rank1 ?? cur.win ?? cur.r1 ?? cur.one ?? null;
         const b = cur.second ?? cur["2nd"] ?? cur.rank2 ?? cur.place ?? cur.r2 ?? cur.two ?? null;
         const c = cur.third ?? cur["3rd"] ?? cur.rank3 ?? cur.show ?? cur.r3 ?? cur.three ?? null;
-        const n2 = normalizeTop3Strict_(a,b,c);
+        const n2 = normalizeTop3Strict_(a, b, c);
         if(n2) return n2;
       }
 
@@ -945,7 +935,6 @@
       const wouldWin3F = isSet123_(top3);
       const wouldWin3T123 = isExact_(top3, "1-2-3");
       const wouldWin3T132 = isExact_(top3, "1-3-2");
-
       const hit = wouldWin3F || wouldWin3T123 || wouldWin3T132;
 
       let rescue = "-";
@@ -954,7 +943,7 @@
       } else if(g === "wave_hard"){
         rescue = wouldWin3F ? "3F固定なら拾えた" : "-";
       } else if(g === "st_out"){
-        rescue = wouldWin3F ? "（稀）3Fなら拾えた" : "-";
+        rescue = wouldWin3F ? "（条件次第）3Fなら拾えた" : "-";
       } else {
         rescue = wouldWin3F ? "3Fなら拾えた" : "-";
       }
@@ -1002,7 +991,6 @@
     $("noMissCount").textContent = String(noMiss.length);
 
     const limit = 60;
-
     function toHtml(item){
       return `
         <div class="diagItem">
@@ -1268,7 +1256,6 @@
     for(const r of show) list.appendChild(makeRaceCard(r));
   }
 
-  // ---- build races from bundle (programs + previews + results) ----
   function buildRacesFromBundle(bundle){
     const programs = bundle.programs?.programs || [];
     const previews = bundle.previews?.previews || [];
