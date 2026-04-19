@@ -163,6 +163,53 @@
 
     <div class="hr"></div>
 
+    <div class="pill">会場補正（54日分析反映）</div>
+    <div class="grid g2" style="margin-top:10px;">
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="venueAdjustOn" checked />
+        会場補正を有効化（推奨）
+      </label>
+      <div class="muted small" style="align-self:center;">
+        ※条件①は維持しつつ、警戒会場だけ買い方を少し保守化する
+      </div>
+    </div>
+
+    <div class="grid g2" style="margin-top:10px;">
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="cVenueMin3fOn" checked />
+        C会場は3連複オッズ下限を引き上げる
+      </label>
+      <div><label>C会場 3連複 min 上乗せ</label><input id="cVenueMin3fAdd" type="number" step="0.1" value="1.0" /></div>
+    </div>
+
+    <div class="grid g2" style="margin-top:10px;">
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="cVenueRoughSafeOn" checked />
+        C会場 × 荒れ日は3F安全化を優先
+      </label>
+      <div class="muted small" style="align-self:center;">
+        ※福岡・児島・常滑・平和島は rough 時に即NOより安全化を優先
+      </div>
+    </div>
+
+    <div class="grid g2" style="margin-top:10px;">
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="heiwajimaSafeOn" checked />
+        平和島は1固定を弱め、3T候補でも3Fへ寄せる
+      </label>
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="tokonameStPriorityOn" checked />
+        常滑は展示単独評価を弱め、ST優先で3Tを抑える
+      </label>
+    </div>
+
+    <div class="muted small" style="margin-top:8px;">
+      A会場: 江戸川 / 若松 / 宮島 / 桐生　
+      C会場: 福岡 / 児島 / 常滑 / 平和島
+    </div>
+
+    <div class="hr"></div>
+
     <div class="pill">集計</div>
     <div class="muted" style="margin-top:8px;" id="summary">-</div>
 
@@ -287,6 +334,16 @@
     9:"津",10:"三国",11:"びわこ",12:"住之江",13:"尼崎",14:"鳴門",15:"丸亀",16:"児島",
     17:"宮島",18:"徳山",19:"下関",20:"若松",21:"芦屋",22:"福岡",23:"唐津",24:"大村"
   };
+
+  const VENUE_RANK_A = new Set([3,20,17,1]);   // 江戸川, 若松, 宮島, 桐生
+  const VENUE_RANK_C = new Set([22,16,8,4]);   // 福岡, 児島, 常滑, 平和島
+
+  function venueRankOf(stadium){
+    const s = Number(stadium);
+    if(VENUE_RANK_A.has(s)) return "A";
+    if(VENUE_RANK_C.has(s)) return "C";
+    return "B";
+  }
 
   let enabledStadiums = new Set(Array.from({length:24}, (_,i)=>i+1));
   let LAST_RACES = [];
@@ -662,6 +719,8 @@
 
     const stOut = num("stOutmuscle") ?? 0.05;
     const outmuscled = st1Outmuscled_(r, stOut); // true/false/null
+    const st1best = stBestAmong123_(r); // true/false/null
+    const st23gap = st23AbsGap_(r); // number|null
 
     // Δ3は通常通り
     if(d3!=null && maxDelta3!=null && d3>maxDelta3) reasons.push("3号艇が遅い");
@@ -696,11 +755,12 @@
             rank, outerFast, d2, d3, nc,
             _softSafe:true,
             _softReasons: reasons.slice(),
+            _venueRank: venueRankOf(r.stadium),
             _locMissing: f1._locMissing
           };
         }
       }
-      return { level:"no", reasons, rank, outerFast, d2, d3, nc, _locMissing: f1._locMissing };
+      return { level:"no", reasons, rank, outerFast, d2, d3, nc, _venueRank: venueRankOf(r.stadium), _locMissing: f1._locMissing };
     }
 
     // --- ここから最終候補 ---
@@ -717,15 +777,13 @@
       combo = (e2 < e3) ? "1-2-3" : "1-3-2";
     }
 
+    const exh23gap = (Number.isFinite(e2) && Number.isFinite(e3)) ? Math.abs(e2-e3) : null;
+
     // ====== 利益寄りガード（外れ削減） ======
     if($("profitGuardsOn")?.checked){
       const roughMode = $("roughNoMode")?.value || "downgrade";
       const st23Tie = num("st23Tie") ?? 0.05;
       const exh23Tie = num("exh23Tie") ?? 0.02;
-
-      const st1best = stBestAmong123_(r); // true/false/null
-      const st23gap = st23AbsGap_(r); // number|null
-      const exh23gap = (Number.isFinite(e2) && Number.isFinite(e3)) ? Math.abs(e2-e3) : null;
 
       // 0) 波高 hard ガード（最優先）
       if($("hardWaveOn")?.checked){
@@ -736,7 +794,7 @@
             betType = "3F";
             combo = "1-2-3";
           }else{
-            return { level:"no", reasons:[`波高>=${hw}cm（hard）`], rank, outerFast, d2, d3, nc, betType, combo, _guard:"wave_hard", _locMissing: f1._locMissing };
+            return { level:"no", reasons:[`波高>=${hw}cm（hard）`], rank, outerFast, d2, d3, nc, betType, combo, _guard:"wave_hard", _venueRank: venueRankOf(r.stadium), _locMissing: f1._locMissing };
           }
         }
       }
@@ -747,18 +805,17 @@
           betType = "3F";
           combo = "1-2-3";
         }else{
-          return { level:"no", reasons:["荒れ水面×ST優位なし"], rank, outerFast, d2, d3, nc, betType, combo, _guard:"rough_no", _locMissing: f1._locMissing };
+          return { level:"no", reasons:["荒れ水面×ST優位なし"], rank, outerFast, d2, d3, nc, betType, combo, _guard:"rough_no", _venueRank: venueRankOf(r.stadium), _locMissing: f1._locMissing };
         }
       }
 
       // 2) ★最小変更：ST出負けは「荒れの時だけNO」、荒れじゃない時は3Fへ安全化
       if(outmuscled === true){
         if(isRough){
-          return { level:"no", reasons:["ST出負け（荒れ水面）"], rank, outerFast, d2, d3, nc, betType, combo, _guard:"st_out", _locMissing: f1._locMissing };
+          return { level:"no", reasons:["ST出負け（荒れ水面）"], rank, outerFast, d2, d3, nc, betType, combo, _guard:"st_out", _venueRank: venueRankOf(r.stadium), _locMissing: f1._locMissing };
         }else{
           betType = "3F";
           combo = "1-2-3";
-          // 続行（3Fとして評価）
         }
       }
 
@@ -775,7 +832,35 @@
       }
     }
 
-    return { level:"final", betType, combo, rank, outerFast, d2, d3, nc, _locMissing: f1._locMissing };
+    // ====== 会場補正（54日分析反映） ======
+    if($("venueAdjustOn")?.checked){
+      const venueRank = venueRankOf(r.stadium);
+
+      // C会場 × 荒れ日は「即NOより安全化」を優先
+      if(venueRank === "C" && $("cVenueRoughSafeOn")?.checked && isRough){
+        betType = "3F";
+        combo = "1-2-3";
+      }
+
+      // 平和島：1固定を強くしすぎない（3T候補でも3F寄せ）
+      if(r.stadium === 4 && $("heiwajimaSafeOn")?.checked){
+        if(betType === "3T"){
+          betType = "3F";
+          combo = "1-2-3";
+        }
+      }
+
+      // 常滑：展示単独評価を弱め、ST優先で3Tを抑える
+      if(r.stadium === 8 && $("tokonameStPriorityOn")?.checked){
+        const tokonameStWeak = (!hasSt13) || (st1best === false) || (outmuscled === true);
+        if(betType === "3T" && tokonameStWeak){
+          betType = "3F";
+          combo = "1-2-3";
+        }
+      }
+    }
+
+    return { level:"final", betType, combo, rank, outerFast, d2, d3, nc, _venueRank: venueRankOf(r.stadium), _locMissing: f1._locMissing };
   }
 
   function parseOddLoose(v){
@@ -805,7 +890,7 @@
     return getManualOddFor(r, betType, combo) ?? getAutoOddFor(r, betType, combo);
   }
 
-  function oddsPass(betType, odd){
+  function oddsPass(r, betType, odd){
     if(!$("oddsFilterOn").checked) return { ok:true, reasons:[] };
     const reasons=[];
     if(!Number.isFinite(odd) || odd<=0) return { ok:false, reasons:["オッズ未取得/未入力"] };
@@ -815,8 +900,16 @@
       if(mn!=null && odd<mn) reasons.push("3連単オッズ低すぎ");
       if(mx!=null && odd>mx) reasons.push("3連単オッズ高すぎ");
     } else {
-      const mn = num("minOdds3f"); const mx = num("maxOdds3f");
-      if(mn!=null && odd<mn) reasons.push("3連複オッズ低すぎ");
+      let mn = num("minOdds3f");
+      const mx = num("maxOdds3f");
+
+      const useVenueAdj = $("venueAdjustOn")?.checked && $("cVenueMin3fOn")?.checked;
+      const vr = venueRankOf(r?.stadium);
+      if(useVenueAdj && vr === "C"){
+        mn = (mn ?? 0) + (num("cVenueMin3fAdd") ?? 1.0);
+      }
+
+      if(mn!=null && odd<mn) reasons.push(useVenueAdj && vr==="C" ? "3連複オッズ低すぎ（C会場補正）" : "3連複オッズ低すぎ");
       if(mx!=null && odd>mx) reasons.push("3連複オッズ高すぎ");
     }
     return { ok: reasons.length===0, reasons };
@@ -834,7 +927,7 @@
     if(plan.level==="out")  return { state:"条件外", msg:`条件外：${plan.reasons.join(" / ")}`, plan };
 
     const odd = getOddFor(r, plan.betType, plan.combo);
-    const op = oddsPass(plan.betType, odd);
+    const op = oddsPass(r, plan.betType, odd);
 
     if(!op.ok){
       if(op.reasons.includes("オッズ未取得/未入力")){
@@ -1116,6 +1209,7 @@
       <div class="muted small">
         <b>最終候補</b>：${plan.betType} ${plan.combo}（1点）
         <span class="tag mono">odds:${(ODDS_AUTO.get(r.key)?.scraped_at ? String(ODDS_AUTO.get(r.key).scraped_at).slice(11,19) : "-")}</span>
+        <span class="tag mono">会場:${venueRankOf(r.stadium)}</span>
       </div>
 
       <div class="grid g3" style="margin-top:10px;">
@@ -1147,6 +1241,7 @@
           ${closeTag}
           ${beforeTag}
           ${softBadge}
+          <span class="tag mono">rank:${venueRankOf(r.stadium)}</span>
           ${(plan && plan._locMissing) ? `<span class="tag mono">loc2:missing</span>` : ``}
         </div>
         <div class="rowL">
@@ -1422,6 +1517,7 @@
       "profitGuardsOn","softNoTo3fOn","roughWind","roughWave","roughNoMode","stOutmuscle","st23Tie","exh23Tie",
       "hardWaveOn","hardWave","hardWaveMode",
       "minOdds3t","maxOdds3t","minOdds3f","maxOdds3f",
+      "venueAdjustOn","cVenueMin3fOn","cVenueMin3fAdd","cVenueRoughSafeOn","heiwajimaSafeOn","tokonameStPriorityOn",
       "viewMode","oddsFilterOn","autoRefresh"
     ];
     const out = {};
@@ -1467,6 +1563,11 @@
   $("autoRefresh").addEventListener("change", maybeScheduleAutoRefresh);
   $("viewMode").addEventListener("change", ()=>renderList(LAST_RACES));
   $("oddsFilterOn").addEventListener("change", ()=>{ renderSummary(LAST_RACES); renderList(LAST_RACES); });
+  ["venueAdjustOn","cVenueMin3fOn","cVenueMin3fAdd","cVenueRoughSafeOn","heiwajimaSafeOn","tokonameStPriorityOn"].forEach(id=>{
+    const el = $(id);
+    if(!el) return;
+    el.addEventListener(el.type === "checkbox" ? "change" : "input", ()=>{ renderSummary(LAST_RACES); renderList(LAST_RACES); });
+  });
 
   // NO検証 UI
   $("noDiagOpenBtn").addEventListener("click", ()=>{
