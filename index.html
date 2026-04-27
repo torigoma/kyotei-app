@@ -1102,6 +1102,112 @@
     missList.innerHTML = noMiss.slice(0, limit).map(toHtml).join("") || `<div class="muted small">（なし）</div>`;
   }
 
+  // ===== snapshot/export helpers（★ここがバグ修正本体） =====
+  function shallowCloneJson_(obj){
+    return JSON.parse(JSON.stringify(obj));
+  }
+
+  function getAutoOddBundleForRace_(r){
+    const ao = ODDS_AUTO.get(r.key) || null;
+    return {
+      scraped_at: ao?.scraped_at ?? null,
+      odds3t: ao?.odds3t ? shallowCloneJson_(ao.odds3t) : {},
+      odds3f: ao?.odds3f ? shallowCloneJson_(ao.odds3f) : {}
+    };
+  }
+
+  function buildExportRace_(r){
+    const plan = computePlan(r);
+    const ev = evaluate(r);
+    const manualOdds = getManualOdds(r.key);
+    const autoOdds = getAutoOddBundleForRace_(r);
+
+    return {
+      ...shallowCloneJson_(r),
+
+      // 既存表示ロジックで出ている判定を必ず保存
+      state: ev.state,
+      msg: ev.msg,
+
+      // 分析用に plan を保存
+      plan: plan ? shallowCloneJson_(plan) : null,
+
+      // 旧分析との互換性のための平坦項目
+      betType: plan?.betType ?? null,
+      combo: plan?.combo ?? null,
+      odd: Number.isFinite(ev.odd) ? ev.odd : null,
+      venue_rank: venueRankOf(r.stadium),
+
+      // 画面に出ている手入力オッズを必ず保存
+      manualOdds: shallowCloneJson_(manualOdds),
+      manual_odds: shallowCloneJson_(manualOdds),
+
+      // 画面に出ている自動オッズも保存
+      autoOdds,
+      auto_odds: autoOdds,
+
+      // 互換アクセスしやすい平坦項目
+      o3t123: parseOddLoose(manualOdds.o3t123),
+      o3t132: parseOddLoose(manualOdds.o3t132),
+      o3f123: parseOddLoose(manualOdds.o3f123),
+
+      // 最終候補判定の有無
+      isFinal: !!(plan && plan.level === "final")
+    };
+  }
+
+  function buildSnapshotSummary_(racesForExport){
+    let total = racesForExport.length;
+    let f1pass = 0;
+    let finals = 0;
+    let buy = 0;
+    let no = 0;
+    let wait = 0;
+    let filtered = 0;
+    let oddsReady = 0;
+    let beforeReady = 0;
+    let resReady = 0;
+
+    for(const r of racesForExport){
+      if(passFilter1(r).ok) f1pass++;
+      if(r.plan && r.plan.level === "final") finals++;
+      if(r.state === "BUY") buy++;
+      else if(r.state === "NO") no++;
+      else if(r.state === "WAIT") wait++;
+      else filtered++;
+
+      const autoOdds =
+        (r.autoOdds && ((r.autoOdds.odds3t && Object.keys(r.autoOdds.odds3t).length) || (r.autoOdds.odds3f && Object.keys(r.autoOdds.odds3f).length))) ||
+        (r.auto_odds && ((r.auto_odds.odds3t && Object.keys(r.auto_odds.odds3t).length) || (r.auto_odds.odds3f && Object.keys(r.auto_odds.odds3f).length)));
+
+      const manualReady = !!(
+        parseOddLoose(r.manualOdds?.o3t123) ||
+        parseOddLoose(r.manualOdds?.o3t132) ||
+        parseOddLoose(r.manualOdds?.o3f123) ||
+        parseOddLoose(r.manual_odds?.o3t123) ||
+        parseOddLoose(r.manual_odds?.o3t132) ||
+        parseOddLoose(r.manual_odds?.o3f123)
+      );
+
+      if(autoOdds || manualReady) oddsReady++;
+      if(r._beforeAt || r._beforeOk13 || BEFORE_AUTO.has(r.key)) beforeReady++;
+      if(r.result_top3) resReady++;
+    }
+
+    return {
+      total,
+      filter1_pass: f1pass,
+      finals,
+      buy,
+      no,
+      wait,
+      filtered,
+      odds_ready: oddsReady,
+      before_ready: beforeReady,
+      result_ready: resReady
+    };
+  }
+
   // ===== UI =====
   function renderVenueChecks(){
     const box = $("venueChecks");
@@ -1134,8 +1240,14 @@
       else if(ev.state==="WAIT") wait++;
       else filtered++;
 
-      if(ODDS_AUTO.has(r.key)) oddsReady++;
-      if(BEFORE_AUTO.has(r.key)) beforeReady++;
+      const manual = getManualOdds(r.key);
+      const manualReady = !!(
+        parseOddLoose(manual.o3t123) ||
+        parseOddLoose(manual.o3t132) ||
+        parseOddLoose(manual.o3f123)
+      );
+      if(ODDS_AUTO.has(r.key) || manualReady) oddsReady++;
+      if(BEFORE_AUTO.has(r.key) || r._beforeAt || r._beforeOk13) beforeReady++;
       if(r.result_top3) resReady++;
     }
 
@@ -1541,12 +1653,19 @@
     setTimeout(()=>URL.revokeObjectURL(url), 1000);
   }
   function exportSnapshot_(){
+    // ★バグ修正:
+    // 画面上で出ている state / plan / manual odds / auto odds / odd を
+    // races 配列へ明示的に埋め込んでから保存する。
+    const racesForExport = LAST_RACES.map(buildExportRace_);
+    const summaryForExport = buildSnapshotSummary_(racesForExport);
+
     const snap = {
       generated_at: new Date().toISOString(),
       worker_base: WORKER_BASE,
       enabled_stadiums: Array.from(enabledStadiums).sort((a,b)=>a-b),
       settings: collectSettings_(),
-      races: LAST_RACES,
+      summary: summaryForExport,
+      races: racesForExport,
       caches: {
         before_auto: mapToObj_(BEFORE_AUTO),
         odds_auto: mapToObj_(ODDS_AUTO),
