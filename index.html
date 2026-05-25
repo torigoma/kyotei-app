@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2（Worker連携：①3連単/②3連複 自動切替）</title>
+  <title>競艇 v2.1（会場B-/警戒A補正：①3連単/②3連複 自動切替）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -56,12 +56,13 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2（Worker連携：①3連単/②3連複 自動切替）</h1>
+  <h1>競艇 v2.1（会場B-/警戒A補正：①3連単/②3連複 自動切替）</h1>
   <div class="sub">
     ✅ ①=3連単 / ②=3連複 を展示で自動切替（1レース1点）。<br/>
     ✅ オッズ/風波/STは Worker で自動取得（最終候補だけ）→ 手入力は最終候補だけ出る。<br/>
     ✅ 自動更新は20秒（締切が近い展示未取得を beforeinfo で埋める）。<br/>
-    ✅ 終了レースは結果（3着まで）を表示（0-0-0は出さない）。
+    ✅ 終了レースは結果（3着まで）を表示（0-0-0は出さない）。<br/>
+    ✅ アップデート後18日集計を反映：B-会場のsoftSafe抑制・3連複下限補正を追加。
   </div>
 
   <div class="card">
@@ -203,9 +204,43 @@
       </label>
     </div>
 
-    <div class="muted small" style="margin-top:8px;">
-      A会場: 江戸川 / 若松 / 宮島 / 桐生　
-      C会場: 福岡 / 児島 / 常滑 / 平和島
+    <div class="hr"></div>
+
+    <div class="pill">会場再分類補正（アップデート後18日集計反映）</div>
+    <div class="grid g2" style="margin-top:10px;">
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="bRankAdjustOn" checked />
+        B+/B/B-・警戒A 補正を有効化（推奨）
+      </label>
+      <div class="muted small" style="align-self:center;">
+        ※条件①は触らず、成績が悪い会場だけBUYを保守化する
+      </div>
+    </div>
+
+    <div class="grid g2" style="margin-top:10px;">
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="bMinusSoftSafeBlockOn" checked />
+        B-会場・警戒Aは softSafe救済をNOに戻す
+      </label>
+      <div class="muted small" style="align-self:center;">
+        ※びわこ/浜名湖/大村/鳴門/住之江/桐生の「展示順位NG・外枠速い・混戦」救済を抑制
+      </div>
+    </div>
+
+    <div class="grid g3" style="margin-top:10px;">
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="bMinusMin3fOn" checked />
+        B-会場は3連複オッズ下限を引き上げる
+      </label>
+      <div><label>B-会場 3連複 min 上乗せ</label><input id="bMinusMin3fAdd" type="number" step="0.1" value="2.0" /></div>
+      <div><label>びわこ/浜名湖 追加上乗せ</label><input id="highRiskMin3fAdd" type="number" step="0.1" value="1.0" /></div>
+    </div>
+
+    <div class="muted small" style="margin-top:8px; line-height:1.6;">
+      A会場: 江戸川 / 若松 / 宮島　警戒A: 桐生<br/>
+      B+候補: 唐津 / 津 / 三国 / 蒲郡 / 戸田　
+      B-警戒: びわこ / 浜名湖 / 大村 / 鳴門 / 住之江<br/>
+      C会場: 福岡 / 児島 / 常滑 / 平和島（児島・常滑は完全除外しない）
     </div>
 
     <div class="hr"></div>
@@ -335,14 +370,52 @@
     17:"宮島",18:"徳山",19:"下関",20:"若松",21:"芦屋",22:"福岡",23:"唐津",24:"大村"
   };
 
+  // 旧ランク（互換用）
   const VENUE_RANK_A = new Set([3,20,17,1]);   // 江戸川, 若松, 宮島, 桐生
   const VENUE_RANK_C = new Set([22,16,8,4]);   // 福岡, 児島, 常滑, 平和島
+
+  // ★アップデート後18日集計に基づく再分類
+  const VENUE_B_PLUS = new Set([23,9,10,7,2]);       // 唐津, 津, 三国, 蒲郡, 戸田
+  const VENUE_B_MINUS = new Set([11,6,24,14,12]);    // びわこ, 浜名湖, 大村, 鳴門, 住之江
+  const VENUE_A_CAUTION = new Set([1]);              // 桐生
+  const VENUE_HIGH_RISK = new Set([11,6]);           // びわこ, 浜名湖
+  const VENUE_C_KEEP = new Set([16,8]);              // 児島, 常滑
+  const VENUE_C_CAUTION = new Set([22,4]);           // 福岡, 平和島
 
   function venueRankOf(stadium){
     const s = Number(stadium);
     if(VENUE_RANK_A.has(s)) return "A";
     if(VENUE_RANK_C.has(s)) return "C";
     return "B";
+  }
+
+  function venueSubRankOf(stadium){
+    const s = Number(stadium);
+    if(VENUE_A_CAUTION.has(s)) return "A警戒";
+    if(s === 17) return "A維持";
+    if(s === 3 || s === 20) return "A母数待ち";
+    if(VENUE_B_PLUS.has(s)) return "B+";
+    if(VENUE_B_MINUS.has(s)) return "B-";
+    if(VENUE_C_KEEP.has(s)) return "C残す";
+    if(VENUE_C_CAUTION.has(s)) return "C警戒";
+    return "B";
+  }
+
+  function bRankAdjustEnabled_(){
+    return !!($("venueAdjustOn")?.checked && $("bRankAdjustOn")?.checked);
+  }
+
+  function isBMinusVenue_(stadium){
+    return VENUE_B_MINUS.has(Number(stadium));
+  }
+
+  function isSoftSafeBlockedVenue_(stadium){
+    const s = Number(stadium);
+    return VENUE_B_MINUS.has(s) || VENUE_A_CAUTION.has(s);
+  }
+
+  function isHighRiskVenue_(stadium){
+    return VENUE_HIGH_RISK.has(Number(stadium));
   }
 
   let enabledStadiums = new Set(Array.from({length:24}, (_,i)=>i+1));
@@ -748,6 +821,27 @@
         const SOFT = new Set(["展示順位NG","外枠が速い","混戦（1に近い艇が多い）"]);
         const allSoft = reasons.every(x => SOFT.has(x));
         if(allSoft){
+          // ★アップデート後18日集計反映:
+          // B-会場と警戒A（桐生）では softSafe が地雷化しやすかったため、
+          // 画面設定ON時は「NOにせず3F固定」救済を止める。
+          if(
+            bRankAdjustEnabled_() &&
+            $("bMinusSoftSafeBlockOn")?.checked &&
+            isSoftSafeBlockedVenue_(r.stadium)
+          ){
+            return {
+              level:"no",
+              reasons:[...reasons, `${venueSubRankOf(r.stadium)} softSafe抑制`],
+              rank, outerFast, d2, d3, nc,
+              _guard:"venue_softsafe_block",
+              _blockedSoftSafe:true,
+              _softReasons: reasons.slice(),
+              _venueRank: venueRankOf(r.stadium),
+              _venueSubRank: venueSubRankOf(r.stadium),
+              _locMissing: f1._locMissing
+            };
+          }
+
           return {
             level:"final",
             betType:"3F",
@@ -756,11 +850,12 @@
             _softSafe:true,
             _softReasons: reasons.slice(),
             _venueRank: venueRankOf(r.stadium),
+            _venueSubRank: venueSubRankOf(r.stadium),
             _locMissing: f1._locMissing
           };
         }
       }
-      return { level:"no", reasons, rank, outerFast, d2, d3, nc, _venueRank: venueRankOf(r.stadium), _locMissing: f1._locMissing };
+      return { level:"no", reasons, rank, outerFast, d2, d3, nc, _venueRank: venueRankOf(r.stadium), _venueSubRank: venueSubRankOf(r.stadium), _locMissing: f1._locMissing };
     }
 
     // --- ここから最終候補 ---
@@ -794,7 +889,7 @@
             betType = "3F";
             combo = "1-2-3";
           }else{
-            return { level:"no", reasons:[`波高>=${hw}cm（hard）`], rank, outerFast, d2, d3, nc, betType, combo, _guard:"wave_hard", _venueRank: venueRankOf(r.stadium), _locMissing: f1._locMissing };
+            return { level:"no", reasons:[`波高>=${hw}cm（hard）`], rank, outerFast, d2, d3, nc, betType, combo, _guard:"wave_hard", _venueRank: venueRankOf(r.stadium), _venueSubRank: venueSubRankOf(r.stadium), _locMissing: f1._locMissing };
           }
         }
       }
@@ -805,14 +900,14 @@
           betType = "3F";
           combo = "1-2-3";
         }else{
-          return { level:"no", reasons:["荒れ水面×ST優位なし"], rank, outerFast, d2, d3, nc, betType, combo, _guard:"rough_no", _venueRank: venueRankOf(r.stadium), _locMissing: f1._locMissing };
+          return { level:"no", reasons:["荒れ水面×ST優位なし"], rank, outerFast, d2, d3, nc, betType, combo, _guard:"rough_no", _venueRank: venueRankOf(r.stadium), _venueSubRank: venueSubRankOf(r.stadium), _locMissing: f1._locMissing };
         }
       }
 
       // 2) ★最小変更：ST出負けは「荒れの時だけNO」、荒れじゃない時は3Fへ安全化
       if(outmuscled === true){
         if(isRough){
-          return { level:"no", reasons:["ST出負け（荒れ水面）"], rank, outerFast, d2, d3, nc, betType, combo, _guard:"st_out", _venueRank: venueRankOf(r.stadium), _locMissing: f1._locMissing };
+          return { level:"no", reasons:["ST出負け（荒れ水面）"], rank, outerFast, d2, d3, nc, betType, combo, _guard:"st_out", _venueRank: venueRankOf(r.stadium), _venueSubRank: venueSubRankOf(r.stadium), _locMissing: f1._locMissing };
         }else{
           betType = "3F";
           combo = "1-2-3";
@@ -860,7 +955,7 @@
       }
     }
 
-    return { level:"final", betType, combo, rank, outerFast, d2, d3, nc, _venueRank: venueRankOf(r.stadium), _locMissing: f1._locMissing };
+    return { level:"final", betType, combo, rank, outerFast, d2, d3, nc, _venueRank: venueRankOf(r.stadium), _venueSubRank: venueSubRankOf(r.stadium), _locMissing: f1._locMissing };
   }
 
   function parseOddLoose(v){
@@ -905,11 +1000,29 @@
 
       const useVenueAdj = $("venueAdjustOn")?.checked && $("cVenueMin3fOn")?.checked;
       const vr = venueRankOf(r?.stadium);
+      const vsr = venueSubRankOf(r?.stadium);
+      let minReason = "3連複オッズ低すぎ";
+
       if(useVenueAdj && vr === "C"){
         mn = (mn ?? 0) + (num("cVenueMin3fAdd") ?? 1.0);
+        minReason = "3連複オッズ低すぎ（C会場補正）";
       }
 
-      if(mn!=null && odd<mn) reasons.push(useVenueAdj && vr==="C" ? "3連複オッズ低すぎ（C会場補正）" : "3連複オッズ低すぎ");
+      if(
+        bRankAdjustEnabled_() &&
+        $("bMinusMin3fOn")?.checked &&
+        isBMinusVenue_(r?.stadium)
+      ){
+        mn = (mn ?? 0) + (num("bMinusMin3fAdd") ?? 2.0);
+        minReason = `3連複オッズ低すぎ（${vsr}補正）`;
+
+        if(isHighRiskVenue_(r?.stadium)){
+          mn = (mn ?? 0) + (num("highRiskMin3fAdd") ?? 1.0);
+          minReason = `3連複オッズ低すぎ（${vsr}/高警戒補正）`;
+        }
+      }
+
+      if(mn!=null && odd<mn) reasons.push(minReason);
       if(mx!=null && odd>mx) reasons.push("3連複オッズ高すぎ");
     }
     return { ok: reasons.length===0, reasons };
@@ -1006,6 +1119,7 @@
     if(g === "st_out") return "ST出負け";
     if(g === "rough_no") return "荒れ×ST優位なし";
     if(g === "wave_hard") return "波高hard";
+    if(g === "venue_softsafe_block") return "会場softSafe抑制";
     return g ? String(g) : "-";
   }
 
@@ -1137,6 +1251,9 @@
       combo: plan?.combo ?? null,
       odd: Number.isFinite(ev.odd) ? ev.odd : null,
       venue_rank: venueRankOf(r.stadium),
+      venue_sub_rank: venueSubRankOf(r.stadium),
+      is_b_minus: isBMinusVenue_(r.stadium),
+      is_high_risk_venue: isHighRiskVenue_(r.stadium),
 
       // 画面に出ている手入力オッズを必ず保存
       manualOdds: shallowCloneJson_(manualOdds),
@@ -1321,7 +1438,7 @@
       <div class="muted small">
         <b>最終候補</b>：${plan.betType} ${plan.combo}（1点）
         <span class="tag mono">odds:${(ODDS_AUTO.get(r.key)?.scraped_at ? String(ODDS_AUTO.get(r.key).scraped_at).slice(11,19) : "-")}</span>
-        <span class="tag mono">会場:${venueRankOf(r.stadium)}</span>
+        <span class="tag mono">会場:${venueRankOf(r.stadium)}/${venueSubRankOf(r.stadium)}</span>
       </div>
 
       <div class="grid g3" style="margin-top:10px;">
@@ -1342,7 +1459,9 @@
 
     const softBadge = (plan && plan._softSafe)
       ? `<span class="tag mono">safe:3F（softNO）</span>`
-      : ``;
+      : (plan && plan._blockedSoftSafe)
+        ? `<span class="tag mono">safe抑制:${venueSubRankOf(r.stadium)}</span>`
+        : ``;
 
     card.innerHTML = `
       <div class="row">
@@ -1353,7 +1472,7 @@
           ${closeTag}
           ${beforeTag}
           ${softBadge}
-          <span class="tag mono">rank:${venueRankOf(r.stadium)}</span>
+          <span class="tag mono">rank:${venueRankOf(r.stadium)}/${venueSubRankOf(r.stadium)}</span>
           ${(plan && plan._locMissing) ? `<span class="tag mono">loc2:missing</span>` : ``}
         </div>
         <div class="rowL">
@@ -1630,6 +1749,7 @@
       "hardWaveOn","hardWave","hardWaveMode",
       "minOdds3t","maxOdds3t","minOdds3f","maxOdds3f",
       "venueAdjustOn","cVenueMin3fOn","cVenueMin3fAdd","cVenueRoughSafeOn","heiwajimaSafeOn","tokonameStPriorityOn",
+      "bRankAdjustOn","bMinusSoftSafeBlockOn","bMinusMin3fOn","bMinusMin3fAdd","highRiskMin3fAdd",
       "viewMode","oddsFilterOn","autoRefresh"
     ];
     const out = {};
@@ -1682,7 +1802,8 @@
   $("autoRefresh").addEventListener("change", maybeScheduleAutoRefresh);
   $("viewMode").addEventListener("change", ()=>renderList(LAST_RACES));
   $("oddsFilterOn").addEventListener("change", ()=>{ renderSummary(LAST_RACES); renderList(LAST_RACES); });
-  ["venueAdjustOn","cVenueMin3fOn","cVenueMin3fAdd","cVenueRoughSafeOn","heiwajimaSafeOn","tokonameStPriorityOn"].forEach(id=>{
+  ["venueAdjustOn","cVenueMin3fOn","cVenueMin3fAdd","cVenueRoughSafeOn","heiwajimaSafeOn","tokonameStPriorityOn",
+   "bRankAdjustOn","bMinusSoftSafeBlockOn","bMinusMin3fOn","bMinusMin3fAdd","highRiskMin3fAdd"].forEach(id=>{
     const el = $(id);
     if(!el) return;
     el.addEventListener(el.type === "checkbox" ? "change" : "input", ()=>{ renderSummary(LAST_RACES); renderList(LAST_RACES); });
