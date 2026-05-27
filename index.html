@@ -62,7 +62,8 @@
     ✅ オッズ/風波/STは Worker で自動取得（最終候補だけ）→ 手入力は最終候補だけ出る。<br/>
     ✅ 自動更新は20秒（締切が近い展示未取得を beforeinfo で埋める）。<br/>
     ✅ 終了レースは結果（3着まで）を表示（0-0-0は出さない）。<br/>
-    ✅ 2026-05追加：B+/B/B-再分類、桐生警戒A、2・3残存チェックを反映。
+    ✅ 2026-05追加：B+/B/B-再分類、桐生警戒A、2・3残存チェックを反映。<br/>
+    ✅ 2026-05-27修正：ナイター後半のbefore取得漏れ対策、result_top3再取得、手動結果補正を追加。
   </div>
 
   <div class="card">
@@ -376,9 +377,10 @@
   const WORKER_BASE = "https://kyotei-worker.tanabedaichi0831.workers.dev";
 
   // ★締切近い順 before 埋め
-  const BEFORE_FILL_LIMIT = 120;
+  const BEFORE_FILL_LIMIT = 999; // 2026-05-27修正：ナイター後半10〜12Rが120件制限で漏れないよう全対象を拾う
   const BEFORE_FILL_CONCURRENCY = 4;
   const BEFORE_EMPTY_RETRY_MS = 15000;
+  const RESULT_RETRY_LIMIT = 120; // 2026-05-27修正：result_top3 null の再取得対象上限
 
   // ★Δ2の「条件付き0.14」上限（UIは増やさずロジックだけ）
   const DELTA2_GREY_MAX = 0.14;
@@ -462,6 +464,37 @@
     const c = loadOddsCache();
     c[key] = { ...(c[key]||{o3t123:"",o3t132:"",o3f123:""}), ...patch };
     saveOddsCache(c);
+  }
+
+  // 手動結果補正キャッシュ（結果取得漏れ・公式反映遅延の保険）
+  const RESULT_KEY = "kyotei_result_manual_v1";
+  function loadResultCache() { try { return JSON.parse(localStorage.getItem(RESULT_KEY) || "{}"); } catch { return {}; } }
+  function saveResultCache(cache) { try { localStorage.setItem(RESULT_KEY, JSON.stringify(cache)); } catch {} }
+  function normalizeManualTop3_(v){
+    const s = String(v ?? "").trim().replace(/[–ー−]/g, "-");
+    const m = s.match(/^([1-6])-([1-6])-([1-6])$/);
+    if(!m) return null;
+    return `${m[1]}-${m[2]}-${m[3]}`;
+  }
+  function getManualResult(key) {
+    const c = loadResultCache();
+    return normalizeManualTop3_(c[key]);
+  }
+  function setManualResult(key, top3) {
+    const c = loadResultCache();
+    const n = normalizeManualTop3_(top3);
+    if(n) c[key] = n; else delete c[key];
+    saveResultCache(c);
+  }
+  function applyManualResultToRace_(r){
+    const top3 = getManualResult(r?.key);
+    if(top3){
+      r.result_top3 = top3;
+      r.is_finished = true;
+      r._manualResultTop3 = top3;
+      return true;
+    }
+    return false;
   }
 
   // in-memory caches
@@ -1249,12 +1282,34 @@
       const s = pickTop3FromString_(cur);
       if(s) return s;
 
+      // 配列 [1,2,3] / ["1","2","3"] 型の結果にも対応
+      if(Array.isArray(cur) && cur.length >= 3){
+        const nArr = normalizeTop3Strict_(cur[0], cur[1], cur[2]);
+        if(nArr) return nArr;
+      }
+
       if(typeof cur === "object" && !Array.isArray(cur)){
-        const a = cur.first ?? cur["1st"] ?? cur.rank1 ?? cur.win ?? cur.r1 ?? cur.one ?? null;
-        const b = cur.second ?? cur["2nd"] ?? cur.rank2 ?? cur.place ?? cur.r2 ?? cur.two ?? null;
-        const c = cur.third ?? cur["3rd"] ?? cur.rank3 ?? cur.show ?? cur.r3 ?? cur.three ?? null;
+        const a = cur.first ?? cur["1st"] ?? cur.rank1 ?? cur.win ?? cur.r1 ?? cur.one ?? cur.tansho1 ?? cur.arrival1 ?? cur.chakujun1 ?? null;
+        const b = cur.second ?? cur["2nd"] ?? cur.rank2 ?? cur.place ?? cur.r2 ?? cur.two ?? cur.tansho2 ?? cur.arrival2 ?? cur.chakujun2 ?? null;
+        const c = cur.third ?? cur["3rd"] ?? cur.rank3 ?? cur.show ?? cur.r3 ?? cur.three ?? cur.tansho3 ?? cur.arrival3 ?? cur.chakujun3 ?? null;
         const n2 = normalizeTop3Strict_(a, b, c);
         if(n2) return n2;
+
+        // payouts / odds / combination 系に入っている三連単の組番を拾う
+        const likelyKeys = [
+          "trifecta", "sanrentan", "three_exacta", "payout_3t", "payout3t",
+          "combination", "winning_combination", "winning_number", "winning_numbers",
+          "number", "numbers", "result_number", "race_result"
+        ];
+        for(const k of likelyKeys){
+          if(cur[k] == null) continue;
+          const s2 = pickTop3FromString_(cur[k]);
+          if(s2) return s2;
+          if(Array.isArray(cur[k]) && cur[k].length >= 3){
+            const n3 = normalizeTop3Strict_(cur[k][0], cur[k][1], cur[k][2]);
+            if(n3) return n3;
+          }
+        }
       }
 
       if(Array.isArray(cur)){
@@ -1385,9 +1440,11 @@
   }
 
   function buildExportRace_(r){
+    applyManualResultToRace_(r);
     const plan = computePlan(r);
     const ev = evaluate(r);
     const manualOdds = getManualOdds(r.key);
+    const manualResultTop3 = getManualResult(r.key);
     const autoOdds = getAutoOddBundleForRace_(r);
 
     return {
@@ -1409,9 +1466,11 @@
       is_b_minus: isBMinusVenue_(r.stadium),
       is_high_risk_venue: isHighRiskVenue_(r.stadium),
 
-      // 画面に出ている手入力オッズを必ず保存
+      // 画面に出ている手入力オッズ・手動結果補正を必ず保存
       manualOdds: shallowCloneJson_(manualOdds),
       manual_odds: shallowCloneJson_(manualOdds),
+      manualResultTop3: manualResultTop3,
+      manual_result_top3: manualResultTop3,
 
       // 画面に出ている自動オッズも保存
       autoOdds,
@@ -1583,9 +1642,10 @@
 
     const beforeTag = `<span class="tag mono">before:${r._beforeAt||"-"} ok13:${r._beforeOk13 ? "Y":"N"}</span>`;
 
+    const manualTop3 = getManualResult(r.key);
     const top3 = r.result_top3
-      ? `<div class="resultLine">結果（3着まで）: <span class="mono">${r.result_top3}</span></div>`
-      : (r.is_finished ? `<div class="resultLine">結果（3着まで）: <span class="mono">-</span></div>` : ``);
+      ? `<div class="resultLine">結果（3着まで）: <span class="mono">${r.result_top3}</span>${manualTop3 ? ` <span class="tag mono">手動補正</span>` : ``}</div>`
+      : (r.is_finished ? `<div class="resultLine">結果（3着まで）: <span class="mono">-</span> <span class="tag mono">結果未取得</span></div>` : ``);
 
     const oddsBlock = isFinal ? `
       <div class="hr"></div>
@@ -1640,6 +1700,11 @@
           4:${dispTime(r.exh?.["4"])} 5:${dispTime(r.exh?.["5"])} 6:${dispTime(r.exh?.["6"])}
           <div class="resultLine">ST 1:${dispSt(r.st?.["1"])} 2:${dispSt(r.st?.["2"])} 3:${dispSt(r.st?.["3"])} 4:${dispSt(r.st?.["4"])} 5:${dispSt(r.st?.["5"])} 6:${dispSt(r.st?.["6"])}</div>
           ${top3}
+          ${r.is_finished ? `
+          <div class="resultLine small">
+            結果補正: <input data-result-top3 type="text" inputmode="numeric" placeholder="例: 5-1-2" value="${manualTop3 || ""}" style="width:120px; padding:6px; font-size:12px; display:inline-block;">
+            <span class="muted small">※公式結果が空/誤りの時だけ入力</span>
+          </div>` : ``}
           <div class="resultLine" data-buy-line>${isFinal ? `買い：<b>${plan.betType} ${plan.combo}</b>${Number.isFinite(ev.odd) ? ` / odds=${ev.odd}` : ``}` : ``}</div>
         </div>
         <div class="muted small">
@@ -1671,6 +1736,22 @@
       renderSummary(LAST_RACES);
       renderList(LAST_RACES);
     });
+
+    const resultInput = card.querySelector("[data-result-top3]");
+    if(resultInput){
+      resultInput.addEventListener("change", ()=>{
+        const n = normalizeManualTop3_(resultInput.value);
+        if(resultInput.value.trim() && !n){
+          alert("結果は 1-2-3 の形式で入力してください");
+          resultInput.value = getManualResult(r.key) || "";
+          return;
+        }
+        setManualResult(r.key, resultInput.value);
+        applyManualResultToRace_(r);
+        renderSummary(LAST_RACES);
+        renderList(LAST_RACES);
+      });
+    }
 
     if(isFinal){
       const manual = getManualOdds(r.key);
@@ -1802,9 +1883,58 @@
         applyBeforeToRace_(r, BEFORE_AUTO.get(key));
       }
 
+      // 結果取得漏れ・反映遅延がある場合の手動補正を優先
+      applyManualResultToRace_(r);
+
       races.push(r);
     }
     return races;
+  }
+
+  function applyResultsFromBundle_(bundle){
+    const resultsObj = bundle?.results || {};
+    const results = resultsObj.results || resultsObj.races || [];
+    if(!Array.isArray(results) || !results.length) return 0;
+
+    const resMap = new Map();
+    for(const rr of results){
+      const key = `${rr.race_date}-${rr.race_stadium_number}-${rr.race_number}`;
+      resMap.set(key, rr);
+    }
+
+    let changed = 0;
+    for(const r of LAST_RACES){
+      const rr = resMap.get(r.key);
+      if(!rr) continue;
+      const top3 = extractTop3(rr);
+      if(top3 && r.result_top3 !== top3){
+        r.result_top3 = top3;
+        r.is_finished = true;
+        changed++;
+      }else if(!r.is_finished){
+        r.is_finished = true;
+      }
+    }
+    return changed;
+  }
+
+  async function retryMissingResults_(){
+    const targets = LAST_RACES
+      .filter(r => enabledStadiums.has(r.stadium))
+      .filter(r => r.is_finished && !r.result_top3)
+      .sort((a,b)=>parseCloseMs_(a.race_closed_at)-parseCloseMs_(b.race_closed_at))
+      .slice(0, RESULT_RETRY_LIMIT);
+
+    if(!targets.length) return 0;
+
+    try{
+      const bundle = await fetchTodayBundle();
+      const changed = applyResultsFromBundle_(bundle);
+      for(const r of LAST_RACES) applyManualResultToRace_(r);
+      return changed;
+    }catch(e){
+      return 0;
+    }
   }
 
   async function prefetchOddsForFinals_(){
@@ -1859,11 +1989,13 @@
       setStatus("更新中…");
       const bundle = await fetchTodayBundle();
       LAST_RACES = buildRacesFromBundle(bundle);
+      for(const r of LAST_RACES) applyManualResultToRace_(r);
 
       renderSummary(LAST_RACES);
       renderList(LAST_RACES);
 
       await fillMissingExhByBeforeinfo_();
+      await retryMissingResults_();
       await prefetchOddsForFinals_();
 
       renderSummary(LAST_RACES);
@@ -1930,7 +2062,7 @@
   }
   function exportSnapshot_(){
     // ★バグ修正:
-    // 画面上で出ている state / plan / manual odds / auto odds / odd を
+    // 画面上で出ている state / plan / manual odds / auto odds / odd / manual result を
     // races 配列へ明示的に埋め込んでから保存する。
     const racesForExport = LAST_RACES.map(buildExportRace_);
     const summaryForExport = buildSnapshotSummary_(racesForExport);
@@ -1945,7 +2077,8 @@
       caches: {
         before_auto: mapToObj_(BEFORE_AUTO),
         odds_auto: mapToObj_(ODDS_AUTO),
-        manual_odds: loadOddsCache()
+        manual_odds: loadOddsCache(),
+        manual_results: loadResultCache()
       }
     };
     const fname = `kyotei_snapshot_${makeTimestamp_()}.json`;
