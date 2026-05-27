@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2（Worker連携：①3連単/②3連複 自動切替）</title>
+  <title>競艇 v2.5（結果取得v3/v2フォールバック強化）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -56,13 +56,14 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2（Worker連携：①3連単/②3連複 自動切替）</h1>
+  <h1>競艇 v2.5（結果取得v3/v2フォールバック強化）</h1>
   <div class="sub">
     ✅ ①=3連単 / ②=3連複 を展示で自動切替（1レース1点）。<br/>
     ✅ オッズ/風波/STは Worker で自動取得（最終候補だけ）→ 手入力は最終候補だけ出る。<br/>
     ✅ 自動更新は20秒（締切が近い展示未取得を beforeinfo で埋める）。<br/>
     ✅ 終了レースは結果（3着まで）を表示（0-0-0は出さない）。<br/>
     ✅ 2026-05追加：B+/B/B-再分類、桐生警戒A、2・3残存チェックを反映。<br/>
+    ✅ v2.5：結果取得をv3/v2両方で再照会し、補完件数・残件数をステータス表示。<br/>
     ✅ 2026-05-27修正：ナイター後半のbefore取得漏れ対策、result_top3強制再取得、直接resultsフォールバック、手動結果補正を追加。
   </div>
 
@@ -525,7 +526,12 @@
     const d = dateYmd || LAST_RACES.find(r => r?.date)?.date || new Date().toISOString().slice(0,10);
     const hd = ymdToHd(d);
     const yyyy = hd.slice(0,4);
+
+    // v2だけだと結果が欠ける/遅れることがあるため、v3→v2の順で試す。
+    // today と日付指定の両方を試し、Worker側キャッシュが古い時の保険にする。
     const urls = [
+      `https://boatraceopenapi.github.io/results/v3/today.json?v=${Date.now()}`,
+      `https://boatraceopenapi.github.io/results/v3/${yyyy}/${hd}.json?v=${Date.now()}`,
       `https://boatraceopenapi.github.io/results/v2/today.json?v=${Date.now()}`,
       `https://boatraceopenapi.github.io/results/v2/${yyyy}/${hd}.json?v=${Date.now()}`
     ];
@@ -534,13 +540,40 @@
     for(const url of urls){
       try{
         const js = await fetchJson(url);
-        if(js) return js;
+        if(js){
+          try{ js.__source_url = url; }catch(_){}
+          return js;
+        }
       }catch(e){
         lastErr = e;
       }
     }
     if(lastErr) throw lastErr;
     return null;
+  }
+
+
+  async function fetchAllDirectResultsBundles_(dateYmd=null){
+    const d = dateYmd || LAST_RACES.find(r => r?.date)?.date || new Date().toISOString().slice(0,10);
+    const hd = ymdToHd(d);
+    const yyyy = hd.slice(0,4);
+    const urls = [
+      `https://boatraceopenapi.github.io/results/v3/today.json?v=${Date.now()}`,
+      `https://boatraceopenapi.github.io/results/v3/${yyyy}/${hd}.json?v=${Date.now()}`,
+      `https://boatraceopenapi.github.io/results/v2/today.json?v=${Date.now()}`,
+      `https://boatraceopenapi.github.io/results/v2/${yyyy}/${hd}.json?v=${Date.now()}`
+    ];
+    const out = [];
+    for(const url of urls){
+      try{
+        const js = await fetchJson(url);
+        if(js){
+          try{ js.__source_url = url; }catch(_){}
+          out.push(js);
+        }
+      }catch(e){}
+    }
+    return out;
   }
 
   function getResultsArrayFromAnyBundle_(bundle){
@@ -1982,6 +2015,7 @@
   function applyResultsFromBundle_(bundle, sourceLabel="bundle"){
     const results = getResultsArrayFromAnyBundle_(bundle);
     if(!Array.isArray(results) || !results.length) return 0;
+    const sourceUrl = bundle?.__source_url || null;
 
     const resMap = new Map();
     for(const rr of results){
@@ -1998,6 +2032,7 @@
         r.result_top3 = top3;
         r.is_finished = true;
         r._resultSource = sourceLabel;
+        r._resultSourceUrl = sourceUrl;
         r._resultRetryAt = nowHms_();
         changed++;
       }else if(!r.is_finished){
@@ -2034,14 +2069,23 @@
       const dates = Array.from(new Set(LAST_RACES.map(r => r.date).filter(Boolean)));
       for(const d of dates){
         try{
-          const direct = await fetchDirectResultsBundle_(d);
-          changed += applyResultsFromBundle_(direct, "direct_openapi_results");
+          const bundles = await fetchAllDirectResultsBundles_(d);
+          for(const direct of bundles){
+            changed += applyResultsFromBundle_(direct, "direct_openapi_results");
+          }
         }catch(e){}
       }
     }
 
     for(const r of LAST_RACES) applyManualResultToRace_(r);
     return changed;
+  }
+
+
+  function countMissingResultsAfterGrace_(){
+    return LAST_RACES.filter(r =>
+      enabledStadiums.has(r.stadium) && !r.result_top3 && (r.is_finished || isRacePastResultWindow_(r))
+    ).length;
   }
 
   async function prefetchOddsForFinals_(){
@@ -2108,13 +2152,13 @@
       renderList(LAST_RACES);
 
       await fillMissingExhByBeforeinfo_();
-      await retryMissingResults_();
+      const resultRetryChanged = await retryMissingResults_();
       await prefetchOddsForFinals_();
 
       renderSummary(LAST_RACES);
       renderList(LAST_RACES);
 
-      setStatus(`OK / ${nowHms_()}`);
+      setStatus(`OK / ${nowHms_()} / 結果補完:${resultRetryChanged} / 結果未取得:${countMissingResultsAfterGrace_()}`);
       maybeScheduleAutoRefresh();
     } catch(e){
       setStatus("失敗");
