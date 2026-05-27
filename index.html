@@ -63,7 +63,7 @@
     ✅ 自動更新は20秒（締切が近い展示未取得を beforeinfo で埋める）。<br/>
     ✅ 終了レースは結果（3着まで）を表示（0-0-0は出さない）。<br/>
     ✅ 2026-05追加：B+/B/B-再分類、桐生警戒A、2・3残存チェックを反映。<br/>
-    ✅ 2026-05-27修正：ナイター後半のbefore取得漏れ対策、result_top3再取得、手動結果補正を追加。
+    ✅ 2026-05-27修正：ナイター後半のbefore取得漏れ対策、result_top3強制再取得、直接resultsフォールバック、手動結果補正を追加。
   </div>
 
   <div class="card">
@@ -380,7 +380,8 @@
   const BEFORE_FILL_LIMIT = 999; // 2026-05-27修正：ナイター後半10〜12Rが120件制限で漏れないよう全対象を拾う
   const BEFORE_FILL_CONCURRENCY = 4;
   const BEFORE_EMPTY_RETRY_MS = 15000;
-  const RESULT_RETRY_LIMIT = 120; // 2026-05-27修正：result_top3 null の再取得対象上限
+  const RESULT_RETRY_LIMIT = 999; // 2026-05-27修正：result_top3 null の再取得対象上限
+  const RESULT_CLOSE_GRACE_MS = 10 * 60 * 1000; // 締切10分後から結果未取得リトライ対象
 
   // ★Δ2の「条件付き0.14」上限（UIは増やさずロジックだけ）
   const DELTA2_GREY_MAX = 0.14;
@@ -518,6 +519,93 @@
   }
   async function fetchTodayBundle(){
     return await fetchJson(`${WORKER_BASE}/api/today?v=${Date.now()}`);
+  }
+
+  async function fetchDirectResultsBundle_(dateYmd=null){
+    const d = dateYmd || LAST_RACES.find(r => r?.date)?.date || new Date().toISOString().slice(0,10);
+    const hd = ymdToHd(d);
+    const yyyy = hd.slice(0,4);
+    const urls = [
+      `https://boatraceopenapi.github.io/results/v2/today.json?v=${Date.now()}`,
+      `https://boatraceopenapi.github.io/results/v2/${yyyy}/${hd}.json?v=${Date.now()}`
+    ];
+
+    let lastErr = null;
+    for(const url of urls){
+      try{
+        const js = await fetchJson(url);
+        if(js) return js;
+      }catch(e){
+        lastErr = e;
+      }
+    }
+    if(lastErr) throw lastErr;
+    return null;
+  }
+
+  function getResultsArrayFromAnyBundle_(bundle){
+    if(!bundle) return [];
+
+    const candidates = [
+      bundle?.results?.results,
+      bundle?.results?.races,
+      bundle?.results,
+      bundle?.races,
+      bundle?.data?.results,
+      bundle?.data?.races
+    ];
+
+    for(const c of candidates){
+      if(Array.isArray(c)) return c;
+    }
+
+    // オブジェクトの中に results/races 配列が深く入っている場合の保険
+    const stack = [bundle];
+    const seen = new Set();
+    while(stack.length){
+      const cur = stack.pop();
+      if(!cur || typeof cur !== "object" || seen.has(cur)) continue;
+      seen.add(cur);
+
+      if(Array.isArray(cur)){
+        if(cur.length && typeof cur[0] === "object") return cur;
+        continue;
+      }
+
+      for(const k of ["results", "races", "items", "data"]){
+        if(Array.isArray(cur[k])) return cur[k];
+        if(cur[k] && typeof cur[k] === "object") stack.push(cur[k]);
+      }
+    }
+
+    return [];
+  }
+
+  function resultRaceKey_(rr){
+    if(!rr || typeof rr !== "object") return null;
+
+    const date =
+      rr.race_date ?? rr.date ?? rr.hd ?? rr.raceDate ?? rr.race_day ?? rr.day ?? null;
+    const stadium =
+      rr.race_stadium_number ?? rr.stadium ?? rr.stadium_number ?? rr.jcd ?? rr.jo_code ?? rr.venue_id ?? rr.venueCode ?? rr.race_stadium_id ?? null;
+    const race =
+      rr.race_number ?? rr.rno ?? rr.race ?? rr.race_no ?? rr.raceNo ?? rr.round ?? null;
+
+    if(date == null || stadium == null || race == null) return null;
+
+    const ymd = String(date).includes("-")
+      ? String(date).slice(0,10)
+      : `${String(date).slice(0,4)}-${String(date).slice(4,6)}-${String(date).slice(6,8)}`;
+    const st = Number(stadium);
+    const rn = Number(race);
+    if(!ymd || !Number.isFinite(st) || !Number.isFinite(rn)) return null;
+    return `${ymd}-${st}-${rn}`;
+  }
+
+  function isRacePastResultWindow_(r){
+    const closeMs = parseCloseMs_(r?.race_closed_at);
+    if(!Number.isFinite(closeMs)) return false;
+    return Date.now() >= closeMs + RESULT_CLOSE_GRACE_MS;
   }
 
   // ----- base metrics -----
@@ -1820,8 +1908,7 @@
   function buildRacesFromBundle(bundle){
     const programs = bundle.programs?.programs || [];
     const previews = bundle.previews?.previews || [];
-    const resultsObj = bundle.results || {};
-    const results = resultsObj.results || resultsObj.races || [];
+    const results = getResultsArrayFromAnyBundle_(bundle);
 
     const prevMap = new Map();
     for(const p of previews){
@@ -1829,7 +1916,8 @@
     }
     const resMap = new Map();
     for(const rr of results){
-      resMap.set(`${rr.race_date}-${rr.race_stadium_number}-${rr.race_number}`, rr);
+      const k = resultRaceKey_(rr);
+      if(k) resMap.set(k, rr);
     }
 
     const races=[];
@@ -1891,15 +1979,14 @@
     return races;
   }
 
-  function applyResultsFromBundle_(bundle){
-    const resultsObj = bundle?.results || {};
-    const results = resultsObj.results || resultsObj.races || [];
+  function applyResultsFromBundle_(bundle, sourceLabel="bundle"){
+    const results = getResultsArrayFromAnyBundle_(bundle);
     if(!Array.isArray(results) || !results.length) return 0;
 
     const resMap = new Map();
     for(const rr of results){
-      const key = `${rr.race_date}-${rr.race_stadium_number}-${rr.race_number}`;
-      resMap.set(key, rr);
+      const key = resultRaceKey_(rr);
+      if(key) resMap.set(key, rr);
     }
 
     let changed = 0;
@@ -1910,6 +1997,8 @@
       if(top3 && r.result_top3 !== top3){
         r.result_top3 = top3;
         r.is_finished = true;
+        r._resultSource = sourceLabel;
+        r._resultRetryAt = nowHms_();
         changed++;
       }else if(!r.is_finished){
         r.is_finished = true;
@@ -1921,20 +2010,38 @@
   async function retryMissingResults_(){
     const targets = LAST_RACES
       .filter(r => enabledStadiums.has(r.stadium))
-      .filter(r => r.is_finished && !r.result_top3)
+      .filter(r => !r.result_top3 && (r.is_finished || isRacePastResultWindow_(r)))
       .sort((a,b)=>parseCloseMs_(a.race_closed_at)-parseCloseMs_(b.race_closed_at))
       .slice(0, RESULT_RETRY_LIMIT);
 
     if(!targets.length) return 0;
 
+    let changed = 0;
+
+    // 1) Worker /api/today を再取得。Worker側で結果束が更新されていればここで入る。
     try{
       const bundle = await fetchTodayBundle();
-      const changed = applyResultsFromBundle_(bundle);
-      for(const r of LAST_RACES) applyManualResultToRace_(r);
-      return changed;
-    }catch(e){
-      return 0;
+      changed += applyResultsFromBundle_(bundle, "worker_today_retry");
+    }catch(e){}
+
+    // 2) それでも欠ける場合、boatraceopenapi の results をブラウザから直接取りに行く。
+    //    /api/today 側のキャッシュが古い場合の保険。
+    const stillMissing = LAST_RACES.some(r =>
+      enabledStadiums.has(r.stadium) && !r.result_top3 && (r.is_finished || isRacePastResultWindow_(r))
+    );
+
+    if(stillMissing){
+      const dates = Array.from(new Set(LAST_RACES.map(r => r.date).filter(Boolean)));
+      for(const d of dates){
+        try{
+          const direct = await fetchDirectResultsBundle_(d);
+          changed += applyResultsFromBundle_(direct, "direct_openapi_results");
+        }catch(e){}
+      }
     }
+
+    for(const r of LAST_RACES) applyManualResultToRace_(r);
+    return changed;
   }
 
   async function prefetchOddsForFinals_(){
@@ -1974,13 +2081,19 @@
     if(!$("autoRefresh").checked){ setAutoStatus("自動更新OFF"); return; }
     if(!LAST_RACES.length){ setAutoStatus("-"); return; }
 
-    const need = LAST_RACES.some(r =>
+    const needBefore = LAST_RACES.some(r =>
       enabledStadiums.has(r.stadium) &&
       ((!r.exhReady) || (!envReady_(r)) || (!stReady13_(r)))
     );
+    const needResult = LAST_RACES.some(r =>
+      enabledStadiums.has(r.stadium) &&
+      !r.result_top3 &&
+      (r.is_finished || isRacePastResultWindow_(r))
+    );
+    const need = needBefore || needResult;
     if(!need){ setAutoStatus("対象なし"); return; }
 
-    setAutoStatus("20秒後に更新");
+    setAutoStatus(needResult ? "20秒後に更新（結果未取得あり）" : "20秒後に更新");
     AUTO_TIMER = setTimeout(refreshFull, 20000);
   }
 
