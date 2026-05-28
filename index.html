@@ -1652,9 +1652,20 @@
 
     const beforeTag = `<span class="tag mono">before:${r._beforeAt||"-"} ok13:${r._beforeOk13 ? "Y":"N"}</span>`;
 
+    const manualTop3 = getManualResult(r.key);
+    const resultMissingAfterGrace = !r.result_top3 && (r.is_finished || isRacePastResultWindow_(r));
     const top3 = r.result_top3
-      ? `<div class="resultLine">結果（3着まで）: <span class="mono">${r.result_top3}</span></div>`
-      : (r.is_finished ? `<div class="resultLine">結果（3着まで）: <span class="mono">-</span></div>` : ``);
+      ? `<div class="resultLine">結果（3着まで）: <span class="mono">${r.result_top3}</span>${manualTop3 ? ` <span class="tag mono">手動補正</span>` : ``}</div>`
+      : (resultMissingAfterGrace
+          ? `<div class="resultLine">結果（3着まで）: <span class="mono">-</span> <span class="tag mono">結果未取得</span></div>`
+          : `<div class="resultLine">結果（3着まで）: <span class="mono">未確定/未取得</span></div>`);
+
+    // 結果取得漏れの保険。is_finishedに依存させると「結果が取れていない時ほど入力欄が出ない」ため常時表示する。
+    const resultManualBlock = `
+      <div class="resultLine small">
+        結果補正: <input data-result-top3 type="text" inputmode="numeric" placeholder="例: 5-1-2" value="${manualTop3 || ""}" style="width:120px; padding:6px; font-size:12px; display:inline-block;">
+        <span class="muted small">※公式結果が空/誤りの時だけ入力</span>
+      </div>`;
 
     const oddsBlock = isFinal ? `
       <div class="hr"></div>
@@ -1709,6 +1720,7 @@
           4:${dispTime(r.exh?.["4"])} 5:${dispTime(r.exh?.["5"])} 6:${dispTime(r.exh?.["6"])}
           <div class="resultLine">ST 1:${dispSt(r.st?.["1"])} 2:${dispSt(r.st?.["2"])} 3:${dispSt(r.st?.["3"])} 4:${dispSt(r.st?.["4"])} 5:${dispSt(r.st?.["5"])} 6:${dispSt(r.st?.["6"])}</div>
           ${top3}
+          ${resultManualBlock}
           <div class="resultLine" data-buy-line>${isFinal ? `買い：<b>${plan.betType} ${plan.combo}</b>${Number.isFinite(ev.odd) ? ` / odds=${ev.odd}` : ``}` : ``}</div>
         </div>
         <div class="muted small">
@@ -1740,6 +1752,22 @@
       renderSummary(LAST_RACES);
       renderList(LAST_RACES);
     });
+
+    const resultInput = card.querySelector("[data-result-top3]");
+    if(resultInput){
+      resultInput.addEventListener("change", ()=>{
+        const n = normalizeManualTop3_(resultInput.value);
+        if(resultInput.value.trim() && !n){
+          alert("結果は 1-2-3 の形式で入力してください");
+          resultInput.value = getManualResult(r.key) || "";
+          return;
+        }
+        setManualResult(r.key, resultInput.value);
+        applyManualResultToRace_(r);
+        renderSummary(LAST_RACES);
+        renderList(LAST_RACES);
+      });
+    }
 
     if(isFinal){
       const manual = getManualOdds(r.key);
