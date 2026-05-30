@@ -526,6 +526,8 @@
   // in-memory caches
   const BEFORE_AUTO = new Map(); // key -> beforeJson (+ __fetched_at_ms)
   const ODDS_AUTO  = new Map(); // key -> oddsJson
+  const RESULT_AUTO = new Map(); // key -> { result_top3, source, raw }
+  const RESULT_SINGLE_CONCURRENCY = 4;
 
   function setStatus(msg){ $("status").textContent = msg; }
   function setAutoStatus(msg){ $("autoStatus").textContent = msg; }
@@ -681,6 +683,33 @@
       if(!Number.isFinite(t) || t<=0) return false;
     }
     return true;
+  }
+
+
+  function beforeHasSt13_(beforeJs){
+    if(!beforeJs || !beforeJs.ok) return false;
+    const st = beforeJs.info?.stTimes || {};
+    for(let lane=1; lane<=3; lane++){
+      const s = String(st[String(lane)] ?? "").trim();
+      if(!s) return false;
+    }
+    return true;
+  }
+
+  function beforeHasNumericEnv_(beforeJs){
+    if(!beforeJs || !beforeJs.ok) return false;
+    const i = beforeJs.info || {};
+    return [i.windMs, i.waveCm, i.airTempC, i.waterTempC].some(v => Number.isFinite(Number(v)));
+  }
+
+  function beforeUseful_(beforeJs){
+    // weatherTextだけだと空取得と区別しにくいので、有効扱いしない。
+    return beforeHasExh13_(beforeJs) || beforeHasSt13_(beforeJs) || beforeHasNumericEnv_(beforeJs);
+  }
+
+  function beforeReadyActual_(r){
+    // summary用。_beforeAtではなく実データで数える。
+    return !!(r && exhReady(r.exh) && stReady13_(r));
   }
 
   // env/st が空のままにならないよう「取得できているか」を判定
@@ -900,8 +929,13 @@
     const js = await fetchJson(url);
     if(js && js.ok){
       js.__fetched_at_ms = Date.now();
-      BEFORE_AUTO.set(key, js);
-      applyBeforeToRace_(r, js);
+
+      // 空取得をキャッシュすると展示0/ST空の状態が固定されるため、
+      // 実データがある時だけキャッシュ・反映する。
+      if(beforeUseful_(js)){
+        BEFORE_AUTO.set(key, js);
+        applyBeforeToRace_(r, js);
+      }
       return js;
     }
     return null;
@@ -1426,69 +1460,119 @@
     return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
   }
 
+  function laneNumberFromAny_(v){
+    if(v == null) return null;
+    if(typeof v === "number") return Number.isFinite(v) && v >= 1 && v <= 6 ? v : null;
+    if(typeof v === "string"){
+      const s = v.trim();
+      if(!s) return null;
+      const m = s.match(/^[1-6]$/);
+      return m ? Number(m[0]) : null;
+    }
+    if(typeof v === "object"){
+      const keys = [
+        "lane","boat","boat_number","boatrace_no","racer_boat_number","racerBoatNumber",
+        "teiban","course","course_number","waku","waku_number","number","no","rank","arrival"
+      ];
+      for(const k of keys){
+        const n = laneNumberFromAny_(v[k]);
+        if(n) return n;
+      }
+    }
+    return null;
+  }
+
+  function top3FromArray_(arr){
+    if(!Array.isArray(arr) || arr.length < 3) return null;
+
+    const direct = normalizeTop3Strict_(arr[0], arr[1], arr[2]);
+    if(direct) return direct;
+
+    const rankKeys = ["arrival_order","arrivalOrder","order","rank","place","position","result_rank"];
+    const laneItems = [];
+    for(const obj of arr){
+      if(obj == null || typeof obj !== "object") continue;
+      const lane = laneNumberFromAny_(obj);
+      if(!lane) continue;
+      let rank = null;
+      for(const k of rankKeys){
+        const x = Number(obj[k]);
+        if(Number.isFinite(x) && x >= 1 && x <= 6){ rank = x; break; }
+      }
+      laneItems.push({ lane, rank });
+    }
+
+    const ranked = laneItems.filter(x => Number.isFinite(x.rank)).sort((a,b)=>a.rank-b.rank).slice(0,3).map(x=>x.lane);
+    const byRank = normalizeTop3Strict_(ranked[0], ranked[1], ranked[2]);
+    if(byRank) return byRank;
+
+    const lanes = laneItems.slice(0,3).map(x=>x.lane);
+    return normalizeTop3Strict_(lanes[0], lanes[1], lanes[2]);
+  }
+
   function extractTop3(rr){
-    if(!rr || typeof rr !== "object") return null;
+    if(!rr) return null;
+
+    if(typeof rr === "string") return pickTop3FromString_(rr);
+    if(Array.isArray(rr)) return top3FromArray_(rr);
+    if(typeof rr !== "object") return null;
 
     const direct =
-      rr.result_top3 ?? rr.resultTop3 ?? rr.top3 ?? rr.kekka ?? rr.result ?? null;
+      rr.result_top3 ?? rr.resultTop3 ?? rr.top3 ?? rr.kekka ?? rr.result ?? rr.race_result ??
+      rr.finish_order ?? rr.arrival_order ?? rr.arrivalOrder ?? rr.finishOrder ?? null;
 
     const s1 = pickTop3FromString_(direct);
     if(s1) return s1;
+    const a1 = Array.isArray(direct) ? top3FromArray_(direct) : null;
+    if(a1) return a1;
 
     const candA =
-      rr.first ?? rr["1st"] ?? rr.rank1 ?? rr.win ??
+      rr.first ?? rr["1st"] ?? rr.rank1 ?? rr.win ?? rr.r1 ?? rr.one ??
       rr.race_first ?? rr.race_1st ?? rr.racer_1st ?? null;
     const candB =
-      rr.second ?? rr["2nd"] ?? rr.rank2 ?? rr.place ??
+      rr.second ?? rr["2nd"] ?? rr.rank2 ?? rr.place ?? rr.r2 ?? rr.two ??
       rr.race_second ?? rr.race_2nd ?? rr.racer_2nd ?? null;
     const candC =
-      rr.third ?? rr["3rd"] ?? rr.rank3 ?? rr.show ??
+      rr.third ?? rr["3rd"] ?? rr.rank3 ?? rr.show ?? rr.r3 ?? rr.three ??
       rr.race_third ?? rr.race_3rd ?? rr.racer_3rd ?? null;
 
-    const n1 = normalizeTop3Strict_(candA, candB, candC);
+    const n1 = normalizeTop3Strict_(laneNumberFromAny_(candA) ?? candA, laneNumberFromAny_(candB) ?? candB, laneNumberFromAny_(candC) ?? candC);
     if(n1) return n1;
 
+    const payoutCandidates = [
+      rr.payouts?.trifecta, rr.payouts?.trio, rr.trifecta, rr.trio,
+      rr.combination, rr.kumi, rr.winning_number, rr.winningNumber
+    ];
+    for(const x of payoutCandidates){
+      const sx = pickTop3FromString_(x);
+      if(sx) return sx;
+      const ax = Array.isArray(x) ? top3FromArray_(x) : null;
+      if(ax) return ax;
+    }
+
     const stack=[rr];
+    const seen = new Set();
     while(stack.length){
       const cur = stack.pop();
       if(cur == null) continue;
+      if(typeof cur === "object"){
+        if(seen.has(cur)) continue;
+        seen.add(cur);
+      }
 
       const s = pickTop3FromString_(cur);
       if(s) return s;
 
-      // 配列 [1,2,3] / ["1","2","3"] 型の結果にも対応
-      if(Array.isArray(cur) && cur.length >= 3){
-        const nArr = normalizeTop3Strict_(cur[0], cur[1], cur[2]);
-        if(nArr) return nArr;
-      }
-
-      if(typeof cur === "object" && !Array.isArray(cur)){
-        const a = cur.first ?? cur["1st"] ?? cur.rank1 ?? cur.win ?? cur.r1 ?? cur.one ?? cur.tansho1 ?? cur.arrival1 ?? cur.chakujun1 ?? null;
-        const b = cur.second ?? cur["2nd"] ?? cur.rank2 ?? cur.place ?? cur.r2 ?? cur.two ?? cur.tansho2 ?? cur.arrival2 ?? cur.chakujun2 ?? null;
-        const c = cur.third ?? cur["3rd"] ?? cur.rank3 ?? cur.show ?? cur.r3 ?? cur.three ?? cur.tansho3 ?? cur.arrival3 ?? cur.chakujun3 ?? null;
-        const n2 = normalizeTop3Strict_(a, b, c);
-        if(n2) return n2;
-
-        // payouts / odds / combination 系に入っている三連単の組番を拾う
-        const likelyKeys = [
-          "trifecta", "sanrentan", "three_exacta", "payout_3t", "payout3t",
-          "combination", "winning_combination", "winning_number", "winning_numbers",
-          "number", "numbers", "result_number", "race_result"
-        ];
-        for(const k of likelyKeys){
-          if(cur[k] == null) continue;
-          const s2 = pickTop3FromString_(cur[k]);
-          if(s2) return s2;
-          if(Array.isArray(cur[k]) && cur[k].length >= 3){
-            const n3 = normalizeTop3Strict_(cur[k][0], cur[k][1], cur[k][2]);
-            if(n3) return n3;
-          }
-        }
-      }
-
       if(Array.isArray(cur)){
+        const a = top3FromArray_(cur);
+        if(a) return a;
         for(const x of cur) stack.push(x);
       }else if(typeof cur === "object"){
+        const a = cur.first ?? cur["1st"] ?? cur.rank1 ?? cur.win ?? cur.r1 ?? cur.one ?? null;
+        const b = cur.second ?? cur["2nd"] ?? cur.rank2 ?? cur.place ?? cur.r2 ?? cur.two ?? null;
+        const c = cur.third ?? cur["3rd"] ?? cur.rank3 ?? cur.show ?? cur.r3 ?? cur.three ?? null;
+        const n2 = normalizeTop3Strict_(laneNumberFromAny_(a) ?? a, laneNumberFromAny_(b) ?? b, laneNumberFromAny_(c) ?? c);
+        if(n2) return n2;
         for(const k of Object.keys(cur)) stack.push(cur[k]);
       }
     }
@@ -1694,7 +1778,7 @@
       );
 
       if(autoOdds || manualReady) oddsReady++;
-      if(r._beforeAt || r._beforeOk13 || BEFORE_AUTO.has(r.key)) beforeReady++;
+      if(beforeReadyActual_(r)) beforeReady++;
       if(r.result_top3) resReady++;
     }
 
@@ -1751,7 +1835,7 @@
         parseOddLoose(manual.o3f123)
       );
       if(ODDS_AUTO.has(r.key) || manualReady) oddsReady++;
-      if(BEFORE_AUTO.has(r.key) || r._beforeAt || r._beforeOk13) beforeReady++;
+      if(beforeReadyActual_(r)) beforeReady++;
       if(r.result_top3) resReady++;
     }
 
@@ -2056,6 +2140,13 @@
         applyBeforeToRace_(r, BEFORE_AUTO.get(key));
       }
 
+      if(RESULT_AUTO.has(key)){
+        const cachedResult = RESULT_AUTO.get(key);
+        if(cachedResult?.result_top3){
+          applyResultTop3ToRace_(r, cachedResult.result_top3, cachedResult.source || "api_result_cache", cachedResult.raw);
+        }
+      }
+
       // 結果取得漏れ・反映遅延がある場合の手動補正を優先
       applyManualResultToRace_(r);
 
@@ -2094,6 +2185,79 @@
     return changed;
   }
 
+  function applyResultTop3ToRace_(r, top3, source, raw){
+    const t = pickTop3FromString_(top3) || extractTop3(top3) || extractTop3(raw);
+    if(!t) return false;
+    r.result_top3 = t;
+    r.is_finished = true;
+    r._resultSource = source || r._resultSource || "api_result";
+    r._resultRetryAt = nowHms_();
+    if(raw && typeof raw === "object") r._resultRawKeys = Object.keys(raw).slice(0,40);
+    return true;
+  }
+
+  async function ensureSingleResultAuto_(r, force=false){
+    const key = r.key;
+    if(!force && RESULT_AUTO.has(key)){
+      const cached = RESULT_AUTO.get(key);
+      if(cached?.result_top3){
+        applyResultTop3ToRace_(r, cached.result_top3, cached.source || "api_result_cache", cached.raw);
+        return cached;
+      }
+    }
+    if(force) RESULT_AUTO.delete(key);
+
+    const hd = ymdToHd(r.date);
+    const url = `${WORKER_BASE}/api/result?hd=${hd}&jcd=${r.stadium}&rno=${r.race}&noCache=1&v=${Date.now()}`;
+    const js = await fetchJson(url);
+    const top3 =
+      pickTop3FromString_(js?.result_top3) ||
+      pickTop3FromString_(js?.resultTop3) ||
+      extractTop3(js?.normalized_result) ||
+      extractTop3(js?.result) ||
+      extractTop3(js?.raw) ||
+      extractTop3(js);
+
+    if(top3){
+      const item = { result_top3: top3, source: "api_result", raw: js };
+      RESULT_AUTO.set(key, item);
+      applyResultTop3ToRace_(r, top3, "api_result", js);
+      return item;
+    }
+
+    if(js && js.found){
+      r._resultFoundButTop3Null = true;
+      r._resultDebugKeys = Object.keys(js).slice(0,40);
+    }
+    return null;
+  }
+
+  async function retryMissingResultsIndividually_(targets){
+    const list = targets.filter(r => !r.result_top3).slice(0, RESULT_RETRY_LIMIT);
+    if(!list.length) return 0;
+
+    let changed = 0;
+    let i=0;
+    const running = new Set();
+
+    async function runOne(r){
+      try{
+        const before = r.result_top3;
+        await ensureSingleResultAuto_(r);
+        if(!before && r.result_top3) changed++;
+      }catch(e){}
+    }
+
+    while(i<list.length || running.size){
+      while(i<list.length && running.size<RESULT_SINGLE_CONCURRENCY){
+        const p = runOne(list[i++]).finally(()=>running.delete(p));
+        running.add(p);
+      }
+      if(running.size) await Promise.race(running);
+    }
+    return changed;
+  }
+
   async function retryMissingResults_(){
     const targets = LAST_RACES
       .filter(r => enabledStadiums.has(r.stadium))
@@ -2128,6 +2292,13 @@
         }catch(e){}
       }
     }
+
+    // 3) 最後の砦：前回Workerに追加した /api/result を1レース単位で叩く。
+    //    bundleには結果レコードがあるのにtop3抽出だけ失敗するケース、Worker側で個別APIなら取れるケースに対応。
+    const stillTargets = LAST_RACES
+      .filter(r => enabledStadiums.has(r.stadium))
+      .filter(r => !r.result_top3 && (r.is_finished || isRacePastResultWindow_(r)));
+    changed += await retryMissingResultsIndividually_(stillTargets);
 
     for(const r of LAST_RACES) applyManualResultToRace_(r);
     return changed;
@@ -2328,6 +2499,7 @@
     if(!confirm("before/odds キャッシュを消去して再取得します。よろしいですか？")) return;
     BEFORE_AUTO.clear();
     ODDS_AUTO.clear();
+    RESULT_AUTO.clear();
     await refreshFull();
   });
 
