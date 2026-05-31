@@ -602,38 +602,67 @@
     return out;
   }
 
+  function looksLikeResultRecord_(rr){
+    if(!rr || typeof rr !== "object" || Array.isArray(rr)) return false;
+
+    // programs / previews の boats 配列を「結果」と誤認しないための安全弁。
+    // program行は race_date / race_stadium_number / race_number / boats を持つが、結果・払戻系のキーを持たない。
+    const resultKeys = [
+      "result_top3","resultTop3","top3","kekka","race_result",
+      "finish_order","arrival_order","arrivalOrder","finishOrder",
+      "payouts","payoffs","trifecta","trio","combination","kumi",
+      "winning_number","winningNumber","refunds","payments"
+    ];
+    if(resultKeys.some(k => rr[k] != null)) return true;
+
+    // Worker側で正規化済みの結果だけを拾う。
+    if(rr.normalized_result && typeof rr.normalized_result === "object") return looksLikeResultRecord_(rr.normalized_result);
+    if(rr.result && typeof rr.result === "object"){
+      const r = rr.result;
+      if(resultKeys.some(k => r[k] != null)) return true;
+    }
+
+    return false;
+  }
+
+  function filterResultRecords_(arr){
+    if(!Array.isArray(arr)) return [];
+    return arr.filter(looksLikeResultRecord_);
+  }
+
   function getResultsArrayFromAnyBundle_(bundle){
     if(!bundle) return [];
 
     const candidates = [
       bundle?.results?.results,
       bundle?.results?.races,
+      bundle?.results?.items,
       bundle?.results,
       bundle?.races,
       bundle?.data?.results,
-      bundle?.data?.races
+      bundle?.data?.races,
+      bundle?.data?.items
     ];
 
     for(const c of candidates){
-      if(Array.isArray(c)) return c;
+      const filtered = filterResultRecords_(c);
+      if(filtered.length) return filtered;
     }
 
-    // オブジェクトの中に results/races 配列が深く入っている場合の保険
-    const stack = [bundle];
+    // 以前の深掘りは programs / previews / boats を誤って拾い、未取得レースが 1-2-3 化した。
+    // ここでは results 系の明示キーだけを浅く探索し、結果らしいレコードのみ返す。
+    const stack = [bundle?.results, bundle?.data].filter(Boolean);
     const seen = new Set();
     while(stack.length){
       const cur = stack.pop();
       if(!cur || typeof cur !== "object" || seen.has(cur)) continue;
       seen.add(cur);
 
-      if(Array.isArray(cur)){
-        if(cur.length && typeof cur[0] === "object") return cur;
-        continue;
-      }
-
-      for(const k of ["results", "races", "items", "data"]){
-        if(Array.isArray(cur[k])) return cur[k];
-        if(cur[k] && typeof cur[k] === "object") stack.push(cur[k]);
+      for(const k of ["results","races","items","race_results","raceResults"]){
+        const v = cur[k];
+        const filtered = filterResultRecords_(v);
+        if(filtered.length) return filtered;
+        if(v && typeof v === "object" && !Array.isArray(v)) stack.push(v);
       }
     }
 
@@ -1472,7 +1501,7 @@
     if(typeof v === "object"){
       const keys = [
         "lane","boat","boat_number","boatrace_no","racer_boat_number","racerBoatNumber",
-        "teiban","course","course_number","waku","waku_number","number","no","rank","arrival"
+        "teiban","course","course_number","waku","waku_number","number","no"
       ];
       for(const k of keys){
         const n = laneNumberFromAny_(v[k]);
@@ -1482,9 +1511,10 @@
     return null;
   }
 
-  function top3FromArray_(arr){
+  function top3FromArray_(arr, allowSequential=false){
     if(!Array.isArray(arr) || arr.length < 3) return null;
 
+    // [1,2,3] のような明示配列はOK。ただし任意のオブジェクト配列はここで即採用しない。
     const direct = normalizeTop3Strict_(arr[0], arr[1], arr[2]);
     if(direct) return direct;
 
@@ -1502,29 +1532,45 @@
       laneItems.push({ lane, rank });
     }
 
+    // rank/arrival_order がある配列は順位で解釈する。
     const ranked = laneItems.filter(x => Number.isFinite(x.rank)).sort((a,b)=>a.rank-b.rank).slice(0,3).map(x=>x.lane);
     const byRank = normalizeTop3Strict_(ranked[0], ranked[1], ranked[2]);
     if(byRank) return byRank;
 
-    const lanes = laneItems.slice(0,3).map(x=>x.lane);
-    return normalizeTop3Strict_(lanes[0], lanes[1], lanes[2]);
+    // resultTop3 / finish_order など、結果順であることが分かっている配列だけ順序採用する。
+    if(allowSequential){
+      const lanes = laneItems.slice(0,3).map(x=>x.lane);
+      return normalizeTop3Strict_(lanes[0], lanes[1], lanes[2]);
+    }
+
+    return null;
   }
 
   function extractTop3(rr){
     if(!rr) return null;
 
     if(typeof rr === "string") return pickTop3FromString_(rr);
-    if(Array.isArray(rr)) return top3FromArray_(rr);
+    if(Array.isArray(rr)) return top3FromArray_(rr, true);
     if(typeof rr !== "object") return null;
 
-    const direct =
-      rr.result_top3 ?? rr.resultTop3 ?? rr.top3 ?? rr.kekka ?? rr.result ?? rr.race_result ??
-      rr.finish_order ?? rr.arrival_order ?? rr.arrivalOrder ?? rr.finishOrder ?? null;
+    // 明示的に結果を表すキーだけを見る。
+    // 任意の深掘り探索は programs.boats を 1-2-3 と誤認するので禁止。
+    const directKeys = [
+      "result_top3","resultTop3","top3","kekka","race_result",
+      "finish_order","arrival_order","arrivalOrder","finishOrder"
+    ];
 
-    const s1 = pickTop3FromString_(direct);
-    if(s1) return s1;
-    const a1 = Array.isArray(direct) ? top3FromArray_(direct) : null;
-    if(a1) return a1;
+    for(const k of directKeys){
+      const v = rr[k];
+      const s = pickTop3FromString_(v);
+      if(s) return s;
+      const a = Array.isArray(v) ? top3FromArray_(v, true) : null;
+      if(a) return a;
+      if(v && typeof v === "object" && !Array.isArray(v)){
+        const nested = extractTop3(v);
+        if(nested) return nested;
+      }
+    }
 
     const candA =
       rr.first ?? rr["1st"] ?? rr.rank1 ?? rr.win ?? rr.r1 ?? rr.one ??
@@ -1540,40 +1586,26 @@
     if(n1) return n1;
 
     const payoutCandidates = [
-      rr.payouts?.trifecta, rr.payouts?.trio, rr.trifecta, rr.trio,
-      rr.combination, rr.kumi, rr.winning_number, rr.winningNumber
+      rr.payouts?.trifecta, rr.payouts?.trio, rr.payoffs?.trifecta, rr.payoffs?.trio,
+      rr.trifecta, rr.trio, rr.combination, rr.kumi, rr.winning_number, rr.winningNumber
     ];
     for(const x of payoutCandidates){
       const sx = pickTop3FromString_(x);
       if(sx) return sx;
-      const ax = Array.isArray(x) ? top3FromArray_(x) : null;
+      const ax = Array.isArray(x) ? top3FromArray_(x, true) : null;
       if(ax) return ax;
+      if(x && typeof x === "object" && !Array.isArray(x)){
+        const nx = extractTop3(x);
+        if(nx) return nx;
+      }
     }
 
-    const stack=[rr];
-    const seen = new Set();
-    while(stack.length){
-      const cur = stack.pop();
-      if(cur == null) continue;
-      if(typeof cur === "object"){
-        if(seen.has(cur)) continue;
-        seen.add(cur);
-      }
-
-      const s = pickTop3FromString_(cur);
-      if(s) return s;
-
-      if(Array.isArray(cur)){
-        const a = top3FromArray_(cur);
-        if(a) return a;
-        for(const x of cur) stack.push(x);
-      }else if(typeof cur === "object"){
-        const a = cur.first ?? cur["1st"] ?? cur.rank1 ?? cur.win ?? cur.r1 ?? cur.one ?? null;
-        const b = cur.second ?? cur["2nd"] ?? cur.rank2 ?? cur.place ?? cur.r2 ?? cur.two ?? null;
-        const c = cur.third ?? cur["3rd"] ?? cur.rank3 ?? cur.show ?? cur.r3 ?? cur.three ?? null;
-        const n2 = normalizeTop3Strict_(laneNumberFromAny_(a) ?? a, laneNumberFromAny_(b) ?? b, laneNumberFromAny_(c) ?? c);
-        if(n2) return n2;
-        for(const k of Object.keys(cur)) stack.push(cur[k]);
+    // 正規化済み/結果オブジェクトとして明示されている場合だけ1段見る。
+    for(const k of ["normalized_result","result"]){
+      const v = rr[k];
+      if(v && typeof v === "object"){
+        const nv = extractTop3(v);
+        if(nv) return nv;
       }
     }
 
@@ -2110,7 +2142,9 @@
 
       const rr = resMap.get(key);
       const top3 = rr ? extractTop3(rr) : null;
-      const isFinished = !!rr;
+      // 結果レコードらしきものがあっても top3 が取れない限り「終了済み」にしない。
+      // 未来レースを result_ready に数える事故を防ぐ。
+      const isFinished = !!top3;
 
       const r = {
         key,
@@ -2178,8 +2212,6 @@
         r._resultSourceUrl = sourceUrl;
         r._resultRetryAt = nowHms_();
         changed++;
-      }else if(!r.is_finished){
-        r.is_finished = true;
       }
     }
     return changed;
@@ -2210,13 +2242,21 @@
     const hd = ymdToHd(r.date);
     const url = `${WORKER_BASE}/api/result?hd=${hd}&jcd=${r.stadium}&rno=${r.race}&noCache=1&v=${Date.now()}`;
     const js = await fetchJson(url);
+
+    // /api/result が found:false の時、レスポンス内のURLやデバッグ配列から 1-2-3 を誤抽出しない。
+    if(js && Object.prototype.hasOwnProperty.call(js, "found") && !js.found){
+      RESULT_AUTO.set(key, { result_top3: null, source: "api_result_not_found", raw: js });
+      r._resultNotFound = true;
+      r._resultRetryAt = nowHms_();
+      return null;
+    }
+
     const top3 =
       pickTop3FromString_(js?.result_top3) ||
       pickTop3FromString_(js?.resultTop3) ||
       extractTop3(js?.normalized_result) ||
       extractTop3(js?.result) ||
-      extractTop3(js?.raw) ||
-      extractTop3(js);
+      extractTop3(js?.raw);
 
     if(top3){
       const item = { result_top3: top3, source: "api_result", raw: js };
@@ -2261,7 +2301,7 @@
   async function retryMissingResults_(){
     const targets = LAST_RACES
       .filter(r => enabledStadiums.has(r.stadium))
-      .filter(r => !r.result_top3 && (r.is_finished || isRacePastResultWindow_(r)))
+      .filter(r => !r.result_top3 && isRacePastResultWindow_(r))
       .sort((a,b)=>parseCloseMs_(a.race_closed_at)-parseCloseMs_(b.race_closed_at))
       .slice(0, RESULT_RETRY_LIMIT);
 
@@ -2278,7 +2318,7 @@
     // 2) それでも欠ける場合、boatraceopenapi の results をブラウザから直接取りに行く。
     //    /api/today 側のキャッシュが古い場合の保険。
     const stillMissing = LAST_RACES.some(r =>
-      enabledStadiums.has(r.stadium) && !r.result_top3 && (r.is_finished || isRacePastResultWindow_(r))
+      enabledStadiums.has(r.stadium) && !r.result_top3 && isRacePastResultWindow_(r)
     );
 
     if(stillMissing){
@@ -2297,7 +2337,7 @@
     //    bundleには結果レコードがあるのにtop3抽出だけ失敗するケース、Worker側で個別APIなら取れるケースに対応。
     const stillTargets = LAST_RACES
       .filter(r => enabledStadiums.has(r.stadium))
-      .filter(r => !r.result_top3 && (r.is_finished || isRacePastResultWindow_(r)));
+      .filter(r => !r.result_top3 && isRacePastResultWindow_(r));
     changed += await retryMissingResultsIndividually_(stillTargets);
 
     for(const r of LAST_RACES) applyManualResultToRace_(r);
@@ -2307,7 +2347,7 @@
 
   function countMissingResultsAfterGrace_(){
     return LAST_RACES.filter(r =>
-      enabledStadiums.has(r.stadium) && !r.result_top3 && (r.is_finished || isRacePastResultWindow_(r))
+      enabledStadiums.has(r.stadium) && !r.result_top3 && isRacePastResultWindow_(r)
     ).length;
   }
 
