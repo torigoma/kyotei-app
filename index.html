@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.6.2（C会場・高オッズ3Fガード / 手動結果補正常時表示）</title>
+  <title>競艇 v2.8（BUY絞り：softSafe厳格化 / 2・3残存強化）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -56,7 +56,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.6.2（C会場・高オッズ3Fガード / 手動結果補正常時表示）</h1>
+  <h1>競艇 v2.8（BUY絞り：softSafe厳格化 / 2・3残存強化）</h1>
   <div class="sub">
     ✅ ①=3連単 / ②=3連複 を展示で自動切替（1レース1点）。<br/>
     ✅ オッズ/風波/STは Worker で自動取得（最終候補だけ）→ 手入力は最終候補だけ出る。<br/>
@@ -64,7 +64,7 @@
     ✅ 終了レースは結果（3着まで）を表示（0-0-0は出さない）。<br/>
     ✅ 2026-05追加：B+/B/B-再分類、桐生警戒A、2・3残存チェックを反映。<br/>
     ✅ v2.5：結果取得をv3/v2両方で再照会し、補完件数・残件数をステータス表示。<br/>
-    ✅ v2.6.2：C会場softSafe抑制・C会場12Rガード・高オッズ3F条件付き許可を追加。<br/>
+    ✅ v2.8：取得系・偽1-2-3防止は維持し、BUY側のみsoftSafe厳格化・2/3残存強化・12R softSafe NOを追加。<br/>
     ✅ 2026-05-27修正：ナイター後半のbefore取得漏れ対策、result_top3強制再取得、直接resultsフォールバック、手動結果補正を追加。
   </div>
 
@@ -275,6 +275,21 @@
       <div class="muted small" style="align-self:center;">
         ※「1は残るが2/3が外に食われる」外れ型が多いため、外枠展示・STの脅威を検出
       </div>
+    </div>
+
+    <div class="grid g3" style="margin-top:10px;">
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="softSafeBuyTightenOn" checked />
+        softSafe由来BUYを厳格化（B以下はNO / B+も複合リスクはNO）
+      </label>
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="finalRaceSoftSafeNoOn" checked />
+        12RのsoftSafe由来BUYはNO寄せ
+      </label>
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="innerSurvivalBuyStrictOn" checked />
+        BUY側2・3残存ガードを一段強化（展示4位以下＋外枠脅威）
+      </label>
     </div>
 
     <div class="grid g3" style="margin-top:10px;">
@@ -884,6 +899,73 @@
     };
   }
 
+  // v2.8: BUY確定前だけ使う強めの2・3残存リスク。
+  // 「2/3の展示順位が4位以下」かつ「外枠(4〜6)に展示またはST脅威」がある場合、3Fでも外枠に食われやすいとみなす。
+  function innerSurvivalBuyStrictRisk_(r){
+    const exhLead = num("outerExhLead") ?? 0.03;
+    const stLead = num("outerStLead") ?? 0.06;
+    const exh = r?.exh || {};
+    const st = r?.st || {};
+    const rank2 = laneExhRank_(exh, 2);
+    const rank3 = laneExhRank_(exh, 3);
+    const weakInners = [];
+    if(Number.isFinite(rank2) && rank2 >= 4) weakInners.push(2);
+    if(Number.isFinite(rank3) && rank3 >= 4) weakInners.push(3);
+
+    const exhThreats = [];
+    const stThreats = [];
+    for(const inner of [2,3]){
+      const ti = Number(exh[String(inner)]);
+      const si = parseStToNum_(st[String(inner)]);
+      if(!Number.isFinite(ti) || ti <= 0) continue;
+      for(const outer of [4,5,6]){
+        const to = Number(exh[String(outer)]);
+        const so = parseStToNum_(st[String(outer)]);
+        if(Number.isFinite(to) && to > 0 && to <= ti - exhLead) exhThreats.push(`${outer}>${inner}`);
+        if(Number.isFinite(si) && Number.isFinite(so) && so <= si - stLead) stThreats.push(`${outer}>${inner}`);
+      }
+    }
+
+    const risky = weakInners.length > 0 && (exhThreats.length > 0 || stThreats.length > 0);
+    return {
+      risky,
+      weakInners,
+      rank2,
+      rank3,
+      exhThreats,
+      stThreats,
+      reason: risky
+        ? `BUY側2・3残存リスク（弱い内艇:${weakInners.join(",")} / 外枠展示:${exhThreats.length} / 外枠ST:${stThreats.length} / 2展示順位:${rank2 ?? "-"} / 3展示順位:${rank3 ?? "-"}）`
+        : ""
+    };
+  }
+
+  function softSafeBuyTightenNo_(r, softReasons, ctx){
+    if(!$('softSafeBuyTightenOn')?.checked && !$('finalRaceSoftSafeNoOn')?.checked) return null;
+    const venueSubRank = ctx?.venueSubRank || venueSubRankOf(r?.stadium);
+    const venueRank = ctx?.venueRank || venueRankOf(r?.stadium);
+    const isRace12 = Number(r?.race) === 12;
+    const isBPlus = venueSubRank === 'B+';
+    const isA = venueRank === 'A' && venueSubRank !== 'A警戒';
+    const hasOuterOrMix = !!ctx?.outerFast || (Array.isArray(softReasons) && softReasons.includes('外枠が速い')) || (Array.isArray(softReasons) && softReasons.includes('混戦（1に近い艇が多い）'));
+
+    if($('finalRaceSoftSafeNoOn')?.checked && isRace12){
+      return '12R softSafe抑制';
+    }
+
+    if($('softSafeBuyTightenOn')?.checked){
+      // B / B- / C / A警戒はsoftSafe救済を買いにしない。C・B-・桐生は既存ガードでも止まるが、保険として明示。
+      if(!isA && !isBPlus){
+        return 'softSafe BUY厳格化（B以下）';
+      }
+      // B+でも、soft理由が複数かつ外枠/混戦/12Rが絡む場合は、7日間の外れ型に寄せてNO。
+      if(isBPlus && Array.isArray(softReasons) && softReasons.length >= 2 && (hasOuterOrMix || isRace12)){
+        return 'softSafe BUY厳格化（B+複合リスク）';
+      }
+    }
+    return null;
+  }
+
   function applyBeforeToRace_(r, beforeJs){
     if(!r || !beforeJs || !beforeJs.ok) return false;
     const info = beforeJs.info || null;
@@ -1203,6 +1285,23 @@
             };
           }
 
+          const softStrictReason = softSafeBuyTightenNo_(r, reasons, { venueRank, venueSubRank, outerFast });
+          if(softStrictReason){
+            return {
+              level:"no",
+              reasons: reasons.concat([softStrictReason]),
+              rank, outerFast, d2, d3, nc,
+              _softSafeSuppressed:true,
+              _softSafeBuyTightened:true,
+              _softReasons: reasons.slice(),
+              _venueRank: venueRank,
+              _venueSubRank: venueSubRank,
+              _isBMinus: isBMinus,
+              _isHighRiskVenue: isHighRiskVenue_(r.stadium),
+              _locMissing: f1._locMissing
+            };
+          }
+
           return {
             level:"final",
             betType:"3F",
@@ -1341,6 +1440,25 @@
           reasons:["桐生警戒A×5〜8R"],
           rank, outerFast, d2, d3, nc, betType, combo,
           _guard:"kiryu_mid",
+          _venueRank: venueRank,
+          _venueSubRank: venueSubRank,
+          _isBMinus: isBMinus,
+          _isHighRiskVenue: isHighRiskVenue_(r.stadium),
+          _locMissing: f1._locMissing
+        };
+      }
+    }
+
+    // ====== BUY側2・3残存チェック強化（v2.8） ======
+    if($("profitGuardsOn")?.checked && $("innerSurvivalBuyStrictOn")?.checked){
+      const strictRisk = innerSurvivalBuyStrictRisk_(r);
+      if(strictRisk.risky){
+        return {
+          level:"no",
+          reasons:[strictRisk.reason],
+          rank, outerFast, d2, d3, nc, betType, combo,
+          _guard:"inner_survival_buy_strict",
+          _innerSurvivalBuyStrictRisk: strictRisk,
           _venueRank: venueRank,
           _venueSubRank: venueSubRank,
           _isBMinus: isBMinus,
@@ -2457,7 +2575,7 @@
       "venueAdjustOn","cVenueMin3fOn","cVenueMin3fAdd","cVenueRoughSafeOn","cVenueSoftSafeBlockOn","cVenueFinalRaceNoOn","heiwajimaSafeOn","tokonameStPriorityOn",
       "bMinusSoftSafeBlockOn","bMinusMin3fAdd","biwakoHamanakoMin3fAdd",
       "kiryuGuardOn","kiryuMidRaceNoOn","kiryuSoftSafeBlockOn","kiryuMin3fAdd",
-      "innerSurvivalGuardOn","outerExhLead","outerStLead","outerExhThreatCountNo","outerComboThreatCountNo",
+      "innerSurvivalGuardOn","softSafeBuyTightenOn","finalRaceSoftSafeNoOn","innerSurvivalBuyStrictOn","outerExhLead","outerStLead","outerExhThreatCountNo","outerComboThreatCountNo",
       "viewMode","oddsFilterOn","autoRefresh"
     ];
     const out = {};
@@ -2516,7 +2634,7 @@
     "highOdds3fGuardOn","highOdds3fLine",
     "bMinusSoftSafeBlockOn","bMinusMin3fAdd","biwakoHamanakoMin3fAdd",
     "kiryuGuardOn","kiryuMidRaceNoOn","kiryuSoftSafeBlockOn","kiryuMin3fAdd",
-    "innerSurvivalGuardOn","outerExhLead","outerStLead","outerExhThreatCountNo","outerComboThreatCountNo"
+    "innerSurvivalGuardOn","softSafeBuyTightenOn","finalRaceSoftSafeNoOn","innerSurvivalBuyStrictOn","outerExhLead","outerStLead","outerExhThreatCountNo","outerComboThreatCountNo"
   ].forEach(id=>{
     const el = $(id);
     if(!el) return;
