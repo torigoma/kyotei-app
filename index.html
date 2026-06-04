@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.9（A softSafe厳格化 / 低通信モード）</title>
+  <title>競艇 v2.9.1（A softSafe厳格化 / 低通信＋分析用フル取得）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -56,7 +56,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.9（A softSafe厳格化 / 低通信モード）</h1>
+  <h1>競艇 v2.9.1（A softSafe厳格化 / 低通信＋分析用フル取得）</h1>
   <div class="sub">
     ✅ ①=3連単 / ②=3連複 を展示で自動切替（1レース1点）。<br/>
     ✅ オッズ/風波/STは Worker で自動取得（最終候補だけ）→ 手入力は最終候補だけ出る。<br/>
@@ -398,7 +398,7 @@
       </label>
     </div>
     <div class="muted small" style="margin-top:8px;">
-      ※全レースのbefore/resultを個別に叩くとWorker使用量が増えるため、実戦判定に必要な候補を優先します。結果分析用の全体結果は、取得済み分＋手動補正で扱います。
+      ※普段の更新は候補中心で軽くします。全レース分析用に埋めたい時だけ、下の「分析用フル取得」ボタンを手動で押してください。Worker使用量は増えるので1日1回程度推奨。
     </div>
 
     <div class="hr"></div>
@@ -413,6 +413,7 @@
         <button class="btn" id="refreshBtn">更新（programs更新）</button>
 
         <button class="btn2" id="exportBtn">.json書き出し</button>
+        <button class="btnDanger" id="analysisFullFetchBtn">分析用フル取得（全before/result）</button>
 
         <label class="cb" style="margin:0;">
           <input type="checkbox" id="autoRefresh" />
@@ -445,6 +446,7 @@
   const BEFORE_FILL_CONCURRENCY = 2; // v2.9低通信：同時Worker呼び出しを抑制
   const BEFORE_EMPTY_RETRY_MS = 15000;
   const RESULT_RETRY_LIMIT = 80; // v2.9低通信：個別結果補完の上限を抑える
+  const ANALYSIS_FULL_LIMIT = 999; // v2.9.1：手動の分析用フル取得だけ全対象を許可
   const RESULT_CLOSE_GRACE_MS = 10 * 60 * 1000; // 締切10分後から結果未取得リトライ対象
   const AUTO_REFRESH_MS = 3 * 60 * 1000; // v2.9: 自動更新は低頻度（通常OFF）
 
@@ -1167,34 +1169,51 @@
     return Number.isFinite(ms) ? ms : Number.POSITIVE_INFINITY;
   }
 
-  async function fillMissingExhByBeforeinfo_(){
-    const targets = LAST_RACES
-      .filter(r => shouldAutoFetchBefore_(r))
+  async function fetchBeforeTargets_(targets, force=false){
+    const list = targets
+      .filter(r => r && enabledStadiums.has(r.stadium))
       .sort((a,b)=>{
         const am = parseCloseMs_(a.race_closed_at);
         const bm = parseCloseMs_(b.race_closed_at);
         if(am !== bm) return am - bm;
         return (a.stadium-b.stadium) || (a.race-b.race);
-      })
-      .slice(0, BEFORE_FILL_LIMIT);
+      });
 
-    if(targets.length === 0) return;
+    if(list.length === 0) return 0;
 
+    const beforeCount = list.filter(r => beforeReadyActual_(r)).length;
     const limit = BEFORE_FILL_CONCURRENCY;
     let i=0;
     const running = new Set();
 
     async function runOne(r){
-      try{ await ensureBeforeAuto(r); }catch(e){}
+      try{ await ensureBeforeAuto(r, force); }catch(e){}
     }
 
-    while(i<targets.length || running.size){
-      while(i<targets.length && running.size<limit){
-        const p = runOne(targets[i++]).finally(()=>running.delete(p));
+    while(i<list.length || running.size){
+      while(i<list.length && running.size<limit){
+        const p = runOne(list[i++]).finally(()=>running.delete(p));
         running.add(p);
       }
       if(running.size) await Promise.race(running);
     }
+
+    const afterCount = list.filter(r => beforeReadyActual_(r)).length;
+    return Math.max(0, afterCount - beforeCount);
+  }
+
+  async function fillMissingExhByBeforeinfo_(){
+    const targets = LAST_RACES
+      .filter(r => shouldAutoFetchBefore_(r))
+      .slice(0, BEFORE_FILL_LIMIT);
+    await fetchBeforeTargets_(targets, false);
+  }
+
+  function fullAnalysisBeforeTargets_(){
+    return LAST_RACES
+      .filter(r => r && enabledStadiums.has(r.stadium))
+      .filter(r => (!r.exhReady) || (!envReady_(r)) || (!stReady13_(r)))
+      .slice(0, ANALYSIS_FULL_LIMIT);
   }
 
   // ====== 判定ロジック ======
@@ -2483,8 +2502,8 @@
     return null;
   }
 
-  async function retryMissingResultsIndividually_(targets){
-    const list = targets.filter(r => !r.result_top3).slice(0, RESULT_RETRY_LIMIT);
+  async function retryMissingResultsIndividually_(targets, limitOverride=RESULT_RETRY_LIMIT){
+    const list = targets.filter(r => !r.result_top3).slice(0, limitOverride);
     if(!list.length) return 0;
 
     let changed = 0;
@@ -2551,6 +2570,80 @@
     return changed;
   }
 
+
+  function fullAnalysisResultTargets_(){
+    return LAST_RACES
+      .filter(r => r && enabledStadiums.has(r.stadium))
+      .filter(r => !r.result_top3 && isRacePastResultWindow_(r))
+      .slice(0, ANALYSIS_FULL_LIMIT);
+  }
+
+  async function retryAllMissingResultsForAnalysis_(){
+    const targets = fullAnalysisResultTargets_();
+    if(!targets.length) return 0;
+
+    let changed = 0;
+
+    // まずCloudflareを使わず、GitHub側のresults bundleから全体補完。
+    const dates = Array.from(new Set(LAST_RACES.map(r => r.date).filter(Boolean)));
+    for(const d of dates){
+      try{
+        const bundles = await fetchAllDirectResultsBundles_(d);
+        for(const direct of bundles){
+          changed += applyResultsFromBundle_(direct, "analysis_direct_openapi_results");
+        }
+      }catch(e){}
+    }
+
+    // それでも欠ける締切後レースだけ、手動フル取得時に限り /api/result を全対象へ許可。
+    const stillTargets = fullAnalysisResultTargets_();
+    changed += await retryMissingResultsIndividually_(stillTargets, ANALYSIS_FULL_LIMIT);
+
+    for(const r of LAST_RACES) applyManualResultToRace_(r);
+    return changed;
+  }
+
+  async function fullAnalysisFetch_(){
+    if(!LAST_RACES.length){
+      alert("先に『更新（programs更新）』でレース一覧を取得してください。");
+      return;
+    }
+
+    const beforeTargets = fullAnalysisBeforeTargets_();
+    const resultTargets = fullAnalysisResultTargets_();
+    const ok = confirm(
+      `分析用に全レースを補完します。\n\n` +
+      `beforeinfo対象: ${beforeTargets.length}R\n` +
+      `結果個別補完対象: ${resultTargets.length}R\n\n` +
+      `Worker使用量が増えるので、分析用に1日1回程度の利用推奨です。実行しますか？`
+    );
+    if(!ok) return;
+
+    const btn = $("analysisFullFetchBtn");
+    if(btn) btn.disabled = true;
+
+    try{
+      setStatus("分析用フル取得中… before/resultを補完しています");
+      setAutoStatus("手動フル取得中");
+
+      const beforeChanged = await fetchBeforeTargets_(beforeTargets, false);
+      renderSummary(LAST_RACES);
+      renderList(LAST_RACES);
+
+      const resultChanged = await retryAllMissingResultsForAnalysis_();
+      await prefetchOddsForFinals_();
+
+      renderSummary(LAST_RACES);
+      renderList(LAST_RACES);
+
+      setStatus(`分析用フル取得OK / ${nowHms_()} / before補完:${beforeChanged} / 結果補完:${resultChanged} / 結果未取得:${countMissingResultsAfterGrace_()}`);
+      maybeScheduleAutoRefresh();
+    }catch(e){
+      setStatus("分析用フル取得失敗");
+    }finally{
+      if(btn) btn.disabled = false;
+    }
+  }
 
   function countMissingResultsAfterGrace_(){
     return LAST_RACES.filter(r =>
@@ -2708,6 +2801,7 @@
 
   // ===== wiring =====
   $("refreshBtn").addEventListener("click", refreshFull);
+  $("analysisFullFetchBtn").addEventListener("click", fullAnalysisFetch_);
   $("applyBtn").addEventListener("click", ()=>{ renderSummary(LAST_RACES); renderList(LAST_RACES); });
   $("autoRefresh").addEventListener("change", maybeScheduleAutoRefresh);
   $("viewMode").addEventListener("change", ()=>renderList(LAST_RACES));
