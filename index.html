@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.9.1（A softSafe厳格化 / 低通信＋分析用フル取得）</title>
+  <title>競艇 v2.9.2（A softSafe厳格化 / 低通信＋分析用フル取得SAFE）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -56,7 +56,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.9.1（A softSafe厳格化 / 低通信＋分析用フル取得）</h1>
+  <h1>競艇 v2.9.2（A softSafe厳格化 / 低通信＋分析用フル取得SAFE）</h1>
   <div class="sub">
     ✅ ①=3連単 / ②=3連複 を展示で自動切替（1レース1点）。<br/>
     ✅ オッズ/風波/STは Worker で自動取得（最終候補だけ）→ 手入力は最終候補だけ出る。<br/>
@@ -65,6 +65,7 @@
     ✅ 2026-05追加：B+/B/B-再分類、桐生警戒A、2・3残存チェックを反映。<br/>
     ✅ v2.5：結果取得をv3/v2両方で再照会し、補完件数・残件数をステータス表示。<br/>
     ✅ v2.8：取得系・偽1-2-3防止は維持し、BUY側のみsoftSafe厳格化・2/3残存強化・12R softSafe NOを追加。<br/>
+    ✅ v2.9.2：通常更新は低通信のまま、分析用フル取得ボタンを独立追加（全体取得ロジックはv2.9から変更しない）。<br/>
     ✅ v2.9：A会場softSafeも複合リスク/4号艇脅威でNO化。before/result補完は候補中心に絞り、初回自動取得も停止。<br/>
     ✅ 2026-05-27修正：ナイター後半のbefore取得漏れ対策、result_top3強制再取得、直接resultsフォールバック、手動結果補正を追加。
   </div>
@@ -398,7 +399,7 @@
       </label>
     </div>
     <div class="muted small" style="margin-top:8px;">
-      ※普段の更新は候補中心で軽くします。全レース分析用に埋めたい時だけ、下の「分析用フル取得」ボタンを手動で押してください。Worker使用量は増えるので1日1回程度推奨。
+      ※全レースのbefore/resultを個別に叩くとWorker使用量が増えるため、実戦判定に必要な候補を優先します。結果分析用の全体結果は、取得済み分＋手動補正で扱います。
     </div>
 
     <div class="hr"></div>
@@ -446,9 +447,10 @@
   const BEFORE_FILL_CONCURRENCY = 2; // v2.9低通信：同時Worker呼び出しを抑制
   const BEFORE_EMPTY_RETRY_MS = 15000;
   const RESULT_RETRY_LIMIT = 80; // v2.9低通信：個別結果補完の上限を抑える
-  const ANALYSIS_FULL_LIMIT = 999; // v2.9.1：手動の分析用フル取得だけ全対象を許可
   const RESULT_CLOSE_GRACE_MS = 10 * 60 * 1000; // 締切10分後から結果未取得リトライ対象
   const AUTO_REFRESH_MS = 3 * 60 * 1000; // v2.9: 自動更新は低頻度（通常OFF）
+  const ANALYSIS_FULL_LIMIT = 999; // v2.9.2: 手動の分析用フル取得時だけ全対象を許可
+  const ANALYSIS_FULL_CONCURRENCY = 2; // Worker負荷を抑えるため、全取得でも同時数は低め
 
   // ★Δ2の「条件付き0.14」上限（UIは増やさずロジックだけ）
   const DELTA2_GREY_MAX = 0.14;
@@ -1169,51 +1171,34 @@
     return Number.isFinite(ms) ? ms : Number.POSITIVE_INFINITY;
   }
 
-  async function fetchBeforeTargets_(targets, force=false){
-    const list = targets
-      .filter(r => r && enabledStadiums.has(r.stadium))
+  async function fillMissingExhByBeforeinfo_(){
+    const targets = LAST_RACES
+      .filter(r => shouldAutoFetchBefore_(r))
       .sort((a,b)=>{
         const am = parseCloseMs_(a.race_closed_at);
         const bm = parseCloseMs_(b.race_closed_at);
         if(am !== bm) return am - bm;
         return (a.stadium-b.stadium) || (a.race-b.race);
-      });
+      })
+      .slice(0, BEFORE_FILL_LIMIT);
 
-    if(list.length === 0) return 0;
+    if(targets.length === 0) return;
 
-    const beforeCount = list.filter(r => beforeReadyActual_(r)).length;
     const limit = BEFORE_FILL_CONCURRENCY;
     let i=0;
     const running = new Set();
 
     async function runOne(r){
-      try{ await ensureBeforeAuto(r, force); }catch(e){}
+      try{ await ensureBeforeAuto(r); }catch(e){}
     }
 
-    while(i<list.length || running.size){
-      while(i<list.length && running.size<limit){
-        const p = runOne(list[i++]).finally(()=>running.delete(p));
+    while(i<targets.length || running.size){
+      while(i<targets.length && running.size<limit){
+        const p = runOne(targets[i++]).finally(()=>running.delete(p));
         running.add(p);
       }
       if(running.size) await Promise.race(running);
     }
-
-    const afterCount = list.filter(r => beforeReadyActual_(r)).length;
-    return Math.max(0, afterCount - beforeCount);
-  }
-
-  async function fillMissingExhByBeforeinfo_(){
-    const targets = LAST_RACES
-      .filter(r => shouldAutoFetchBefore_(r))
-      .slice(0, BEFORE_FILL_LIMIT);
-    await fetchBeforeTargets_(targets, false);
-  }
-
-  function fullAnalysisBeforeTargets_(){
-    return LAST_RACES
-      .filter(r => r && enabledStadiums.has(r.stadium))
-      .filter(r => (!r.exhReady) || (!envReady_(r)) || (!stReady13_(r)))
-      .slice(0, ANALYSIS_FULL_LIMIT);
   }
 
   // ====== 判定ロジック ======
@@ -2502,8 +2487,8 @@
     return null;
   }
 
-  async function retryMissingResultsIndividually_(targets, limitOverride=RESULT_RETRY_LIMIT){
-    const list = targets.filter(r => !r.result_top3).slice(0, limitOverride);
+  async function retryMissingResultsIndividually_(targets){
+    const list = targets.filter(r => !r.result_top3).slice(0, RESULT_RETRY_LIMIT);
     if(!list.length) return 0;
 
     let changed = 0;
@@ -2571,16 +2556,81 @@
   }
 
 
+
+  function fullAnalysisBeforeTargets_(){
+    return LAST_RACES
+      .filter(r => r && enabledStadiums.has(r.stadium))
+      .filter(r => (!r.exhReady) || (!envReady_(r)) || (!stReady13_(r)))
+      .sort((a,b)=>{
+        const am = parseCloseMs_(a.race_closed_at);
+        const bm = parseCloseMs_(b.race_closed_at);
+        if(am !== bm) return am - bm;
+        return (a.stadium-b.stadium) || (a.race-b.race);
+      })
+      .slice(0, ANALYSIS_FULL_LIMIT);
+  }
+
+  async function fetchAllBeforeForAnalysis_(){
+    const targets = fullAnalysisBeforeTargets_();
+    if(!targets.length) return 0;
+
+    const beforeCount = targets.filter(r => beforeReadyActual_(r)).length;
+    let i = 0;
+    const running = new Set();
+
+    async function runOne(r){
+      try{ await ensureBeforeAuto(r, false); }catch(e){}
+    }
+
+    while(i < targets.length || running.size){
+      while(i < targets.length && running.size < ANALYSIS_FULL_CONCURRENCY){
+        const p = runOne(targets[i++]).finally(()=>running.delete(p));
+        running.add(p);
+      }
+      if(running.size) await Promise.race(running);
+    }
+
+    const afterCount = targets.filter(r => beforeReadyActual_(r)).length;
+    return Math.max(0, afterCount - beforeCount);
+  }
+
   function fullAnalysisResultTargets_(){
     return LAST_RACES
       .filter(r => r && enabledStadiums.has(r.stadium))
       .filter(r => !r.result_top3 && isRacePastResultWindow_(r))
+      .sort((a,b)=>parseCloseMs_(a.race_closed_at)-parseCloseMs_(b.race_closed_at))
       .slice(0, ANALYSIS_FULL_LIMIT);
   }
 
+  async function retryAllMissingResultsIndividuallyForAnalysis_(targets){
+    const list = targets.filter(r => r && !r.result_top3).slice(0, ANALYSIS_FULL_LIMIT);
+    if(!list.length) return 0;
+
+    let changed = 0;
+    let i = 0;
+    const running = new Set();
+
+    async function runOne(r){
+      try{
+        const before = r.result_top3;
+        await ensureSingleResultAuto_(r);
+        if(!before && r.result_top3) changed++;
+      }catch(e){}
+    }
+
+    while(i < list.length || running.size){
+      while(i < list.length && running.size < ANALYSIS_FULL_CONCURRENCY){
+        const p = runOne(list[i++]).finally(()=>running.delete(p));
+        running.add(p);
+      }
+      if(running.size) await Promise.race(running);
+    }
+    return changed;
+  }
+
   async function retryAllMissingResultsForAnalysis_(){
-    const targets = fullAnalysisResultTargets_();
-    if(!targets.length) return 0;
+    const initialTargets = fullAnalysisResultTargets_();
+    if(!initialTargets.length) return 0;
 
     let changed = 0;
 
@@ -2595,9 +2645,9 @@
       }catch(e){}
     }
 
-    // それでも欠ける締切後レースだけ、手動フル取得時に限り /api/result を全対象へ許可。
+    // それでも欠ける締切後レースだけ、分析用手動ボタンに限って /api/result を全対象へ許可。
     const stillTargets = fullAnalysisResultTargets_();
-    changed += await retryMissingResultsIndividually_(stillTargets, ANALYSIS_FULL_LIMIT);
+    changed += await retryAllMissingResultsIndividuallyForAnalysis_(stillTargets);
 
     for(const r of LAST_RACES) applyManualResultToRace_(r);
     return changed;
@@ -2626,7 +2676,7 @@
       setStatus("分析用フル取得中… before/resultを補完しています");
       setAutoStatus("手動フル取得中");
 
-      const beforeChanged = await fetchBeforeTargets_(beforeTargets, false);
+      const beforeChanged = await fetchAllBeforeForAnalysis_();
       renderSummary(LAST_RACES);
       renderList(LAST_RACES);
 
@@ -2639,6 +2689,7 @@
       setStatus(`分析用フル取得OK / ${nowHms_()} / before補完:${beforeChanged} / 結果補完:${resultChanged} / 結果未取得:${countMissingResultsAfterGrace_()}`);
       maybeScheduleAutoRefresh();
     }catch(e){
+      console.error(e);
       setStatus("分析用フル取得失敗");
     }finally{
       if(btn) btn.disabled = false;
@@ -2801,7 +2852,6 @@
 
   // ===== wiring =====
   $("refreshBtn").addEventListener("click", refreshFull);
-  $("analysisFullFetchBtn").addEventListener("click", fullAnalysisFetch_);
   $("applyBtn").addEventListener("click", ()=>{ renderSummary(LAST_RACES); renderList(LAST_RACES); });
   $("autoRefresh").addEventListener("change", maybeScheduleAutoRefresh);
   $("viewMode").addEventListener("change", ()=>renderList(LAST_RACES));
@@ -2839,6 +2889,7 @@
     await refreshFull();
   });
 
+  $("analysisFullFetchBtn").addEventListener("click", fullAnalysisFetch_);
   $("exportBtn").addEventListener("click", exportSnapshot_);
 
   // init
