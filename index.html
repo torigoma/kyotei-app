@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.8（BUY絞り：softSafe厳格化 / 2・3残存強化）</title>
+  <title>競艇 v2.9（A softSafe厳格化 / 低通信モード）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -56,15 +56,16 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.8（BUY絞り：softSafe厳格化 / 2・3残存強化）</h1>
+  <h1>競艇 v2.9（A softSafe厳格化 / 低通信モード）</h1>
   <div class="sub">
     ✅ ①=3連単 / ②=3連複 を展示で自動切替（1レース1点）。<br/>
     ✅ オッズ/風波/STは Worker で自動取得（最終候補だけ）→ 手入力は最終候補だけ出る。<br/>
-    ✅ 自動更新は20秒（締切が近い展示未取得を beforeinfo で埋める）。<br/>
+    ✅ 自動更新は初期OFF。必要な時に「更新」ボタンで取得（Cloudflare利用量削減）。<br/>
     ✅ 終了レースは結果（3着まで）を表示（0-0-0は出さない）。<br/>
     ✅ 2026-05追加：B+/B/B-再分類、桐生警戒A、2・3残存チェックを反映。<br/>
     ✅ v2.5：結果取得をv3/v2両方で再照会し、補完件数・残件数をステータス表示。<br/>
     ✅ v2.8：取得系・偽1-2-3防止は維持し、BUY側のみsoftSafe厳格化・2/3残存強化・12R softSafe NOを追加。<br/>
+    ✅ v2.9：A会場softSafeも複合リスク/4号艇脅威でNO化。before/result補完は候補中心に絞り、初回自動取得も停止。<br/>
     ✅ 2026-05-27修正：ナイター後半のbefore取得漏れ対策、result_top3強制再取得、直接resultsフォールバック、手動結果補正を追加。
   </div>
 
@@ -292,6 +293,16 @@
       </label>
     </div>
 
+    <div class="grid g2" style="margin-top:10px;">
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="aVenueSoftSafeTightenOn" checked />
+        A会場でもsoftSafe複合リスク/4号艇脅威はNO寄せ
+      </label>
+      <div class="muted small" style="align-self:center;">
+        ※若松などA会場でも、softSafeが出た時点で2・3が外枠に食われる形を警戒
+      </div>
+    </div>
+
     <div class="grid g3" style="margin-top:10px;">
       <div><label>外枠展示優勢：2/3より速い差（秒）</label><input id="outerExhLead" type="number" step="0.01" value="0.03" /></div>
       <div><label>外枠ST優勢：2/3より速い差（秒）</label><input id="outerStLead" type="number" step="0.01" value="0.06" /></div>
@@ -375,6 +386,23 @@
 
     <div class="hr"></div>
 
+    <div class="pill">低通信モード（Cloudflare利用量削減）</div>
+    <div class="grid g2" style="margin-top:10px;">
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="autoBeforeScopeCandidatesOnly" checked />
+        beforeinfo自動補完は条件①通過レース中心にする
+      </label>
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="resultSingleRetryCandidatesOnly" checked />
+        /api/result個別補完は条件①通過レース中心にする
+      </label>
+    </div>
+    <div class="muted small" style="margin-top:8px;">
+      ※全レースのbefore/resultを個別に叩くとWorker使用量が増えるため、実戦判定に必要な候補を優先します。結果分析用の全体結果は、取得済み分＋手動補正で扱います。
+    </div>
+
+    <div class="hr"></div>
+
     <div class="pill">対象レース場（全場ON）</div>
     <div class="checkboxes" id="venueChecks"></div>
 
@@ -387,8 +415,8 @@
         <button class="btn2" id="exportBtn">.json書き出し</button>
 
         <label class="cb" style="margin:0;">
-          <input type="checkbox" id="autoRefresh" checked />
-          自動更新（20秒）
+          <input type="checkbox" id="autoRefresh" />
+          自動更新（低頻度3分・通常OFF）
         </label>
         <button class="btn2" id="clearAutoCacheBtn">自動取得キャッシュ消去</button>
       </div>
@@ -413,11 +441,12 @@
   const WORKER_BASE = "https://kyotei-worker.tanabedaichi0831.workers.dev";
 
   // ★締切近い順 before 埋め
-  const BEFORE_FILL_LIMIT = 999; // 2026-05-27修正：ナイター後半10〜12Rが120件制限で漏れないよう全対象を拾う
-  const BEFORE_FILL_CONCURRENCY = 4;
+  const BEFORE_FILL_LIMIT = 80; // v2.9低通信：候補中心に絞るため上限を抑える
+  const BEFORE_FILL_CONCURRENCY = 2; // v2.9低通信：同時Worker呼び出しを抑制
   const BEFORE_EMPTY_RETRY_MS = 15000;
-  const RESULT_RETRY_LIMIT = 999; // 2026-05-27修正：result_top3 null の再取得対象上限
+  const RESULT_RETRY_LIMIT = 80; // v2.9低通信：個別結果補完の上限を抑える
   const RESULT_CLOSE_GRACE_MS = 10 * 60 * 1000; // 締切10分後から結果未取得リトライ対象
+  const AUTO_REFRESH_MS = 3 * 60 * 1000; // v2.9: 自動更新は低頻度（通常OFF）
 
   // ★Δ2の「条件付き0.14」上限（UIは増やさずロジックだけ）
   const DELTA2_GREY_MAX = 0.14;
@@ -542,7 +571,7 @@
   const BEFORE_AUTO = new Map(); // key -> beforeJson (+ __fetched_at_ms)
   const ODDS_AUTO  = new Map(); // key -> oddsJson
   const RESULT_AUTO = new Map(); // key -> { result_top3, source, raw }
-  const RESULT_SINGLE_CONCURRENCY = 4;
+  const RESULT_SINGLE_CONCURRENCY = 2; // v2.9低通信：同時Worker呼び出しを抑制
 
   function setStatus(msg){ $("status").textContent = msg; }
   function setAutoStatus(msg){ $("autoStatus").textContent = msg; }
@@ -709,6 +738,28 @@
     const closeMs = parseCloseMs_(r?.race_closed_at);
     if(!Number.isFinite(closeMs)) return false;
     return Date.now() >= closeMs + RESULT_CLOSE_GRACE_MS;
+  }
+
+  function shouldAutoFetchBefore_(r){
+    if(!r || !enabledStadiums.has(r.stadium)) return false;
+    if($('autoBeforeScopeCandidatesOnly')?.checked){
+      // Cloudflare使用量削減：beforeinfo自動補完は、実戦判定に必要な条件①通過レースを中心にする。
+      // 条件外の全レースへ個別beforeinfoを叩かない。
+      if(!passFilter1(r).ok) return false;
+    }
+    return (!r.exhReady) || (!envReady_(r)) || (!stReady13_(r));
+  }
+
+  function shouldSingleRetryResult_(r){
+    if(!r || !enabledStadiums.has(r.stadium)) return false;
+    if(r.result_top3) return false;
+    if(!isRacePastResultWindow_(r)) return false;
+    if($('resultSingleRetryCandidatesOnly')?.checked){
+      // 全レース個別/api/resultはWorker使用量が重い。
+      // BUY/NO/WAITになり得る条件①通過レースを優先し、条件外はbundle/direct結果に任せる。
+      if(!passFilter1(r).ok) return false;
+    }
+    return true;
   }
 
   // ----- base metrics -----
@@ -940,6 +991,36 @@
     };
   }
 
+  function fourLaneThreatForSoftSafe_(r){
+    const exhLead = num("outerExhLead") ?? 0.03;
+    const stLead = num("outerStLead") ?? 0.06;
+    const exh = r?.exh || {};
+    const st = r?.st || {};
+    const t4 = Number(exh["4"]);
+    const s4 = parseStToNum_(st["4"]);
+    const hits = [];
+
+    if(Number.isFinite(t4) && t4 > 0){
+      for(const inner of [2,3]){
+        const ti = Number(exh[String(inner)]);
+        if(Number.isFinite(ti) && ti > 0 && t4 <= ti - exhLead){
+          hits.push(`4展示>${inner}`);
+        }
+      }
+    }
+
+    if(Number.isFinite(s4)){
+      for(const inner of [2,3]){
+        const si = parseStToNum_(st[String(inner)]);
+        if(Number.isFinite(si) && s4 <= si - stLead){
+          hits.push(`4ST>${inner}`);
+        }
+      }
+    }
+
+    return { risky: hits.length > 0, hits: Array.from(new Set(hits)) };
+  }
+
   function softSafeBuyTightenNo_(r, softReasons, ctx){
     if(!$('softSafeBuyTightenOn')?.checked && !$('finalRaceSoftSafeNoOn')?.checked) return null;
     const venueSubRank = ctx?.venueSubRank || venueSubRankOf(r?.stadium);
@@ -948,18 +1029,31 @@
     const isBPlus = venueSubRank === 'B+';
     const isA = venueRank === 'A' && venueSubRank !== 'A警戒';
     const hasOuterOrMix = !!ctx?.outerFast || (Array.isArray(softReasons) && softReasons.includes('外枠が速い')) || (Array.isArray(softReasons) && softReasons.includes('混戦（1に近い艇が多い）'));
+    const softCount = Array.isArray(softReasons) ? softReasons.length : 0;
+    const fourThreat = fourLaneThreatForSoftSafe_(r);
 
     if($('finalRaceSoftSafeNoOn')?.checked && isRace12){
       return '12R softSafe抑制';
     }
 
     if($('softSafeBuyTightenOn')?.checked){
+      // A会場でも、softSafeが複合リスク化している時は「Aだから許す」をやめる。
+      // 直近の若松型（4号艇絡みで2/3が抜ける）を抑える。
+      if(isA && $('aVenueSoftSafeTightenOn')?.checked){
+        if(softCount >= 2){
+          return 'A会場 softSafe厳格化（複合リスク）';
+        }
+        if(fourThreat.risky){
+          return `A会場 softSafe厳格化（4号艇脅威:${fourThreat.hits.join(',')}）`;
+        }
+      }
+
       // B / B- / C / A警戒はsoftSafe救済を買いにしない。C・B-・桐生は既存ガードでも止まるが、保険として明示。
       if(!isA && !isBPlus){
         return 'softSafe BUY厳格化（B以下）';
       }
       // B+でも、soft理由が複数かつ外枠/混戦/12Rが絡む場合は、7日間の外れ型に寄せてNO。
-      if(isBPlus && Array.isArray(softReasons) && softReasons.length >= 2 && (hasOuterOrMix || isRace12)){
+      if(isBPlus && softCount >= 2 && (hasOuterOrMix || isRace12)){
         return 'softSafe BUY厳格化（B+複合リスク）';
       }
     }
@@ -1075,8 +1169,7 @@
 
   async function fillMissingExhByBeforeinfo_(){
     const targets = LAST_RACES
-      .filter(r => enabledStadiums.has(r.stadium))
-      .filter(r => (!r.exhReady) || (!envReady_(r)) || (!stReady13_(r)))
+      .filter(r => shouldAutoFetchBefore_(r))
       .sort((a,b)=>{
         const am = parseCloseMs_(a.race_closed_at);
         const bm = parseCloseMs_(b.race_closed_at);
@@ -2418,8 +2511,7 @@
 
   async function retryMissingResults_(){
     const targets = LAST_RACES
-      .filter(r => enabledStadiums.has(r.stadium))
-      .filter(r => !r.result_top3 && isRacePastResultWindow_(r))
+      .filter(r => shouldSingleRetryResult_(r))
       .sort((a,b)=>parseCloseMs_(a.race_closed_at)-parseCloseMs_(b.race_closed_at))
       .slice(0, RESULT_RETRY_LIMIT);
 
@@ -2427,13 +2519,11 @@
 
     let changed = 0;
 
-    // 1) Worker /api/today を再取得。Worker側で結果束が更新されていればここで入る。
-    try{
-      const bundle = await fetchTodayBundle();
-      changed += applyResultsFromBundle_(bundle, "worker_today_retry");
-    }catch(e){}
+    // 1) v2.9低通信：refreshFull冒頭ですでに /api/today を1回叩いているため、
+    //    結果補完目的の /api/today 追加再取得は省略する。
+    //    Cloudflare Worker使用量を抑え、結果補完は direct openapi + 候補中心の /api/result に任せる。
 
-    // 2) それでも欠ける場合、boatraceopenapi の results をブラウザから直接取りに行く。
+    // 2) boatraceopenapi の results をブラウザから直接取りに行く。
     //    /api/today 側のキャッシュが古い場合の保険。
     const stillMissing = LAST_RACES.some(r =>
       enabledStadiums.has(r.stadium) && !r.result_top3 && isRacePastResultWindow_(r)
@@ -2454,8 +2544,7 @@
     // 3) 最後の砦：前回Workerに追加した /api/result を1レース単位で叩く。
     //    bundleには結果レコードがあるのにtop3抽出だけ失敗するケース、Worker側で個別APIなら取れるケースに対応。
     const stillTargets = LAST_RACES
-      .filter(r => enabledStadiums.has(r.stadium))
-      .filter(r => !r.result_top3 && isRacePastResultWindow_(r));
+      .filter(r => shouldSingleRetryResult_(r));
     changed += await retryMissingResultsIndividually_(stillTargets);
 
     for(const r of LAST_RACES) applyManualResultToRace_(r);
@@ -2506,20 +2595,13 @@
     if(!$("autoRefresh").checked){ setAutoStatus("自動更新OFF"); return; }
     if(!LAST_RACES.length){ setAutoStatus("-"); return; }
 
-    const needBefore = LAST_RACES.some(r =>
-      enabledStadiums.has(r.stadium) &&
-      ((!r.exhReady) || (!envReady_(r)) || (!stReady13_(r)))
-    );
-    const needResult = LAST_RACES.some(r =>
-      enabledStadiums.has(r.stadium) &&
-      !r.result_top3 &&
-      (r.is_finished || isRacePastResultWindow_(r))
-    );
+    const needBefore = LAST_RACES.some(r => shouldAutoFetchBefore_(r));
+    const needResult = LAST_RACES.some(r => shouldSingleRetryResult_(r));
     const need = needBefore || needResult;
     if(!need){ setAutoStatus("対象なし"); return; }
 
-    setAutoStatus(needResult ? "20秒後に更新（結果未取得あり）" : "20秒後に更新");
-    AUTO_TIMER = setTimeout(refreshFull, 20000);
+    setAutoStatus(needResult ? "3分後に更新（結果未取得あり）" : "3分後に更新");
+    AUTO_TIMER = setTimeout(refreshFull, AUTO_REFRESH_MS);
   }
 
   async function refreshFull(){
@@ -2575,7 +2657,8 @@
       "venueAdjustOn","cVenueMin3fOn","cVenueMin3fAdd","cVenueRoughSafeOn","cVenueSoftSafeBlockOn","cVenueFinalRaceNoOn","heiwajimaSafeOn","tokonameStPriorityOn",
       "bMinusSoftSafeBlockOn","bMinusMin3fAdd","biwakoHamanakoMin3fAdd",
       "kiryuGuardOn","kiryuMidRaceNoOn","kiryuSoftSafeBlockOn","kiryuMin3fAdd",
-      "innerSurvivalGuardOn","softSafeBuyTightenOn","finalRaceSoftSafeNoOn","innerSurvivalBuyStrictOn","outerExhLead","outerStLead","outerExhThreatCountNo","outerComboThreatCountNo",
+      "innerSurvivalGuardOn","softSafeBuyTightenOn","finalRaceSoftSafeNoOn","innerSurvivalBuyStrictOn","aVenueSoftSafeTightenOn","outerExhLead","outerStLead","outerExhThreatCountNo","outerComboThreatCountNo",
+      "autoBeforeScopeCandidatesOnly","resultSingleRetryCandidatesOnly",
       "viewMode","oddsFilterOn","autoRefresh"
     ];
     const out = {};
@@ -2634,7 +2717,8 @@
     "highOdds3fGuardOn","highOdds3fLine",
     "bMinusSoftSafeBlockOn","bMinusMin3fAdd","biwakoHamanakoMin3fAdd",
     "kiryuGuardOn","kiryuMidRaceNoOn","kiryuSoftSafeBlockOn","kiryuMin3fAdd",
-    "innerSurvivalGuardOn","softSafeBuyTightenOn","finalRaceSoftSafeNoOn","innerSurvivalBuyStrictOn","outerExhLead","outerStLead","outerExhThreatCountNo","outerComboThreatCountNo"
+    "innerSurvivalGuardOn","softSafeBuyTightenOn","finalRaceSoftSafeNoOn","innerSurvivalBuyStrictOn","aVenueSoftSafeTightenOn","outerExhLead","outerStLead","outerExhThreatCountNo","outerComboThreatCountNo",
+    "autoBeforeScopeCandidatesOnly","resultSingleRetryCandidatesOnly"
   ].forEach(id=>{
     const el = $(id);
     if(!el) return;
@@ -2665,7 +2749,8 @@
 
   // init
   renderVenueChecks();
-  refreshFull();
+  setStatus("待機中：必要な時に『更新（programs更新）』を押してください");
+  setAutoStatus("自動更新OFF");
 })();
 </script>
 </body>
