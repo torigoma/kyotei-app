@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.9.2（A softSafe厳格化 / 低通信＋分析用フル取得SAFE）</title>
+  <title>競艇 v2.10（非softSafe本線BUY / softSafe原則NO＋仮想救済ログ）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -37,6 +37,7 @@
     .b-no { color:#fca5a5; }
     .b-wait { color:#ffd27d; }
     .b-filter { color:#8aa3c7; }
+    .b-virtual { color:#c4b5fd; }
 
     .raceCard { background:#111a26; border:1px solid #1c2a3b; border-radius:14px; padding:12px; margin:10px 0; }
     .tag { display:inline-block; padding:2px 8px; border:1px solid #2a3e5b; border-radius:999px; font-size:11px; margin-left:8px; color:#b8c5d6; }
@@ -56,7 +57,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.9.2（A softSafe厳格化 / 低通信＋分析用フル取得SAFE）</h1>
+  <h1>競艇 v2.10（非softSafe本線BUY / softSafe原則NO＋仮想救済ログ）</h1>
   <div class="sub">
     ✅ ①=3連単 / ②=3連複 を展示で自動切替（1レース1点）。<br/>
     ✅ オッズ/風波/STは Worker で自動取得（最終候補だけ）→ 手入力は最終候補だけ出る。<br/>
@@ -66,6 +67,7 @@
     ✅ v2.5：結果取得をv3/v2両方で再照会し、補完件数・残件数をステータス表示。<br/>
     ✅ v2.8：取得系・偽1-2-3防止は維持し、BUY側のみsoftSafe厳格化・2/3残存強化・12R softSafe NOを追加。<br/>
     ✅ v2.9.2：通常更新は低通信のまま、分析用フル取得ボタンを独立追加（全体取得ロジックはv2.9から変更しない）。<br/>
+    ✅ v2.10：全レースCSV再検証を反映。softSafe系は原則NO、非softSafe本線BUYを残し、M救済/B混戦のみ救済は仮想候補としてJSON保存。<br/>
     ✅ v2.9：A会場softSafeも複合リスク/4号艇脅威でNO化。before/result補完は候補中心に絞り、初回自動取得も停止。<br/>
     ✅ 2026-05-27修正：ナイター後半のbefore取得漏れ対策、result_top3強制再取得、直接resultsフォールバック、手動結果補正を追加。
   </div>
@@ -383,6 +385,58 @@
       <div style="align-self:end;">
         <button class="btn2" id="applyBtn">適用</button>
       </div>
+    </div>
+
+    <div class="hr"></div>
+
+    <div class="pill">v2.10 最終結論反映（全レースCSV再検証）</div>
+    <div class="grid g2" style="margin-top:10px;">
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="v210MainBuyFilterOn" checked />
+        v2.10本線BUYを有効化（非softSafe＋A/B会場中心）
+      </label>
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="v210StrictSoftSignalOn" checked />
+        softSafe系は理由文字列まで見て原則NO
+      </label>
+    </div>
+
+    <div class="grid g2" style="margin-top:10px;">
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="v210BlockCVenueBuyOn" checked />
+        C会場は本線BUY禁止（仮想候補のみ）
+      </label>
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="v210VirtualLogOn" checked />
+        仮想救済候補を表示・JSON保存
+      </label>
+    </div>
+
+    <div class="grid g2" style="margin-top:10px;">
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="v210BMixedOnlyCandidateOn" checked />
+        B通常会場の「混戦のみsoftSafe」を仮想候補化
+      </label>
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="v210MotorRescueCandidateOn" checked />
+        M救済候補を仮想候補化（即BUYにはしない）
+      </label>
+    </div>
+
+    <div class="grid g3" style="margin-top:10px;">
+      <div><label>M救済 motor2 下限</label><input id="v210MotorRescueMin" type="number" step="0.1" value="25.0" /></div>
+      <div><label>M救済 motor2 上限未満</label><input id="v210MotorRescueMax" type="number" step="0.1" value="40.0" /></div>
+      <div><label>M救済 3Fオッズ下限</label><input id="v210MotorRescueMinOdds3f" type="number" step="0.1" value="4.0" /></div>
+    </div>
+
+    <div class="grid g3" style="margin-top:10px;">
+      <div><label>M救済 風速上限</label><input id="v210MotorRescueMaxWind" type="number" step="0.1" value="4.0" /></div>
+      <div><label>M救済 波高上限</label><input id="v210MotorRescueMaxWave" type="number" step="0.1" value="4.0" /></div>
+      <div><label>B混戦のみ 3Fオッズ上限</label><input id="v210BMixedOnlyMaxOdds3f" type="number" step="0.1" value="8.0" /></div>
+    </div>
+
+    <div class="muted small" style="margin-top:8px;">
+      ※BUYを増やさず、M救済候補 / B混戦のみ救済候補を画面とJSONに残して仮想検証します。取得系・結果補完系には影響しません。
     </div>
 
     <div class="hr"></div>
@@ -1025,6 +1079,227 @@
     return { risky: hits.length > 0, hits: Array.from(new Set(hits)) };
   }
 
+  function softReasonKind_(reason){
+    const s = String(reason ?? "");
+    if(s.includes("展示順位NG")) return "展示順位NG";
+    if(s.includes("外枠が速い")) return "外枠が速い";
+    if(s.includes("混戦")) return "混戦";
+    return null;
+  }
+
+  function normalizeSoftReasons_(items){
+    const out = [];
+    const seen = new Set();
+    const walk = (v) => {
+      if(v == null) return;
+      if(Array.isArray(v)){ for(const x of v) walk(x); return; }
+      if(typeof v === "object"){
+        for(const k of ["reasons","softReasons","_softReasons","plan_reasons","planReasons"]){
+          if(v[k] != null) walk(v[k]);
+        }
+        if(v.msg != null) walk(v.msg);
+        return;
+      }
+      const kind = softReasonKind_(v);
+      if(kind && !seen.has(kind)){
+        seen.add(kind);
+        out.push(kind);
+      }
+    };
+    walk(items);
+    return out;
+  }
+
+  function isSoftSafeSignal_(planOrReasons, msg=""){
+    if(!$("v210StrictSoftSignalOn")?.checked) return !!(planOrReasons && typeof planOrReasons === "object" && planOrReasons._softSafe);
+    if(planOrReasons && typeof planOrReasons === "object" && planOrReasons._softSafe) return true;
+    const reasons = normalizeSoftReasons_([planOrReasons, msg]);
+    return reasons.length > 0;
+  }
+
+  function v210SoftSafeMainBlockReason_(r, softReasons, ctx){
+    if(!$("v210MainBuyFilterOn")?.checked) return null;
+    if(!$("v210StrictSoftSignalOn")?.checked) return null;
+    const normalized = normalizeSoftReasons_(softReasons);
+    if(!normalized.length) return null;
+    const detail = normalized.join("+");
+    return `v2.10 softSafe原則NO（${detail}）`;
+  }
+
+  function outerThreatSummaryForRescue_(r){
+    const exhLead = num("outerExhLead") ?? 0.03;
+    const stLead = num("outerStLead") ?? 0.06;
+    const exh = r?.exh || {};
+    const st = r?.st || {};
+    const exhThreats = [];
+    const stThreats = [];
+
+    for(const inner of [2,3]){
+      const ti = Number(exh[String(inner)]);
+      const si = parseStToNum_(st[String(inner)]);
+      if(!Number.isFinite(ti) || ti <= 0) continue;
+      for(const outer of [4,5,6]){
+        const to = Number(exh[String(outer)]);
+        const so = parseStToNum_(st[String(outer)]);
+        if(Number.isFinite(to) && to > 0 && to <= ti - exhLead) exhThreats.push(`${outer}>${inner}`);
+        if(Number.isFinite(si) && Number.isFinite(so) && so <= si - stLead) stThreats.push(`${outer}>${inner}`);
+      }
+    }
+    return { exhThreats:Array.from(new Set(exhThreats)), stThreats:Array.from(new Set(stThreats)) };
+  }
+
+  function motorRescueCandidate_(r){
+    const out = {
+      candidate:false,
+      ready:false,
+      reason:"",
+      blocker_reasons:[],
+      odd:null,
+      betType:"3F",
+      combo:"1-2-3"
+    };
+    if(!$("v210VirtualLogOn")?.checked || !$("v210MotorRescueCandidateOn")?.checked) return out;
+
+    const minM = num("v210MotorRescueMin") ?? 25.0;
+    const maxM = num("v210MotorRescueMax") ?? 40.0;
+    const minNat = num("minNat2") ?? 42;
+    const minLoc = num("minLoc2") ?? 42;
+    const maxWind = num("v210MotorRescueMaxWind") ?? 4.0;
+    const maxWave = num("v210MotorRescueMaxWave") ?? 4.0;
+    const minOdd = num("v210MotorRescueMinOdds3f") ?? 4.0;
+    const motor = Number(r?.motor2);
+    const locMissing = Number(r?.loc2) === 0;
+    const odd = getOddFor(r, "3F", "1-2-3");
+    out.odd = Number.isFinite(odd) ? odd : null;
+
+    const blockers = [];
+    if(!Number.isFinite(motor) || motor < minM || motor >= maxM) blockers.push(`motor2範囲外(${motor})`);
+    if(Number(r?.nat2) < minNat) blockers.push("全国2連率不足");
+    if(!locMissing && Number(r?.loc2) < minLoc) blockers.push("当地2連率不足");
+    if(isCVenue_(r?.stadium)) blockers.push("C会場");
+    if(Number(r?.race) === 12) blockers.push("12R");
+    if(!r?.exhReady) blockers.push("展示未取得");
+    const allExh6 = [1,2,3,4,5,6].every(l => {
+      const t = Number(r?.exh?.[String(l)]);
+      return Number.isFinite(t) && t > 0;
+    });
+    const allSt6 = [1,2,3,4,5,6].every(l => Number.isFinite(parseStToNum_(r?.st?.[String(l)])));
+    if(!allExh6) blockers.push("展示1-6未取得");
+    if(!allSt6) blockers.push("ST1-6未取得");
+
+    const rank1 = laneExhRank_(r?.exh, 1);
+    const rank2 = laneExhRank_(r?.exh, 2);
+    const rank3 = laneExhRank_(r?.exh, 3);
+    if(rank1 !== 1) blockers.push(`1号艇展示1位でない(${rank1 ?? "-"})`);
+    if(!(Number.isFinite(rank2) && rank2 <= 4)) blockers.push(`2号艇展示順位NG(${rank2 ?? "-"})`);
+    if(!(Number.isFinite(rank3) && rank3 <= 4)) blockers.push(`3号艇展示順位NG(${rank3 ?? "-"})`);
+
+    const threats = outerThreatSummaryForRescue_(r);
+    if(threats.exhThreats.length !== 0) blockers.push(`外枠展示脅威${threats.exhThreats.length}`);
+    if(threats.stThreats.length > 1) blockers.push(`外枠ST脅威${threats.stThreats.length}`);
+
+    const wind = Number(r?.env?.windMs);
+    const wave = Number(r?.env?.waveCm);
+    if(!Number.isFinite(wind) || wind > maxWind) blockers.push(`風条件NG(${Number.isFinite(wind)?wind:"-"})`);
+    if(!Number.isFinite(wave) || wave > maxWave) blockers.push(`波条件NG(${Number.isFinite(wave)?wave:"-"})`);
+
+    // motor救済は「softSafe系ではない」ことが前提。条件外レースでも展示からsoft理由を再構成する。
+    const softReasons = [];
+    const maxTimeRank = num("maxTimeRank");
+    if(Number.isFinite(rank1) && maxTimeRank != null && rank1 > maxTimeRank) softReasons.push("展示順位NG");
+    if(fasterOppLanes(r?.exh).some(l => l !== 2 && l !== 3)) softReasons.push("外枠が速い");
+    const eps = num("nearEps") ?? 0.03;
+    const nc = nearCount(r?.exh, eps);
+    const maxNearCount = num("maxNearCount");
+    if(Number.isFinite(nc) && maxNearCount != null && nc > maxNearCount) softReasons.push("混戦");
+    if(softReasons.length) blockers.push(`softSafe系(${softReasons.join("+")})`);
+
+    out.blocker_reasons = blockers;
+    if(blockers.length) return out;
+
+    out.candidate = true;
+    out.ready = Number.isFinite(odd) && odd >= minOdd;
+    out.reason = `M救済候補：motor2 ${motor.toFixed(1)} / 1展示1位 / 2・3展示4位以内 / 外枠脅威弱 / 非C非12R`;
+    if(!Number.isFinite(odd)) out.reason += ` / 3Fオッズ待ち(${minOdd}以上で仮想BUY)`;
+    else if(odd < minOdd) out.reason += ` / 3Fオッズ不足(${odd}<${minOdd})`;
+    else out.reason += ` / 3FオッズOK(${odd})`;
+    return out;
+  }
+
+  function bMixedOnlySoftRescueCandidate_(r, plan, ev){
+    const out = {
+      candidate:false,
+      ready:false,
+      reason:"",
+      blocker_reasons:[],
+      odd:null,
+      betType:"3F",
+      combo:"1-2-3"
+    };
+    if(!$("v210VirtualLogOn")?.checked || !$("v210BMixedOnlyCandidateOn")?.checked) return out;
+
+    const reasons = normalizeSoftReasons_([plan?._softReasons, plan?.reasons, ev?.msg]);
+    const blockers = [];
+    const odd = getOddFor(r, "3F", "1-2-3");
+    const maxOdd = num("v210BMixedOnlyMaxOdds3f") ?? 8.0;
+    const minOdd = num("minOdds3f") ?? 2.0;
+    out.odd = Number.isFinite(odd) ? odd : null;
+
+    if(venueSubRankOf(r?.stadium) !== "B") blockers.push(`B通常会場ではない(${venueSubRankOf(r?.stadium)})`);
+    if(Number(r?.race) === 12) blockers.push("12R");
+    if(reasons.length !== 1 || reasons[0] !== "混戦") blockers.push(`混戦のみではない(${reasons.join("+") || "-"})`);
+    if(isCVenue_(r?.stadium)) blockers.push("C会場");
+
+    out.blocker_reasons = blockers;
+    if(blockers.length) return out;
+
+    out.candidate = true;
+    out.ready = Number.isFinite(odd) && odd >= minOdd && odd <= maxOdd;
+    out.reason = `B混戦のみ救済候補：B通常 / 混戦のみ / 非12R`;
+    if(!Number.isFinite(odd)) out.reason += ` / 3Fオッズ待ち(${minOdd}〜${maxOdd})`;
+    else if(odd < minOdd || odd > maxOdd) out.reason += ` / 3Fオッズ範囲外(${odd})`;
+    else out.reason += ` / 3FオッズOK(${odd})`;
+    return out;
+  }
+
+  function buildVirtualFlags_(r, plan=null, ev=null){
+    const empty = {
+      motor_rescue_candidate:false,
+      motor_rescue_ready:false,
+      motor_rescue_reason:null,
+      motor_rescue_blockers:[],
+      b_mixed_soft_candidate:false,
+      b_mixed_soft_ready:false,
+      b_mixed_soft_reason:null,
+      b_mixed_soft_blockers:[],
+      virtual_buy_count:0,
+      virtual_labels:[]
+    };
+    if(!$("v210VirtualLogOn")?.checked) return empty;
+
+    const m = motorRescueCandidate_(r);
+    const b = bMixedOnlySoftRescueCandidate_(r, plan, ev);
+    const labels = [];
+    let count = 0;
+    if(m.candidate){ labels.push(m.ready ? "M救済候補" : "M救済候補(オッズ待ち/不足)"); if(m.ready) count++; }
+    if(b.candidate){ labels.push(b.ready ? "B混戦のみ救済候補" : "B混戦のみ救済候補(オッズ待ち/範囲外)"); if(b.ready) count++; }
+
+    return {
+      motor_rescue_candidate: !!m.candidate,
+      motor_rescue_ready: !!m.ready,
+      motor_rescue_reason: m.reason || null,
+      motor_rescue_blockers: m.blocker_reasons || [],
+      motor_rescue_odd: m.odd,
+      b_mixed_soft_candidate: !!b.candidate,
+      b_mixed_soft_ready: !!b.ready,
+      b_mixed_soft_reason: b.reason || null,
+      b_mixed_soft_blockers: b.blocker_reasons || [],
+      b_mixed_soft_odd: b.odd,
+      virtual_buy_count: count,
+      virtual_labels: labels
+    };
+  }
+
   function softSafeBuyTightenNo_(r, softReasons, ctx){
     if(!$('softSafeBuyTightenOn')?.checked && !$('finalRaceSoftSafeNoOn')?.checked) return null;
     const venueSubRank = ctx?.venueSubRank || venueSubRankOf(r?.stadium);
@@ -1357,6 +1632,23 @@
         const SOFT = new Set(["展示順位NG","外枠が速い","混戦（1に近い艇が多い）"]);
         const allSoft = reasons.every(x => SOFT.has(x));
         if(allSoft){
+          const v210SoftBlockReason = v210SoftSafeMainBlockReason_(r, reasons, { venueRank, venueSubRank, outerFast });
+          if(v210SoftBlockReason){
+            return {
+              level:"no",
+              reasons: reasons.concat([v210SoftBlockReason]),
+              rank, outerFast, d2, d3, nc,
+              _softSafeSuppressed:true,
+              _v210SoftSafeBlocked:true,
+              _softReasons: reasons.slice(),
+              _venueRank: venueRank,
+              _venueSubRank: venueSubRank,
+              _isBMinus: isBMinus,
+              _isHighRiskVenue: isHighRiskVenue_(r.stadium),
+              _locMissing: f1._locMissing
+            };
+          }
+
           const suppressReasons = [];
           if($("venueAdjustOn")?.checked && $("cVenueSoftSafeBlockOn")?.checked && venueRank === "C"){
             suppressReasons.push("C会場 softSafe抑制");
@@ -1582,6 +1874,22 @@
           _locMissing: f1._locMissing
         };
       }
+    }
+
+    // ====== v2.10 本線BUY：C会場は原則BUYしない ======
+    // 3CSV再検証でC会場BUYが弱かったため、BUY本線からは外し、仮想候補ログで追う。
+    if($("v210MainBuyFilterOn")?.checked && $("v210BlockCVenueBuyOn")?.checked && venueRank === "C"){
+      return {
+        level:"no",
+        reasons:["v2.10 C会場本線BUY禁止"],
+        rank, outerFast, d2, d3, nc, betType, combo,
+        _guard:"v210_c_venue_block",
+        _venueRank: venueRank,
+        _venueSubRank: venueSubRank,
+        _isBMinus: isBMinus,
+        _isHighRiskVenue: isHighRiskVenue_(r.stadium),
+        _locMissing: f1._locMissing
+      };
     }
 
     return { level:"final", betType, combo, rank, outerFast, d2, d3, nc, _venueRank: venueRank, _venueSubRank: venueSubRank, _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _locMissing: f1._locMissing };
@@ -1948,6 +2256,7 @@
     applyManualResultToRace_(r);
     const plan = computePlan(r);
     const ev = evaluate(r);
+    const virtualFlags = buildVirtualFlags_(r, plan, ev);
     const manualOdds = getManualOdds(r.key);
     const manualResultTop3 = getManualResult(r.key);
     const autoOdds = getAutoOddBundleForRace_(r);
@@ -1985,6 +2294,13 @@
       o3t123: parseOddLoose(manualOdds.o3t123),
       o3t132: parseOddLoose(manualOdds.o3t132),
       o3f123: parseOddLoose(manualOdds.o3f123),
+
+      // v2.10 仮想候補ログ
+      virtual_flags: virtualFlags,
+      motor_rescue_candidate: !!virtualFlags.motor_rescue_candidate,
+      motor_rescue_ready: !!virtualFlags.motor_rescue_ready,
+      b_mixed_soft_candidate: !!virtualFlags.b_mixed_soft_candidate,
+      b_mixed_soft_ready: !!virtualFlags.b_mixed_soft_ready,
 
       // 最終候補判定の有無
       isFinal: !!(plan && plan.level === "final")
@@ -2066,6 +2382,7 @@
     const total = races.length;
     const f1pass = races.filter(r => passFilter1(r).ok).length;
     let buy=0,no=0,wait=0,filtered=0,finals=0,oddsReady=0,beforeReady=0,resReady=0;
+    let vMotor=0, vMotorReady=0, vBMixed=0, vBMixedReady=0;
 
     for(const r of races){
       const ev = evaluate(r);
@@ -2084,10 +2401,16 @@
       if(ODDS_AUTO.has(r.key) || manualReady) oddsReady++;
       if(beforeReadyActual_(r)) beforeReady++;
       if(r.result_top3) resReady++;
+
+      const vf = buildVirtualFlags_(r, ev.plan, ev);
+      if(vf.motor_rescue_candidate) vMotor++;
+      if(vf.motor_rescue_ready) vMotorReady++;
+      if(vf.b_mixed_soft_candidate) vBMixed++;
+      if(vf.b_mixed_soft_ready) vBMixedReady++;
     }
 
     $("summary").textContent =
-      `取得${total}R / 条件①通過${f1pass}R / 最終候補${finals} / BUY${buy} / NO${no} / WAIT${wait} / 条件外${filtered} / odds${oddsReady} / before${beforeReady} / result${resReady}`;
+      `取得${total}R / 条件①通過${f1pass}R / 最終候補${finals} / BUY${buy} / NO${no} / WAIT${wait} / 条件外${filtered} / odds${oddsReady} / before${beforeReady} / result${resReady} / M救済${vMotor}(${vMotorReady}) / B混戦${vBMixed}(${vBMixedReady})`;
 
     renderNoDiagnostics_(races);
   }
@@ -2152,6 +2475,15 @@
       ? `<div class="resultLine">結果（3着まで）: <span class="mono">${r.result_top3}</span>${manualTop3 ? ` <span class="tag mono">手動補正</span>` : ``}</div>`
       : (r.is_finished ? `<div class="resultLine">結果（3着まで）: <span class="mono">-</span> <span class="tag mono">結果未取得</span></div>` : ``);
 
+    const virtualFlags = buildVirtualFlags_(r, plan, ev);
+    const virtualTags = (virtualFlags.virtual_labels || []).map(x => `<span class="tag mono b-virtual">${x}</span>`).join("");
+    const virtualLines = [];
+    if(virtualFlags.motor_rescue_candidate) virtualLines.push(virtualFlags.motor_rescue_reason);
+    if(virtualFlags.b_mixed_soft_candidate) virtualLines.push(virtualFlags.b_mixed_soft_reason);
+    const virtualLine = virtualLines.length
+      ? `<div class="resultLine small b-virtual">仮想候補: ${virtualLines.join(" / ")}</div>`
+      : ``;
+
     const oddsBlock = isFinal ? `
       <div class="hr"></div>
       <div class="muted small">
@@ -2193,6 +2525,7 @@
           ${isBMinusVenue_(r.stadium) ? `<span class="tag mono">B-</span>` : ``}
           ${isAlertAVenue_(r.stadium) ? `<span class="tag mono">警戒A</span>` : ``}
           ${(plan && plan._locMissing) ? `<span class="tag mono">loc2:missing</span>` : ``}
+          ${virtualTags}
         </div>
         <div class="rowL">
           <button class="btn2" data-fetch-before>before取得</button>
@@ -2210,6 +2543,7 @@
             <span class="muted small">※結果未取得/誤取得の時だけ入力</span>
           </div>
           <div class="resultLine" data-buy-line>${isFinal ? `買い：<b>${plan.betType} ${plan.combo}</b>${Number.isFinite(ev.odd) ? ` / odds=${ev.odd}` : ``}` : ``}</div>
+          ${virtualLine}
         </div>
         <div class="muted small">
           <div data-ev-msg>${ev.msg}</div>
@@ -2803,6 +3137,9 @@
       "kiryuGuardOn","kiryuMidRaceNoOn","kiryuSoftSafeBlockOn","kiryuMin3fAdd",
       "innerSurvivalGuardOn","softSafeBuyTightenOn","finalRaceSoftSafeNoOn","innerSurvivalBuyStrictOn","aVenueSoftSafeTightenOn","outerExhLead","outerStLead","outerExhThreatCountNo","outerComboThreatCountNo",
       "autoBeforeScopeCandidatesOnly","resultSingleRetryCandidatesOnly",
+      "v210MainBuyFilterOn","v210StrictSoftSignalOn","v210BlockCVenueBuyOn","v210VirtualLogOn",
+      "v210BMixedOnlyCandidateOn","v210MotorRescueCandidateOn","v210MotorRescueMin","v210MotorRescueMax",
+      "v210MotorRescueMinOdds3f","v210MotorRescueMaxWind","v210MotorRescueMaxWave","v210BMixedOnlyMaxOdds3f",
       "viewMode","oddsFilterOn","autoRefresh"
     ];
     const out = {};
@@ -2862,7 +3199,10 @@
     "bMinusSoftSafeBlockOn","bMinusMin3fAdd","biwakoHamanakoMin3fAdd",
     "kiryuGuardOn","kiryuMidRaceNoOn","kiryuSoftSafeBlockOn","kiryuMin3fAdd",
     "innerSurvivalGuardOn","softSafeBuyTightenOn","finalRaceSoftSafeNoOn","innerSurvivalBuyStrictOn","aVenueSoftSafeTightenOn","outerExhLead","outerStLead","outerExhThreatCountNo","outerComboThreatCountNo",
-    "autoBeforeScopeCandidatesOnly","resultSingleRetryCandidatesOnly"
+    "autoBeforeScopeCandidatesOnly","resultSingleRetryCandidatesOnly",
+    "v210MainBuyFilterOn","v210StrictSoftSignalOn","v210BlockCVenueBuyOn","v210VirtualLogOn",
+    "v210BMixedOnlyCandidateOn","v210MotorRescueCandidateOn","v210MotorRescueMin","v210MotorRescueMax",
+    "v210MotorRescueMinOdds3f","v210MotorRescueMaxWind","v210MotorRescueMaxWave","v210BMixedOnlyMaxOdds3f"
   ].forEach(id=>{
     const el = $(id);
     if(!el) return;
