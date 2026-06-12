@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.11（2連単1-2専用 / 低通信＋分析用フル取得SAFE）</title>
+  <title>競艇 v2.12（2連単1-2専用 / 3号艇遅いNO撤廃 / 低通信＋分析用フル取得SAFE）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -56,13 +56,14 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.11（2連単1-2専用 / 低通信＋分析用フル取得SAFE）</h1>
+  <h1>競艇 v2.12（2連単1-2専用 / 3号艇遅いNO撤廃 / 低通信＋分析用フル取得SAFE）</h1>
   <div class="sub">
     ✅ 主戦場を <b>2連単 1-2</b> に固定（1レース1点）。3連単・3連複の買い目分岐は廃止。<br/>
-    ✅ 条件①は2連単用に調整：nat2/loc2/motor2は維持、near_countは3まで、2-3差条件は撤廃。<br/>
+    ✅ 条件①は2連単用に調整：nat2/loc2/motor2は維持、near_countは3まで、2-3差条件・3号艇遅いNOは撤廃。<br/>
     ✅ 2単1-2オッズは手入力。通常BUYは3.2倍以上、強BUY条件なら2.7倍以上を許可。<br/>
     ✅ 取得系・結果補完・手動結果補正・.json書き出し・低通信・分析用フル取得はv2.10系から温存。<br/>
     ✅ softSafe複合、C会場、ST出負け、2号艇残存リスクは2連単用に残して地雷回避。<br/>
+    ✅ v2.12修正：2連単1-2では3号艇の遅さはNO理由にしない。Δ3は参考値として保存・表示のみ。<br/>
     ✅ 終了レースは結果（3着まで）を表示。未取得を偽1-2-3扱いしない安全処理は維持。
   </div>
 
@@ -83,7 +84,7 @@
 
     <div class="grid g3" style="margin-top:10px;">
       <div><label>Δ2（2−1）上限</label><input id="maxDelta2" type="number" step="0.01" value="0.12" /></div>
-      <div><label>Δ3（3−1）上限</label><input id="maxDelta3" type="number" step="0.01" value="0.15" /></div>
+      <div><label>Δ3（3−1）参考値のみ：判定未使用</label><input id="maxDelta3" type="number" step="0.01" value="0.15" /></div>
       <div><label>2単版では未使用：2-3差（互換用）</label><input id="min23Gap" type="number" step="0.01" value="0.00" /></div>
     </div>
 
@@ -1242,12 +1243,13 @@
     if(!ncOk) reasons.push("混戦（1に近い艇が多い）");
 
     const d2 = deltaLane(r.exh,2);
-    const d3 = deltaLane(r.exh,3);
+    const d3 = deltaLane(r.exh,3); // 2単1-2では判定未使用。分析・JSON保存用の参考値として残す。
     const maxDelta2 = num("maxDelta2") ?? 0.12;
-    const maxDelta3 = num("maxDelta3") ?? 0.15;
 
     if(d2!=null && d2>maxDelta2) reasons.push("2号艇が遅い");
-    if(d3!=null && d3>maxDelta3) reasons.push("3号艇が遅い");
+    // v2.12:
+    // 3号艇の遅さは2連単1-2の的中には直接関係しないため、NO理由から撤廃。
+    // 3連複/3連単時代の d3 > maxDelta3 足切りは使わない。
 
     const venueRank = venueRankOf(r.stadium);
     const venueSubRank = venueSubRankOf(r.stadium);
