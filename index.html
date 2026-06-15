@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.12（2連単1-2専用 / 3号艇遅いNO撤廃 / 低通信＋分析用フル取得SAFE）</title>
+  <title>競艇 v2.13（2連単1-2専用 / 公式2T会場ランク反映 / d2誤差修正SAFE）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -56,14 +56,15 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.12（2連単1-2専用 / 3号艇遅いNO撤廃 / 低通信＋分析用フル取得SAFE）</h1>
+  <h1>競艇 v2.13（2連単1-2専用 / 公式2T会場ランク反映 / d2誤差修正SAFE）</h1>
   <div class="sub">
     ✅ 主戦場を <b>2連単 1-2</b> に固定（1レース1点）。3連単・3連複の買い目分岐は廃止。<br/>
+    ✅ v2.13：BOAT RACE公式の場別データ＋過去/直近1-2実績を反映し、2T専用会場ランクへ再編。<br/>
+    ✅ 2T-S/Aは通常候補、A警戒/A-/B警戒は厳格条件、C/Dは本線BUY禁止。江戸川・桐生・三国は降格反映。<br/>
     ✅ 条件①は2連単用に調整：nat2/loc2/motor2は維持、near_countは3まで、2-3差条件・3号艇遅いNOは撤廃。<br/>
+    ✅ d2は小数誤差を吸収して判定（0.1200000000000001問題を回避）。Δ3は参考値として保存・表示のみ。<br/>
     ✅ 2単1-2オッズは手入力。通常BUYは3.2倍以上、強BUY条件なら2.7倍以上を許可。<br/>
-    ✅ 取得系・結果補完・手動結果補正・.json書き出し・低通信・分析用フル取得はv2.10系から温存。<br/>
-    ✅ softSafe複合、C会場、ST出負け、2号艇残存リスクは2連単用に残して地雷回避。<br/>
-    ✅ v2.12修正：2連単1-2では3号艇の遅さはNO理由にしない。Δ3は参考値として保存・表示のみ。<br/>
+    ✅ 取得系・結果補完・手動結果補正・.json書き出し・低通信・分析用フル取得は維持。<br/>
     ✅ 終了レースは結果（3着まで）を表示。未取得を偽1-2-3扱いしない安全処理は維持。
   </div>
 
@@ -172,18 +173,18 @@
       </label>
       <label class="cb" style="margin:0;">
         <input type="checkbox" id="blockCVenue2tOn" checked />
-        C会場は2単1-2でも原則NO
+        2T-C/D会場は本線BUY禁止
       </label>
     </div>
 
     <div class="grid g2" style="margin-top:10px;">
       <label class="cb" style="margin:0;">
         <input type="checkbox" id="kiryuGuardOn" checked />
-        桐生は警戒Aとして追加ガード
+        桐生D警戒ガード（互換用）
       </label>
       <label class="cb" style="margin:0;">
         <input type="checkbox" id="kiryuMidRaceNoOn" checked />
-        桐生5〜8RはNO寄せ
+        桐生5〜8RはNO寄せ（互換用）
       </label>
     </div>
 
@@ -204,7 +205,7 @@
     </div>
 
     <div class="muted small" style="margin-top:8px;">
-      A会場: 江戸川 / 若松 / 宮島　警戒A: 桐生　B+: 唐津 / 津 / 三国 / 蒲郡 / 戸田　B-: びわこ / 浜名湖 / 大村 / 鳴門 / 住之江　C会場: 福岡 / 児島 / 常滑 / 平和島
+      2T-S: 徳山 / 尼崎 / 津　A: 宮島 / 芦屋 / 若松 / 下関 / 唐津 / 大村 / びわこ / 福岡警戒　B: 児島 / 蒲郡 / 丸亀 / 多摩川 / 住之江 / 常滑警戒　C/D: 浜名湖 / 鳴門 / 三国警戒 / 平和島 / 江戸川 / 桐生警戒 / 戸田
     </div>
 
     <div class="hr"></div>
@@ -335,6 +336,7 @@
   const AUTO_REFRESH_MS = 3 * 60 * 1000; // v2.9: 自動更新は低頻度（通常OFF）
   const ANALYSIS_FULL_LIMIT = 999; // v2.9.2: 手動の分析用フル取得時だけ全対象を許可
   const ANALYSIS_FULL_CONCURRENCY = 2; // Worker負荷を抑えるため、全取得でも同時数は低め
+  const EPS = 1e-9; // v2.13: JS小数誤差吸収用（例: 0.1200000000000001）
 
   // ★Δ2の「条件付き0.14」上限（UIは増やさずロジックだけ）
   const DELTA2_GREY_MAX = 0.12; // v2.11: 2単1-2ではd2>0.12を救済しない
@@ -357,42 +359,69 @@
     17:"宮島",18:"徳山",19:"下関",20:"若松",21:"芦屋",22:"福岡",23:"唐津",24:"大村"
   };
 
-  const VENUE_RANK_A = new Set([3,20,17,1]);   // 江戸川, 若松, 宮島, 桐生（従来A）
-  const VENUE_RANK_C = new Set([22,16,8,4]);   // 福岡, 児島, 常滑, 平和島
+  // v2.13: 2連単1-2専用 会場ランク
+  // 公式「最近3ヶ月のコース別入着率＆決まり手」「枠番別コース取得率」＋過去/直近1-2実績で再編。
+  // 旧3連系A/B/Cとは分離。venueRankOf / venueSubRankOf は既存JSON互換のため同名を維持。
+  const VENUE_2T12_PROFILE = {
+    1:{rank:"D", sub:"D警戒", note:"桐生：公式/過去/直近の2T1-2弱め。旧A警戒から降格"},
+    2:{rank:"D", sub:"D", note:"戸田：公式1C1着率が低く2T1-2不向き"},
+    3:{rank:"D", sub:"D", note:"江戸川：旧Aから降格。風波と2着ズレ警戒"},
+    4:{rank:"D", sub:"D", note:"平和島：旧C継続。基本BUY禁止"},
+    5:{rank:"B", sub:"B", note:"多摩川：中位"},
+    6:{rank:"C", sub:"C", note:"浜名湖：過去/直近弱め"},
+    7:{rank:"B", sub:"B+", note:"蒲郡：中上位"},
+    8:{rank:"B", sub:"B警戒", note:"常滑：1-2は出るが外枠/3C割込警戒"},
+    9:{rank:"S", sub:"S", note:"津：公式/過去/直近良好"},
+    10:{rank:"C", sub:"C警戒", note:"三国：公式/直近弱め。旧B+から降格"},
+    11:{rank:"A", sub:"A-", note:"びわこ：公式2C2着率は強いが旧B-のため条件付き"},
+    12:{rank:"B", sub:"B", note:"住之江：公式良いが実戦1-2は伸びにくい"},
+    13:{rank:"S", sub:"S", note:"尼崎：公式/過去/直近すべて良好"},
+    14:{rank:"C", sub:"C", note:"鳴門：公式1C1着率低め"},
+    15:{rank:"B", sub:"B+", note:"丸亀：中上位"},
+    16:{rank:"B", sub:"B+", note:"児島：旧Cから条件付き昇格"},
+    17:{rank:"A", sub:"A", note:"宮島：上位"},
+    18:{rank:"S", sub:"S", note:"徳山：公式最上位級"},
+    19:{rank:"A", sub:"A", note:"下関：上位寄り"},
+    20:{rank:"A", sub:"A", note:"若松：上位。荒れ/ナイター補正は維持"},
+    21:{rank:"A", sub:"A", note:"芦屋：上位"},
+    22:{rank:"A", sub:"A警戒", note:"福岡：公式は強いが旧3連系では危険。条件付き解禁"},
+    23:{rank:"A", sub:"A", note:"唐津：直近/実戦上げ"},
+    24:{rank:"A", sub:"A-", note:"大村：上位候補。直近不足で条件付き"}
+  };
 
-  // 2026-05追加：会場再分類
-  const VENUE_SUB_B_PLUS = new Set([23,9,10,7,2]);       // 唐津, 津, 三国, 蒲郡, 戸田
-  const VENUE_SUB_B_MINUS = new Set([11,6,24,14,12]);    // びわこ, 浜名湖, 大村, 鳴門, 住之江
-  const VENUE_ALERT_A = new Set([1]);                    // 桐生
-  const VENUE_SPECIAL_EXTRA = new Set([11,6]);           // びわこ, 浜名湖
+  const VENUE_SPECIAL_EXTRA = new Set([11,6]);           // びわこ, 浜名湖（互換メモ用）
+
+  function venueProfile2T12_(stadium){
+    const s = Number(stadium);
+    return VENUE_2T12_PROFILE[s] || {rank:"B", sub:"B", note:"未定義はB扱い"};
+  }
 
   function venueRankOf(stadium){
-    const s = Number(stadium);
-    if(VENUE_RANK_A.has(s)) return "A";
-    if(VENUE_RANK_C.has(s)) return "C";
-    return "B";
+    return venueProfile2T12_(stadium).rank;
   }
 
   function venueSubRankOf(stadium){
-    const s = Number(stadium);
-    if(VENUE_ALERT_A.has(s)) return "A警戒";
-    if(VENUE_RANK_A.has(s)) return "A";
-    if(VENUE_RANK_C.has(s)) return "C";
-    if(VENUE_SUB_B_PLUS.has(s)) return "B+";
-    if(VENUE_SUB_B_MINUS.has(s)) return "B-";
-    return "B";
+    return venueProfile2T12_(stadium).sub;
   }
 
+  function venueNote2T12_(stadium){
+    return venueProfile2T12_(stadium).note || "";
+  }
+
+  // 旧名互換：B-というより「2Tで追加警戒すべき会場」
   function isBMinusVenue_(stadium){
-    return VENUE_SUB_B_MINUS.has(Number(stadium));
+    const sub = venueSubRankOf(stadium);
+    const rank = venueRankOf(stadium);
+    return rank === "C" || rank === "D" || sub === "A-" || sub === "A警戒" || sub === "B警戒" || sub === "C警戒" || sub === "D警戒";
   }
 
+  // 旧名互換：A警戒限定ではなく「警戒」サブランクを返す
   function isAlertAVenue_(stadium){
-    return VENUE_ALERT_A.has(Number(stadium));
+    return String(venueSubRankOf(stadium)).includes("警戒");
   }
 
   function isHighRiskVenue_(stadium){
-    return isBMinusVenue_(stadium) || isAlertAVenue_(stadium);
+    return isBMinusVenue_(stadium);
   }
 
   function isBiwakoHamanako_(stadium){
@@ -400,7 +429,24 @@
   }
 
   function isCVenue_(stadium){
-    return venueRankOf(stadium) === "C";
+    const rank = venueRankOf(stadium);
+    return rank === "C" || rank === "D";
+  }
+
+  function isVenue2T12Blocked_(stadium){
+    const rank = venueRankOf(stadium);
+    return rank === "C" || rank === "D";
+  }
+
+  function isVenue2T12Strict_(stadium){
+    const sub = venueSubRankOf(stadium);
+    return sub === "A警戒" || sub === "A-" || sub === "B警戒";
+  }
+
+  function isVenue2T12Main_(stadium){
+    const rank = venueRankOf(stadium);
+    const sub = venueSubRankOf(stadium);
+    return (rank === "S" || rank === "A") && sub !== "A警戒" && sub !== "A-";
   }
 
   function isKiryuMidRace_(r){
@@ -1218,7 +1264,9 @@
     const lateGood = raceNo >= 9 && raceNo <= 11;
     const motorBandGood = Number.isFinite(motor) && motor >= 40 && motor < 50;
     const abilityGood = (Number.isFinite(nat) && nat >= 50) || (!locMissing && Number.isFinite(loc) && loc >= 50) || lateGood;
-    return rank1 === 1 && motorBandGood && abilityGood;
+    // v2.13: 強BUYの低オッズ許可は、2T-S/A本線またはB+まで。A警戒/A-/B警戒/C/Dでは低オッズ救済しない。
+    const venueOk = isVenue2T12Main_(r?.stadium) || venueSubRankOf(r?.stadium) === "B+";
+    return rank1 === 1 && motorBandGood && abilityGood && venueOk;
   }
 
   function computePlan(r){
@@ -1246,10 +1294,9 @@
     const d3 = deltaLane(r.exh,3); // 2単1-2では判定未使用。分析・JSON保存用の参考値として残す。
     const maxDelta2 = num("maxDelta2") ?? 0.12;
 
-    if(d2!=null && d2>maxDelta2) reasons.push("2号艇が遅い");
-    // v2.12:
-    // 3号艇の遅さは2連単1-2の的中には直接関係しないため、NO理由から撤廃。
-    // 3連複/3連単時代の d3 > maxDelta3 足切りは使わない。
+    // v2.13: JS小数誤差を吸収。0.1200000000000001 を 0.12超過扱いしない。
+    if(d2!=null && d2 > maxDelta2 + EPS) reasons.push("2号艇が遅い");
+    // v2.12以降: 3号艇の遅さは2連単1-2の的中には直接関係しないため、NO理由から撤廃。
 
     const venueRank = venueRankOf(r.stadium);
     const venueSubRank = venueSubRankOf(r.stadium);
@@ -1258,7 +1305,7 @@
 
     // 2単版でも softSafe は原則NO。3F/3T救済は廃止。
     if(reasons.length){
-      return { level:"no", reasons, rank, outerFast, d2, d3, nc, _venueRank: venueRank, _venueSubRank: venueSubRank, _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _locMissing: f1._locMissing };
+      return { level:"no", reasons, rank, outerFast, d2, d3, nc, _venueRank: venueRank, _venueSubRank: venueSubRank, _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _venueNote: venueNote2T12_(r.stadium), _locMissing: f1._locMissing };
     }
 
     const betType = "2T";
@@ -1279,36 +1326,54 @@
       if($("hardWaveOn")?.checked){
         const hw = num("hardWave") ?? 15;
         if(Number.isFinite(wave) && wave >= hw){
-          return { level:"no", reasons:[`波高>=${hw}cm（hard）`], rank, outerFast, d2, d3, nc, betType, combo, _guard:"wave_hard", _venueRank: venueRank, _venueSubRank: venueSubRank, _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _locMissing: f1._locMissing };
+          return { level:"no", reasons:[`波高>=${hw}cm（hard）`], rank, outerFast, d2, d3, nc, betType, combo, _guard:"wave_hard", _venueRank: venueRank, _venueSubRank: venueSubRank, _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _venueNote: venueNote2T12_(r.stadium), _locMissing: f1._locMissing };
         }
       }
 
       // 2単1-2では1号艇が頭必須。荒れ×ST優位なし、または明確なST出負けはNO。
       if(isRough && st1best === false){
-        return { level:"no", reasons:["荒れ水面×ST優位なし"], rank, outerFast, d2, d3, nc, betType, combo, _guard:"rough_no", _venueRank: venueRank, _venueSubRank: venueSubRank, _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _locMissing: f1._locMissing };
+        return { level:"no", reasons:["荒れ水面×ST優位なし"], rank, outerFast, d2, d3, nc, betType, combo, _guard:"rough_no", _venueRank: venueRank, _venueSubRank: venueSubRank, _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _venueNote: venueNote2T12_(r.stadium), _locMissing: f1._locMissing };
       }
       if(outmuscled === true){
-        return { level:"no", reasons:["ST出負け"], rank, outerFast, d2, d3, nc, betType, combo, _guard:"st_out", _venueRank: venueRank, _venueSubRank: venueSubRank, _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _locMissing: f1._locMissing };
+        return { level:"no", reasons:["ST出負け"], rank, outerFast, d2, d3, nc, betType, combo, _guard:"st_out", _venueRank: venueRank, _venueSubRank: venueSubRank, _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _venueNote: venueNote2T12_(r.stadium), _locMissing: f1._locMissing };
       }
     }
 
     if($("venueAdjustOn")?.checked){
-      if($("blockCVenue2tOn")?.checked && venueRank === "C"){
-        return { level:"no", reasons:["C会場 2単本線BUY禁止"], rank, outerFast, d2, d3, nc, betType, combo, _guard:"c_venue_2t_block", _venueRank: venueRank, _venueSubRank: venueSubRank, _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _locMissing: f1._locMissing };
+      // v2.13: 旧C会場ではなく、2T専用ランクのC/Dを本線BUY禁止にする。
+      // これにより福岡(A警戒)・児島(B+)・常滑(B警戒)は即禁止から外し、厳格条件側へ移す。
+      if($("blockCVenue2tOn")?.checked && isVenue2T12Blocked_(r.stadium)){
+        return { level:"no", reasons:[`${venueSubRank}会場 2T本線BUY禁止`], rank, outerFast, d2, d3, nc, betType, combo, _guard:"venue_2t_block", _venueRank: venueRank, _venueSubRank: venueSubRank, _venueNote: venueNote2T12_(r.stadium), _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _locMissing: f1._locMissing };
       }
-      if($("kiryuGuardOn")?.checked && isAlertA && $("kiryuMidRaceNoOn")?.checked && isKiryuMidRace_(r)){
-        return { level:"no", reasons:["桐生警戒A×5〜8R"], rank, outerFast, d2, d3, nc, betType, combo, _guard:"kiryu_mid", _venueRank: venueRank, _venueSubRank: venueSubRank, _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _locMissing: f1._locMissing };
+
+      // v2.13: 公式値は悪くないが旧3連系/実戦でブレる会場は、低条件BUYを許さない。
+      // 対象: 福岡(A警戒), びわこ/大村(A-), 常滑(B警戒)
+      if(isVenue2T12Strict_(r.stadium)){
+        const strictReasons = [];
+        if(rank !== 1) strictReasons.push("1号艇展示1位ではない");
+        if(d2 != null && d2 > 0.08 + EPS) strictReasons.push("d2>0.08");
+        if(isRough) strictReasons.push("荒れ水面");
+        if(st1best === false) strictReasons.push("ST優位なし");
+        if(nc != null && nc > 2) strictReasons.push("混戦強め");
+        if(strictReasons.length){
+          return { level:"no", reasons:[`${venueSubRank} 2T警戒条件不足（${strictReasons.join(" / ")}）`], rank, outerFast, d2, d3, nc, betType, combo, _guard:"venue_2t_strict", _venueRank: venueRank, _venueSubRank: venueSubRank, _venueNote: venueNote2T12_(r.stadium), _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _locMissing: f1._locMissing };
+        }
+      }
+
+      // 互換用：桐生はD警戒で上のC/D禁止にかかるが、設定を切った場合も旧ガードを残す。
+      if($("kiryuGuardOn")?.checked && Number(r?.stadium) === 1 && $("kiryuMidRaceNoOn")?.checked && isKiryuMidRace_(r)){
+        return { level:"no", reasons:["桐生D警戒×5〜8R"], rank, outerFast, d2, d3, nc, betType, combo, _guard:"kiryu_mid", _venueRank: venueRank, _venueSubRank: venueSubRank, _venueNote: venueNote2T12_(r.stadium), _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _locMissing: f1._locMissing };
       }
     }
 
     if($("profitGuardsOn")?.checked && $("lane2SurvivalGuardOn")?.checked){
       const risk = lane2SurvivalRisk_(r);
       if(risk.risky){
-        return { level:"no", reasons:[risk.reason], rank, outerFast, d2, d3, nc, betType, combo, _guard:"lane2_survival", _lane2SurvivalRisk:risk, _venueRank: venueRank, _venueSubRank: venueSubRank, _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _locMissing: f1._locMissing };
+        return { level:"no", reasons:[risk.reason], rank, outerFast, d2, d3, nc, betType, combo, _guard:"lane2_survival", _lane2SurvivalRisk:risk, _venueRank: venueRank, _venueSubRank: venueSubRank, _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _venueNote: venueNote2T12_(r.stadium), _locMissing: f1._locMissing };
       }
     }
 
-    return { level:"final", betType, combo, rank, outerFast, d2, d3, nc, _strong2t12:isStrong2T12_(r,{rank}), _venueRank: venueRank, _venueSubRank: venueSubRank, _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _locMissing: f1._locMissing };
+    return { level:"final", betType, combo, rank, outerFast, d2, d3, nc, _strong2t12:isStrong2T12_(r,{rank}), _venueRank: venueRank, _venueSubRank: venueSubRank, _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _venueNote: venueNote2T12_(r.stadium), _locMissing: f1._locMissing };
   }
 
   function parseOddLoose(v){
@@ -1645,6 +1710,9 @@
       odd: Number.isFinite(ev.odd) ? ev.odd : null,
       venue_rank: venueRankOf(r.stadium),
       venue_sub_rank: venueSubRankOf(r.stadium),
+      venue_rank_2t12: venueRankOf(r.stadium),
+      venue_sub_rank_2t12: venueSubRankOf(r.stadium),
+      venue_note_2t12: venueNote2T12_(r.stadium),
       is_b_minus: isBMinusVenue_(r.stadium),
       is_high_risk_venue: isHighRiskVenue_(r.stadium),
 
@@ -1852,8 +1920,7 @@
           ${beforeTag}
           ${softBadge}
           <span class="tag mono">rank:${venueSubRankOf(r.stadium)}</span>
-          ${isBMinusVenue_(r.stadium) ? `<span class="tag mono">B-</span>` : ``}
-          ${isAlertAVenue_(r.stadium) ? `<span class="tag mono">警戒A</span>` : ``}
+          ${isHighRiskVenue_(r.stadium) ? `<span class="tag mono">警戒</span>` : ``}
           ${(plan && plan._locMissing) ? `<span class="tag mono">loc2:missing</span>` : ``}
         </div>
         <div class="rowL">
