@@ -279,12 +279,12 @@
         beforeinfo自動補完は条件①通過レース中心にする
       </label>
       <label class="cb" style="margin:0;">
-        <input type="checkbox" id="resultSingleRetryCandidatesOnly" checked />
-        /api/result個別補完は条件①通過レース中心にする
+        <input type="checkbox" id="resultSingleRetryCandidatesOnly" />
+        省通信時のみ：/api/result個別補完を条件①通過レース中心に絞る
       </label>
     </div>
     <div class="muted small" style="margin-top:8px;">
-      ※全レースのbefore/resultを個別に叩くとWorker使用量が増えるため、実戦判定に必要な候補を優先します。結果分析用の全体結果は、取得済み分＋手動補正で扱います。
+      ※通常は結果分析のため、締切後の結果未取得レースを全レース対象で補完します。Worker使用量を抑えたい日だけ、右の省通信チェックをONにしてください。
     </div>
 
     <div class="hr"></div>
@@ -331,7 +331,7 @@
   const BEFORE_FILL_LIMIT = 80; // v2.9低通信：候補中心に絞るため上限を抑える
   const BEFORE_FILL_CONCURRENCY = 2; // v2.9低通信：同時Worker呼び出しを抑制
   const BEFORE_EMPTY_RETRY_MS = 15000;
-  const RESULT_RETRY_LIMIT = 80; // v2.9低通信：個別結果補完の上限を抑える
+  const RESULT_RETRY_LIMIT = 240; // v2.13.1: 結果補完は全レース対象。1日分を拾える上限に戻す
   const RESULT_CLOSE_GRACE_MS = 10 * 60 * 1000; // 締切10分後から結果未取得リトライ対象
   const AUTO_REFRESH_MS = 3 * 60 * 1000; // v2.9: 自動更新は低頻度（通常OFF）
   const ANALYSIS_FULL_LIMIT = 999; // v2.9.2: 手動の分析用フル取得時だけ全対象を許可
@@ -689,8 +689,8 @@
     if(r.result_top3) return false;
     if(!isRacePastResultWindow_(r)) return false;
     if($('resultSingleRetryCandidatesOnly')?.checked){
-      // 全レース個別/api/resultはWorker使用量が重い。
-      // BUY/NO/WAITになり得る条件①通過レースを優先し、条件外はbundle/direct結果に任せる。
+      // 省通信モード時のみ条件①通過レース中心に絞る。
+      // 通常運用では全レース結果を補完し、会場別・ランク別・条件外の探索分析に使う。
       if(!passFilter1(r).ok) return false;
     }
     return true;
@@ -1343,7 +1343,7 @@
       // v2.13: 旧C会場ではなく、2T専用ランクのC/Dを本線BUY禁止にする。
       // これにより福岡(A警戒)・児島(B+)・常滑(B警戒)は即禁止から外し、厳格条件側へ移す。
       if($("blockCVenue2tOn")?.checked && isVenue2T12Blocked_(r.stadium)){
-        return { level:"no", reasons:[`${venueSubRank}会場 2T本線BUY禁止`], rank, outerFast, d2, d3, nc, betType, combo, _guard:"venue_2t_block", _venueRank: venueRank, _venueSubRank: venueSubRank, _venueNote: venueNote2T12_(r.stadium), _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _locMissing: f1._locMissing };
+        return { level:"no", reasons:[`${venueSubRank}会場 2T本線BUY禁止`], rank, outerFast, d2, d3, nc, betType, combo, _guard:"venue_2t_block", _venueRank: venueRank, _venueSubRank: venueSubRank, _venueNote: venueNote2T12_(r.stadium), _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _venueNote: venueNote2T12_(r.stadium), _locMissing: f1._locMissing };
       }
 
       // v2.13: 公式値は悪くないが旧3連系/実戦でブレる会場は、低条件BUYを許さない。
@@ -1356,13 +1356,13 @@
         if(st1best === false) strictReasons.push("ST優位なし");
         if(nc != null && nc > 2) strictReasons.push("混戦強め");
         if(strictReasons.length){
-          return { level:"no", reasons:[`${venueSubRank} 2T警戒条件不足（${strictReasons.join(" / ")}）`], rank, outerFast, d2, d3, nc, betType, combo, _guard:"venue_2t_strict", _venueRank: venueRank, _venueSubRank: venueSubRank, _venueNote: venueNote2T12_(r.stadium), _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _locMissing: f1._locMissing };
+          return { level:"no", reasons:[`${venueSubRank} 2T警戒条件不足（${strictReasons.join(" / ")}）`], rank, outerFast, d2, d3, nc, betType, combo, _guard:"venue_2t_strict", _venueRank: venueRank, _venueSubRank: venueSubRank, _venueNote: venueNote2T12_(r.stadium), _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _venueNote: venueNote2T12_(r.stadium), _locMissing: f1._locMissing };
         }
       }
 
       // 互換用：桐生はD警戒で上のC/D禁止にかかるが、設定を切った場合も旧ガードを残す。
       if($("kiryuGuardOn")?.checked && Number(r?.stadium) === 1 && $("kiryuMidRaceNoOn")?.checked && isKiryuMidRace_(r)){
-        return { level:"no", reasons:["桐生D警戒×5〜8R"], rank, outerFast, d2, d3, nc, betType, combo, _guard:"kiryu_mid", _venueRank: venueRank, _venueSubRank: venueSubRank, _venueNote: venueNote2T12_(r.stadium), _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _locMissing: f1._locMissing };
+        return { level:"no", reasons:["桐生D警戒×5〜8R"], rank, outerFast, d2, d3, nc, betType, combo, _guard:"kiryu_mid", _venueRank: venueRank, _venueSubRank: venueSubRank, _venueNote: venueNote2T12_(r.stadium), _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _venueNote: venueNote2T12_(r.stadium), _locMissing: f1._locMissing };
       }
     }
 
@@ -2234,9 +2234,9 @@
 
     let changed = 0;
 
-    // 1) v2.9低通信：refreshFull冒頭ですでに /api/today を1回叩いているため、
+    // 1) refreshFull冒頭ですでに /api/today を1回叩いているため、
     //    結果補完目的の /api/today 追加再取得は省略する。
-    //    Cloudflare Worker使用量を抑え、結果補完は direct openapi + 候補中心の /api/result に任せる。
+    //    ただし結果補完対象そのものは、通常時は全レース。条件①通過だけには絞らない。
 
     // 2) boatraceopenapi の results をブラウザから直接取りに行く。
     //    /api/today 側のキャッシュが古い場合の保険。
@@ -2256,8 +2256,9 @@
       }
     }
 
-    // 3) 最後の砦：前回Workerに追加した /api/result を1レース単位で叩く。
+    // 3) 最後の砦：Workerの /api/result を1レース単位で叩く。
     //    bundleには結果レコードがあるのにtop3抽出だけ失敗するケース、Worker側で個別APIなら取れるケースに対応。
+    //    v2.13.1では通常時も全レース対象。
     const stillTargets = LAST_RACES
       .filter(r => shouldSingleRetryResult_(r));
     changed += await retryMissingResultsIndividually_(stillTargets);
