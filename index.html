@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.13（2連単1-2専用 / 公式2T会場ランク反映 / d2誤差修正SAFE）</title>
+  <title>競艇 v2.14（2連単1-2専用 / 会場再調整＋仮想BUYログ / odds WAIT修正SAFE）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -56,14 +56,15 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.13（2連単1-2専用 / 公式2T会場ランク反映 / d2誤差修正SAFE）</h1>
+  <h1>競艇 v2.14（2連単1-2専用 / 会場再調整＋仮想BUYログ / odds WAIT修正SAFE）</h1>
   <div class="sub">
     ✅ 主戦場を <b>2連単 1-2</b> に固定（1レース1点）。3連単・3連複の買い目分岐は廃止。<br/>
-    ✅ v2.13：BOAT RACE公式の場別データ＋過去/直近1-2実績を反映し、2T専用会場ランクへ再編。<br/>
-    ✅ 2T-S/Aは通常候補、A警戒/A-/B警戒は厳格条件、C/Dは本線BUY禁止。江戸川・桐生・三国は降格反映。<br/>
+    ✅ v2.14：福岡・住之江を警戒降格、常滑をB+警戒へ昇格。C/D本線BUY禁止は維持。<br/>
+    ✅ v2.14：過去全レース検証ベースで、モーター40未満救済は正式BUYではなく仮想BUYログへ追加。<br/>
+    ✅ v2.14：児島B+専用の仮想BUYログ、A/S会場の外枠2着ズレ警戒、オッズ未入力WAIT復帰を反映。<br/>
     ✅ 条件①は2連単用に調整：nat2/loc2/motor2は維持、near_countは3まで、2-3差条件・3号艇遅いNOは撤廃。<br/>
     ✅ d2は小数誤差を吸収して判定（0.1200000000000001問題を回避）。Δ3は参考値として保存・表示のみ。<br/>
-    ✅ 2単1-2オッズは手入力。通常BUYは3.2倍以上、強BUY条件なら2.7倍以上を許可。<br/>
+    ✅ 2単1-2オッズは手入力。通常BUYは3.2倍以上、強BUY条件なら2.7倍以上を許可。オッズ未入力のみならWAIT表示。<br/>
     ✅ 取得系・結果補完・手動結果補正・.json書き出し・低通信・分析用フル取得は維持。<br/>
     ✅ 終了レースは結果（3着まで）を表示。未取得を偽1-2-3扱いしない安全処理は維持。
   </div>
@@ -205,7 +206,34 @@
     </div>
 
     <div class="muted small" style="margin-top:8px;">
-      2T-S: 徳山 / 尼崎 / 津　A: 宮島 / 芦屋 / 若松 / 下関 / 唐津 / 大村 / びわこ / 福岡警戒　B: 児島 / 蒲郡 / 丸亀 / 多摩川 / 住之江 / 常滑警戒　C/D: 浜名湖 / 鳴門 / 三国警戒 / 平和島 / 江戸川 / 桐生警戒 / 戸田
+      2T-S: 徳山 / 尼崎 / 津　A: 宮島 / 芦屋 / 若松 / 下関 / 唐津 / 大村 / びわこ　B: 児島 / 蒲郡 / 丸亀 / 多摩川 / 常滑B+警戒 / 福岡B警戒 / 住之江B警戒　C/D: 浜名湖 / 鳴門 / 三国警戒 / 平和島 / 江戸川 / 桐生警戒 / 戸田
+    </div>
+
+    <div class="hr"></div>
+
+    <div class="pill">v2.14 仮想BUYログ（正式収支には含めない）</div>
+    <div class="grid g2" style="margin-top:10px;">
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="v214VirtualLogOn" checked />
+        仮想BUYログを表示・JSON保存する
+      </label>
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="v214MotorRescueVirtualOn" checked />
+        モーター40未満救済ログを有効化
+      </label>
+    </div>
+    <div class="grid g2" style="margin-top:10px;">
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="v214KojimaVirtualOn" checked />
+        児島B+専用 仮想BUYログを有効化
+      </label>
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="aVenueOuterThreatTightenOn" checked />
+        A/S会場でも外枠2着ズレ警戒を強める
+      </label>
+    </div>
+    <div class="muted small" style="margin-top:8px;">
+      ※仮想BUYは正式BUY・会場別収支に入れません。過去全レースでは、M40未満救済の強条件（M25〜39.99 / nat2≥42 / loc2≥42 or 欠損 / d2≤0.08 / 風波≤4 / 1展示≤2 / 2展示≤2 / S-A-B+系）は 192件60的中、約31.3%。まずログで確認します。
     </div>
 
     <div class="hr"></div>
@@ -370,11 +398,11 @@
     5:{rank:"B", sub:"B", note:"多摩川：中位"},
     6:{rank:"C", sub:"C", note:"浜名湖：過去/直近弱め"},
     7:{rank:"B", sub:"B+", note:"蒲郡：中上位"},
-    8:{rank:"B", sub:"B警戒", note:"常滑：1-2は出るが外枠/3C割込警戒"},
+    8:{rank:"B", sub:"B+警戒", note:"常滑：実戦1-2は上位。ただし外枠/3C割込警戒"},
     9:{rank:"S", sub:"S", note:"津：公式/過去/直近良好"},
     10:{rank:"C", sub:"C警戒", note:"三国：公式/直近弱め。旧B+から降格"},
     11:{rank:"A", sub:"A-", note:"びわこ：公式2C2着率は強いが旧B-のため条件付き"},
-    12:{rank:"B", sub:"B", note:"住之江：公式良いが実戦1-2は伸びにくい"},
+    12:{rank:"B", sub:"B警戒", note:"住之江：公式良いが実戦1-2は伸びにくい。Bから警戒降格"},
     13:{rank:"S", sub:"S", note:"尼崎：公式/過去/直近すべて良好"},
     14:{rank:"C", sub:"C", note:"鳴門：公式1C1着率低め"},
     15:{rank:"B", sub:"B+", note:"丸亀：中上位"},
@@ -384,7 +412,7 @@
     19:{rank:"A", sub:"A", note:"下関：上位寄り"},
     20:{rank:"A", sub:"A", note:"若松：上位。荒れ/ナイター補正は維持"},
     21:{rank:"A", sub:"A", note:"芦屋：上位"},
-    22:{rank:"A", sub:"A警戒", note:"福岡：公式は強いが旧3連系では危険。条件付き解禁"},
+    22:{rank:"B", sub:"B警戒", note:"福岡：公式値は良いが実戦1-2弱め。A警戒からB警戒へ降格"},
     23:{rank:"A", sub:"A", note:"唐津：直近/実戦上げ"},
     24:{rank:"A", sub:"A-", note:"大村：上位候補。直近不足で条件付き"}
   };
@@ -412,7 +440,7 @@
   function isBMinusVenue_(stadium){
     const sub = venueSubRankOf(stadium);
     const rank = venueRankOf(stadium);
-    return rank === "C" || rank === "D" || sub === "A-" || sub === "A警戒" || sub === "B警戒" || sub === "C警戒" || sub === "D警戒";
+    return rank === "C" || rank === "D" || sub === "A-" || sub.includes("警戒");
   }
 
   // 旧名互換：A警戒限定ではなく「警戒」サブランクを返す
@@ -440,7 +468,7 @@
 
   function isVenue2T12Strict_(stadium){
     const sub = venueSubRankOf(stadium);
-    return sub === "A警戒" || sub === "A-" || sub === "B警戒";
+    return sub === "A警戒" || sub === "A-" || sub === "B警戒" || sub === "B+警戒";
   }
 
   function isVenue2T12Main_(stadium){
@@ -1254,6 +1282,144 @@
     };
   }
 
+
+  // v2.14: A/S会場でも「1は来るが2が外枠に食われる」形を追加警戒。
+  function lane2OuterMildRisk_(r){
+    const exhLead = num("outerExhLead") ?? 0.03;
+    const stLead = num("outerStLead") ?? 0.06;
+    const exh = r?.exh || {};
+    const st = r?.st || {};
+    const t2 = Number(exh["2"]);
+    const s2 = parseStToNum_(st["2"]);
+    const rank2 = laneExhRank_(exh, 2);
+    const exhThreats = [];
+    const stThreats = [];
+
+    if(Number.isFinite(t2) && t2 > 0){
+      for(const outer of [4,5,6]){
+        const to = Number(exh[String(outer)]);
+        if(Number.isFinite(to) && to > 0 && to <= t2 - exhLead) exhThreats.push(`${outer}>2`);
+      }
+    }
+    if(Number.isFinite(s2)){
+      for(const outer of [4,5,6]){
+        const so = parseStToNum_(st[String(outer)]);
+        if(Number.isFinite(so) && so <= s2 - stLead) stThreats.push(`${outer}>2`);
+      }
+    }
+
+    const risky =
+      (Number.isFinite(rank2) && rank2 >= 3 && exhThreats.length >= 1) ||
+      (Number.isFinite(rank2) && rank2 >= 4 && stThreats.length >= 1) ||
+      (exhThreats.length + stThreats.length >= 2);
+
+    return {
+      risky,
+      rank2,
+      exhThreats: Array.from(new Set(exhThreats)),
+      stThreats: Array.from(new Set(stThreats)),
+      reason: risky ? `上位会場でも外枠2着ズレ警戒（2展示順位:${rank2 ?? "-"} / 外枠展示:${exhThreats.length} / 外枠ST:${stThreats.length}）` : ""
+    };
+  }
+
+  function loc2OkOrMissing_(r){
+    const loc = Number(r?.loc2);
+    return !Number.isFinite(loc) || loc === 0 || loc >= 42;
+  }
+
+  function calmWater4_(r){
+    const wind = Number(r?.env?.windMs);
+    const wave = Number(r?.env?.waveCm);
+    const windOk = !Number.isFinite(wind) || wind <= 4;
+    const waveOk = !Number.isFinite(wave) || wave <= 4;
+    return windOk && waveOk;
+  }
+
+  function motorRescueVenueOk_(stadium){
+    const sub = venueSubRankOf(stadium);
+    return sub === "S" || sub === "A" || sub === "A-" || sub === "B+" || sub === "B+警戒";
+  }
+
+  function motorRescue2T12Virtual_(r){
+    const blockers = [];
+    if(!$('v214VirtualLogOn')?.checked || !$('v214MotorRescueVirtualOn')?.checked) blockers.push("仮想ログOFF");
+
+    const motor = Number(r?.motor2);
+    const nat = Number(r?.nat2);
+    const d2 = deltaLane(r?.exh, 2);
+    const rank1 = exhibitionRank(r?.exh);
+    const rank2 = laneExhRank_(r?.exh, 2);
+    const stOut = st1Outmuscled_(r, num("stOutmuscle") ?? 0.05);
+    const lane2Risk = lane2SurvivalRisk_(r);
+
+    if(!Number.isFinite(motor) || motor < 25 || motor >= 40) blockers.push("M25〜39.99ではない");
+    if(!Number.isFinite(nat) || nat < 42) blockers.push("全国2連率不足");
+    if(!loc2OkOrMissing_(r)) blockers.push("当地2連率不足");
+    if(d2 == null || d2 > 0.08 + EPS) blockers.push("d2>0.08");
+    if(!calmWater4_(r)) blockers.push("風波>4");
+    if(!(Number.isFinite(rank1) && rank1 <= 2)) blockers.push(`1展示順位>${2}(${rank1 ?? "-"})`);
+    if(!(Number.isFinite(rank2) && rank2 <= 2)) blockers.push(`2展示順位>${2}(${rank2 ?? "-"})`);
+    if(stOut === true) blockers.push("ST出負け");
+    if(lane2Risk.risky) blockers.push("2号艇残存リスク");
+    if(!motorRescueVenueOk_(r?.stadium)) blockers.push(`会場対象外(${venueSubRankOf(r?.stadium)})`);
+
+    return {
+      candidate: blockers.length === 0,
+      label: "M40未満救済",
+      reason: "過去全レース精査条件：M25〜39.99 / nat2≥42 / loc2≥42or欠損 / d2≤0.08 / 風波≤4 / 1展示≤2 / 2展示≤2 / S-A-B+系",
+      blockers,
+      rank1,
+      rank2,
+      d2,
+      motor
+    };
+  }
+
+  function kojimaBPlusVirtual_(r){
+    const blockers = [];
+    if(!$('v214VirtualLogOn')?.checked || !$('v214KojimaVirtualOn')?.checked) blockers.push("仮想ログOFF");
+    if(Number(r?.stadium) !== 16) blockers.push("児島ではない");
+
+    const nat = Number(r?.nat2);
+    const d2 = deltaLane(r?.exh, 2);
+    const rank1 = exhibitionRank(r?.exh);
+    const rank2 = laneExhRank_(r?.exh, 2);
+    const stOut = st1Outmuscled_(r, num("stOutmuscle") ?? 0.05);
+
+    if(!Number.isFinite(nat) || nat < 42) blockers.push("全国2連率不足");
+    if(!loc2OkOrMissing_(r)) blockers.push("当地2連率不足");
+    if(d2 == null || d2 > 0.12 + EPS) blockers.push("d2>0.12");
+    if(!calmWater4_(r)) blockers.push("風波>4");
+    if(!(Number.isFinite(rank2) && rank2 <= 4)) blockers.push(`2展示順位>${4}(${rank2 ?? "-"})`);
+    if(Number.isFinite(rank1) && rank1 > 4) blockers.push(`1展示順位>${4}(${rank1 ?? "-"})`);
+    if(stOut === true) blockers.push("ST出負け");
+
+    return {
+      candidate: blockers.length === 0,
+      label: "児島B+仮想",
+      reason: "児島専用：nat2≥42 / loc2≥42or欠損 / d2≤0.12 / 風波≤4 / 2展示≤4 / ST出負けなし",
+      blockers,
+      rank1,
+      rank2,
+      d2
+    };
+  }
+
+  function buildVirtualFlags_(r){
+    const items = [];
+    const m = motorRescue2T12Virtual_(r);
+    const k = kojimaBPlusVirtual_(r);
+    if(m.candidate) items.push(m);
+    if(k.candidate) items.push(k);
+    return {
+      count: items.length,
+      labels: items.map(x => x.label),
+      items,
+      motor_rescue: m,
+      kojima_virtual: k
+    };
+  }
+
   function isStrong2T12_(r, plan){
     const rank1 = plan?.rank ?? exhibitionRank(r?.exh);
     const raceNo = Number(r?.race);
@@ -1347,7 +1513,7 @@
       }
 
       // v2.13: 公式値は悪くないが旧3連系/実戦でブレる会場は、低条件BUYを許さない。
-      // 対象: 福岡(A警戒), びわこ/大村(A-), 常滑(B警戒)
+      // 対象: びわこ/大村(A-), 福岡/住之江(B警戒), 常滑(B+警戒)
       if(isVenue2T12Strict_(r.stadium)){
         const strictReasons = [];
         if(rank !== 1) strictReasons.push("1号艇展示1位ではない");
@@ -1363,6 +1529,17 @@
       // 互換用：桐生はD警戒で上のC/D禁止にかかるが、設定を切った場合も旧ガードを残す。
       if($("kiryuGuardOn")?.checked && Number(r?.stadium) === 1 && $("kiryuMidRaceNoOn")?.checked && isKiryuMidRace_(r)){
         return { level:"no", reasons:["桐生D警戒×5〜8R"], rank, outerFast, d2, d3, nc, betType, combo, _guard:"kiryu_mid", _venueRank: venueRank, _venueSubRank: venueSubRank, _venueNote: venueNote2T12_(r.stadium), _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _venueNote: venueNote2T12_(r.stadium), _locMissing: f1._locMissing };
+      }
+    }
+
+    if($("profitGuardsOn")?.checked && $("aVenueOuterThreatTightenOn")?.checked){
+      // v2.14: 下関9R型の「1は来るが2が外枠に食われる」を、上位会場でも追加警戒。
+      // C/Dは禁止済み、警戒会場はstrict済みなので、ここではS/A本線を対象にする。
+      if(isVenue2T12Main_(r.stadium)){
+        const mildRisk = lane2OuterMildRisk_(r);
+        if(mildRisk.risky){
+          return { level:"no", reasons:[mildRisk.reason], rank, outerFast, d2, d3, nc, betType, combo, _guard:"a_outer_2nd_shift", _lane2OuterMildRisk:mildRisk, _venueRank: venueRank, _venueSubRank: venueSubRank, _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _venueNote: venueNote2T12_(r.stadium), _locMissing: f1._locMissing };
+        }
       }
     }
 
@@ -1437,8 +1614,9 @@
     const op = oddsPass(r, plan.betType, odd);
 
     if(!op.ok){
-      if(op.reasons.includes("オッズ未取得/未入力")){
-        return { state:"WAIT", msg:`WAIT：オッズ取得/入力待ち（${plan.betType} ${plan.combo}）`, plan, odd:null };
+      // v2.14: オッズ未入力だけでNOにせず、前バージョン同様WAIT表示に戻す。
+      if(op.reasons.length === 1 && String(op.reasons[0]).includes("未入力")){
+        return { state:"WAIT", msg:`WAIT：オッズ入力待ち（${plan.betType} ${plan.combo}）`, plan, odd:null };
       }
       return { state:"NO", msg:`NO：${op.reasons.join(" / ")}`, plan, odd };
     }
@@ -1589,6 +1767,7 @@
     if(g === "rough_no") return "荒れ×ST優位なし";
     if(g === "wave_hard") return "波高hard";
     if(g === "lane2_survival") return "2号艇残存";
+    if(g === "a_outer_2nd_shift") return "上位会場外枠2着ズレ";
     if(g === "inner_survival") return "2・3残存";
     if(g === "kiryu_mid") return "桐生5〜8R";
     return g ? String(g) : "-";
@@ -1693,6 +1872,7 @@
     const manualOdds = getManualOdds(r.key);
     const manualResultTop3 = getManualResult(r.key);
     const autoOdds = getAutoOddBundleForRace_(r);
+    const virtualFlags = buildVirtualFlags_(r);
 
     return {
       ...shallowCloneJson_(r),
@@ -1730,7 +1910,18 @@
       o2t12: parseOddLoose(manualOdds.o2t12),
 
       // 最終候補判定の有無
-      isFinal: !!(plan && plan.level === "final")
+      isFinal: !!(plan && plan.level === "final"),
+
+      // v2.14 仮想BUYログ（正式収支には含めない）
+      virtual_buy_count: virtualFlags.count,
+      virtual_labels: virtualFlags.labels.join(" / ") || null,
+      virtual_items: shallowCloneJson_(virtualFlags.items),
+      motor_rescue_candidate: !!virtualFlags.motor_rescue?.candidate,
+      motor_rescue_reason: virtualFlags.motor_rescue?.candidate ? virtualFlags.motor_rescue.reason : null,
+      motor_rescue_blockers: virtualFlags.motor_rescue?.blockers?.join(" / ") || null,
+      kojima_virtual_candidate: !!virtualFlags.kojima_virtual?.candidate,
+      kojima_virtual_reason: virtualFlags.kojima_virtual?.candidate ? virtualFlags.kojima_virtual.reason : null,
+      kojima_virtual_blockers: virtualFlags.kojima_virtual?.blockers?.join(" / ") || null
     };
   }
 
@@ -1745,6 +1936,7 @@
     let oddsReady = 0;
     let beforeReady = 0;
     let resReady = 0;
+    let virtualBuy = 0;
 
     for(const r of racesForExport){
       if(passFilter1(r).ok) f1pass++;
@@ -1766,6 +1958,7 @@
       if(autoOdds || manualReady) oddsReady++;
       if(beforeReadyActual_(r)) beforeReady++;
       if(r.result_top3) resReady++;
+      if(Number(r.virtual_buy_count) > 0) virtualBuy++;
     }
 
     return {
@@ -1778,7 +1971,8 @@
       filtered,
       odds_ready: oddsReady,
       before_ready: beforeReady,
-      result_ready: resReady
+      result_ready: resReady,
+      virtual_buy: virtualBuy
     };
   }
 
@@ -1804,7 +1998,7 @@
   function renderSummary(races){
     const total = races.length;
     const f1pass = races.filter(r => passFilter1(r).ok).length;
-    let buy=0,no=0,wait=0,filtered=0,finals=0,oddsReady=0,beforeReady=0,resReady=0;
+    let buy=0,no=0,wait=0,filtered=0,finals=0,oddsReady=0,beforeReady=0,resReady=0,virtualBuy=0;
 
     for(const r of races){
       const ev = evaluate(r);
@@ -1819,10 +2013,11 @@
       if(ODDS_AUTO.has(r.key) || manualReady) oddsReady++;
       if(beforeReadyActual_(r)) beforeReady++;
       if(r.result_top3) resReady++;
+      if(buildVirtualFlags_(r).count > 0) virtualBuy++;
     }
 
     $("summary").textContent =
-      `取得${total}R / 条件①通過${f1pass}R / 2単候補${finals} / BUY${buy} / NO${no} / WAIT${wait} / 条件外${filtered} / 2単odds${oddsReady} / before${beforeReady} / result${resReady}`;
+      `取得${total}R / 条件①通過${f1pass}R / 2単候補${finals} / BUY${buy} / NO${no} / WAIT${wait} / 条件外${filtered} / 仮想BUY${virtualBuy} / 2単odds${oddsReady} / before${beforeReady} / result${resReady}`;
 
     renderNoDiagnostics_(races);
   }
@@ -1909,6 +2104,13 @@
     const softBadge = (plan && plan._softSafe)
       ? `<span class="tag mono">safe:3F（softNO）</span>`
       : ``;
+    const virtualFlags = buildVirtualFlags_(r);
+    const virtualBadge = virtualFlags.count
+      ? `<span class="tag mono">仮想BUY:${virtualFlags.labels.join("+")}</span>`
+      : ``;
+    const virtualLine = virtualFlags.count
+      ? `<div class="resultLine small">仮想BUYログ: <b>${virtualFlags.labels.join(" / ")}</b> <span class="muted small">※正式収支対象外</span></div>`
+      : ``;
 
     card.innerHTML = `
       <div class="row">
@@ -1919,6 +2121,7 @@
           ${closeTag}
           ${beforeTag}
           ${softBadge}
+          ${virtualBadge}
           <span class="tag mono">rank:${venueSubRankOf(r.stadium)}</span>
           ${isHighRiskVenue_(r.stadium) ? `<span class="tag mono">警戒</span>` : ``}
           ${(plan && plan._locMissing) ? `<span class="tag mono">loc2:missing</span>` : ``}
@@ -1934,6 +2137,7 @@
           4:${dispTime(r.exh?.["4"])} 5:${dispTime(r.exh?.["5"])} 6:${dispTime(r.exh?.["6"])}
           <div class="resultLine">ST 1:${dispSt(r.st?.["1"])} 2:${dispSt(r.st?.["2"])} 3:${dispSt(r.st?.["3"])} 4:${dispSt(r.st?.["4"])} 5:${dispSt(r.st?.["5"])} 6:${dispSt(r.st?.["6"])}</div>
           ${top3}
+          ${virtualLine}
           <div class="resultLine small">
             結果補正: <input data-result-top3 type="text" inputmode="numeric" placeholder="例: 5-1-2" value="${manualTop3 || ""}" style="width:120px; padding:6px; font-size:12px; display:inline-block;">
             <span class="muted small">※結果未取得/誤取得の時だけ入力</span>
@@ -2018,7 +2222,7 @@
   function renderList(races){
     const mode = $("viewMode").value;
     let show = races.slice();
-    if(mode==="candidates") show = show.filter(r => passFilter1(r).ok);
+    if(mode==="candidates") show = show.filter(r => passFilter1(r).ok || buildVirtualFlags_(r).count > 0);
 
     show.sort((a,b)=>{
       const am = parseCloseMs_(a.race_closed_at);
@@ -2489,6 +2693,7 @@
       "oddsFilterOn","minOdds2t","strongMinOdds2t","maxOdds2t",
       "venueAdjustOn","blockCVenue2tOn","kiryuGuardOn","kiryuMidRaceNoOn",
       "lane2SurvivalGuardOn","outerExhLead","outerStLead","lane2WeakRank",
+      "v214VirtualLogOn","v214MotorRescueVirtualOn","v214KojimaVirtualOn","aVenueOuterThreatTightenOn",
       "autoBeforeScopeCandidatesOnly","resultSingleRetryCandidatesOnly",
       "viewMode","autoRefresh"
     ];
@@ -2546,6 +2751,7 @@
   [
     "venueAdjustOn","blockCVenue2tOn","kiryuGuardOn","kiryuMidRaceNoOn",
     "lane2SurvivalGuardOn","outerExhLead","outerStLead","lane2WeakRank",
+    "v214VirtualLogOn","v214MotorRescueVirtualOn","v214KojimaVirtualOn","aVenueOuterThreatTightenOn",
     "autoBeforeScopeCandidatesOnly","resultSingleRetryCandidatesOnly",
     "strictSoftNo2tOn","minOdds2t","strongMinOdds2t","maxOdds2t",
     "roughWind","roughWave","roughNoMode","stOutmuscle","hardWaveOn","hardWave","hardWaveMode",
