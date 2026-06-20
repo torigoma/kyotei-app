@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.15（2連単1-2研究版 / 2号艇残存スコア＋結果分類 / SAFE）</title>
+  <title>競艇 v2.16（2連単1-2研究版 / 1号艇勝利スコア＋二段階候補 / SAFE）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -56,13 +56,14 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.15（2連単1-2研究版 / 2号艇残存スコア＋結果分類 / SAFE）</h1>
+  <h1>競艇 v2.16（2連単1-2研究版 / 1号艇勝利スコア＋二段階候補 / SAFE）</h1>
   <div class="sub">
     ✅ 主戦場を <b>2連単 1-2</b> に固定（1レース1点）。3連単・3連複の買い目分岐は廃止。<br/>
     ✅ v2.14：福岡・住之江を警戒降格、常滑をB+警戒へ昇格。C/D本線BUY禁止は維持。<br/>
     ✅ v2.14：過去全レース検証ベースで、モーター40未満救済は正式BUYではなく仮想BUYログへ追加。<br/>
     ✅ v2.14：児島B+専用の仮想BUYログ、A/S会場の外枠2着ズレ警戒、オッズ未入力WAIT復帰を反映。<br/>
     ✅ v2.15：2号艇残存スコア、1-2/1-3/1-4/1飛びの結果分類、低オッズNO別枠、研究候補ラベルを追加。正式BUYは超厳選側に寄せる。<br/>
+    ✅ v2.16：過去レース＋公式1C勝率を根拠に、1号艇勝利スコアを追加。2号艇残存スコアと二段階で研究候補を出す。宮島・蒲郡・大村は直近2T弱化を反映して警戒降格。<br/>
     ✅ 条件①は2連単用に調整：nat2/loc2/motor2は維持、near_countは3まで、2-3差条件・3号艇遅いNOは撤廃。<br/>
     ✅ d2は小数誤差を吸収して判定（0.1200000000000001問題を回避）。Δ3は参考値として保存・表示のみ。<br/>
     ✅ 2単1-2オッズは手入力。通常BUYは3.2倍以上、強BUY条件なら2.7倍以上を許可。オッズ未入力のみならWAIT表示。<br/>
@@ -207,7 +208,7 @@
     </div>
 
     <div class="muted small" style="margin-top:8px;">
-      2T-S: 徳山 / 尼崎 / 津　A: 宮島 / 芦屋 / 若松 / 下関 / 唐津 / 大村 / びわこ　B: 児島 / 蒲郡 / 丸亀 / 多摩川 / 常滑B+警戒 / 福岡B警戒 / 住之江B警戒　C/D: 浜名湖 / 鳴門 / 三国警戒 / 平和島 / 江戸川 / 桐生警戒 / 戸田
+      2T-S: 徳山 / 尼崎 / 津　A: 芦屋 / 若松 / 下関 / 唐津 / びわこ(A-)　B: 児島 / 丸亀 / 多摩川 / 常滑B+警戒 / 宮島B警戒 / 蒲郡B警戒 / 大村B警戒 / 福岡B警戒 / 住之江B警戒　C/D: 浜名湖 / 鳴門 / 三国警戒 / 平和島 / 江戸川 / 桐生警戒 / 戸田
     </div>
 
     <div class="hr"></div>
@@ -265,6 +266,40 @@
     </div>
     <div class="muted small" style="margin-top:8px;">
       ※v2.15は「勝つために買い目を増やす」版ではなく、1-2的中 / 1-3ズレ / 1-4ズレ / 1飛びを分類して、2号艇が2着に残る条件を探す研究版です。
+    </div>
+
+
+    <div class="hr"></div>
+
+    <div class="pill">v2.16 1号艇勝利スコア（公式1C勝率＋過去会場1頭率＋展示/ST）</div>
+    <div class="grid g2" style="margin-top:10px;">
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="v216OneWinResearchOn" checked />
+        1号艇勝利スコアを表示・JSON保存する
+      </label>
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="v216StrictOfficialBuyOneScoreOn" checked />
+        正式BUY前に1号艇勝利スコアを必須化する
+      </label>
+    </div>
+    <div class="grid g3" style="margin-top:10px;">
+      <div><label>正式BUY最低 1号艇勝利スコア</label><input id="v216MinOfficialOneScore" type="number" step="1" value="72" /></div>
+      <div><label>研究候補最低 1号艇勝利スコア</label><input id="v216MinResearchOneScore" type="number" step="1" value="70" /></div>
+      <div><label>二段階候補最低 1号艇勝利スコア</label><input id="v216MinTwoStageOneScore" type="number" step="1" value="72" /></div>
+    </div>
+    <div class="grid g3" style="margin-top:10px;">
+      <div><label>二段階候補最低 2号艇残存スコア</label><input id="v216MinTwoStageL2Score" type="number" step="1" value="60" /></div>
+      <label class="cb" style="margin:0; align-self:end;">
+        <input type="checkbox" id="v216TwoStageCandidateOn" checked />
+        true_12_candidateを二段階候補へ変更
+      </label>
+      <label class="cb" style="margin:0; align-self:end;">
+        <input type="checkbox" id="v216True12NoHardThreatOn" checked />
+        二段階候補は1号艇hard脅威なしを要求
+      </label>
+    </div>
+    <div class="muted small" style="margin-top:8px;">
+      ※1号艇勝利スコアは、公式1C勝率・過去会場1頭率・展示順位・1号艇より速い艇数・ST出負け・風波から作成。v2.15の2残存だけでは「2が強いが1が飛ぶ」を拾ったため、v2.16では1勝ち→2残りの二段階に分けます。
     </div>
 
     <div class="hr"></div>
@@ -428,7 +463,7 @@
     4:{rank:"D", sub:"D", note:"平和島：旧C継続。基本BUY禁止"},
     5:{rank:"B", sub:"B", note:"多摩川：中位"},
     6:{rank:"C", sub:"C", note:"浜名湖：過去/直近弱め"},
-    7:{rank:"B", sub:"B+", note:"蒲郡：中上位"},
+    7:{rank:"B", sub:"B警戒", note:"蒲郡：v2.16警戒降格。過去全体は中位だが直近2T1-2が弱い"},
     8:{rank:"B", sub:"B+警戒", note:"常滑：実戦1-2は上位。ただし外枠/3C割込警戒"},
     9:{rank:"S", sub:"S", note:"津：公式/過去/直近良好"},
     10:{rank:"C", sub:"C警戒", note:"三国：公式/直近弱め。旧B+から降格"},
@@ -438,15 +473,24 @@
     14:{rank:"C", sub:"C", note:"鳴門：公式1C1着率低め"},
     15:{rank:"B", sub:"B+", note:"丸亀：中上位"},
     16:{rank:"B", sub:"B+", note:"児島：旧Cから条件付き昇格"},
-    17:{rank:"A", sub:"A", note:"宮島：上位"},
+    17:{rank:"B", sub:"B警戒", note:"宮島：v2.16警戒降格。直近2T1-2が大きく弱化、A扱い停止"},
     18:{rank:"S", sub:"S", note:"徳山：公式最上位級"},
     19:{rank:"A", sub:"A", note:"下関：上位寄り"},
     20:{rank:"A", sub:"A", note:"若松：上位。荒れ/ナイター補正は維持"},
     21:{rank:"A", sub:"A", note:"芦屋：上位"},
     22:{rank:"B", sub:"B警戒", note:"福岡：公式値は良いが実戦1-2弱め。A警戒からB警戒へ降格"},
     23:{rank:"A", sub:"A", note:"唐津：直近/実戦上げ"},
-    24:{rank:"A", sub:"A-", note:"大村：上位候補。直近不足で条件付き"}
+    24:{rank:"B", sub:"B警戒", note:"大村：v2.16警戒降格。公式値は悪くないが直近2T1-2が弱い"}
   };
+
+
+
+  // v2.16: 1号艇勝利スコア用の根拠データ。
+  // VENUE_OFFICIAL_1C_WIN: 公式コース別1C1着率（最近3ヶ月系の公式データ由来）。
+  // VENUE_HIST_1HEAD_RATE / VENUE_HIST_12_RATE: 過去統合データの会場別1頭率・1-2率。
+  const VENUE_OFFICIAL_1C_WIN = {"18": 65.0, "13": 61.4, "9": 58.1, "22": 62.0, "17": 58.1, "21": 61.8, "20": 59.3, "19": 64.5, "23": 57.9, "11": 52.5, "24": 59.0, "16": 57.8, "7": 56.4, "15": 59.1, "5": 54.0, "12": 61.8, "8": 55.7, "6": 55.2, "14": 47.2, "10": 49.1, "4": 49.1, "3": 48.8, "1": 49.9, "2": 39.6};
+  const VENUE_HIST_1HEAD_RATE = {"18": 62.418, "13": 62.136, "9": 57.843, "22": 59.269, "17": 60.374, "21": 61.343, "20": 61.712, "19": 58.511, "23": 57.904, "11": 53.804, "24": 57.609, "16": 57.464, "7": 54.726, "15": 55.439, "5": 57.558, "12": 56.691, "8": 53.115, "6": 51.659, "14": 49.524, "10": 50.091, "4": 47.619, "3": 48.25, "1": 45.213, "2": 39.484};
+  const VENUE_HIST_12_RATE = {"18": 24.837, "13": 22.816, "9": 22.794, "22": 21.932, "17": 21.259, "21": 19.964, "20": 20.946, "19": 18.617, "23": 19.244, "11": 20.833, "24": 20.217, "16": 18.941, "7": 19.569, "15": 19.649, "5": 20.155, "12": 17.518, "8": 18.847, "6": 16.588, "14": 18.095, "10": 16.819, "4": 14.286, "3": 15.101, "1": 14.007, "2": 13.889};
 
   const VENUE_SPECIAL_EXTRA = new Set([11,6]);           // びわこ, 浜名湖（互換メモ用）
 
@@ -1494,10 +1538,205 @@
     };
   }
 
+
+  function venueOfficial1CWin_(stadium){
+    const v = VENUE_OFFICIAL_1C_WIN[String(Number(stadium))];
+    return Number.isFinite(Number(v)) ? Number(v) : 55;
+  }
+
+  function venueHist1HeadRate_(stadium){
+    const v = VENUE_HIST_1HEAD_RATE[String(Number(stadium))];
+    return Number.isFinite(Number(v)) ? Number(v) : 55;
+  }
+
+  function venueHist12Rate_(stadium){
+    const v = VENUE_HIST_12_RATE[String(Number(stadium))];
+    return Number.isFinite(Number(v)) ? Number(v) : 18;
+  }
+
+  function lane1ThreatToWinV216_(r, lane){
+    const exh = r?.exh || {};
+    const st = r?.st || {};
+    const t1 = Number(exh["1"]);
+    const tx = Number(exh[String(lane)]);
+    const s1 = parseStToNum_(st["1"]);
+    const sx = parseStToNum_(st[String(lane)]);
+    const exhFast = Number.isFinite(t1) && Number.isFinite(tx) && t1 > 0 && tx > 0 && tx < t1;
+    const exhMajor = Number.isFinite(t1) && Number.isFinite(tx) && t1 > 0 && tx > 0 && tx <= t1 - 0.05;
+    const stFast = Number.isFinite(s1) && Number.isFinite(sx) && sx <= s1 - 0.06;
+    const rank1 = laneExhRank_(exh, 1);
+    const rankx = laneExhRank_(exh, lane);
+    const rankThreat = Number.isFinite(rank1) && Number.isFinite(rankx) && rankx < rank1;
+    return {
+      lane,
+      exhFast,
+      exhMajor,
+      stFast,
+      rankThreat,
+      anyThreat: !!(exhFast || stFast || rankThreat),
+      hardThreat: !!(exhMajor || stFast),
+      exhDiff: (Number.isFinite(t1) && Number.isFinite(tx) && t1 > 0 && tx > 0) ? (tx - t1) : null,
+      stDiff: (Number.isFinite(s1) && Number.isFinite(sx)) ? (sx - s1) : null,
+      rank1,
+      rankx
+    };
+  }
+
+  function oneWinScoreV216_(r){
+    const reasons = [];
+    let score = 50;
+
+    const stadium = Number(r?.stadium);
+    const official1C = venueOfficial1CWin_(stadium);
+    const histHead = venueHist1HeadRate_(stadium);
+    const hist12 = venueHist12Rate_(stadium);
+    const sub = venueSubRankOf(stadium);
+
+    if(official1C >= 62){ score += 12; reasons.push(`公式1C強:${official1C.toFixed(1)}%`); }
+    else if(official1C >= 59){ score += 8; reasons.push(`公式1C良:${official1C.toFixed(1)}%`); }
+    else if(official1C >= 56){ score += 4; reasons.push(`公式1C中上:${official1C.toFixed(1)}%`); }
+    else if(official1C >= 52){ reasons.push(`公式1C中:${official1C.toFixed(1)}%`); }
+    else if(official1C >= 49){ score -= 6; reasons.push(`公式1C弱め:${official1C.toFixed(1)}%`); }
+    else if(official1C >= 45){ score -= 12; reasons.push(`公式1C弱:${official1C.toFixed(1)}%`); }
+    else { score -= 20; reasons.push(`公式1Cかなり弱:${official1C.toFixed(1)}%`); }
+
+    if(histHead >= 62){ score += 12; reasons.push(`過去1頭率強:${histHead.toFixed(1)}%`); }
+    else if(histHead >= 58){ score += 7; reasons.push(`過去1頭率良:${histHead.toFixed(1)}%`); }
+    else if(histHead >= 55){ score += 3; reasons.push(`過去1頭率中上:${histHead.toFixed(1)}%`); }
+    else if(histHead >= 52){ score -= 2; reasons.push(`過去1頭率中:${histHead.toFixed(1)}%`); }
+    else if(histHead >= 48){ score -= 8; reasons.push(`過去1頭率弱め:${histHead.toFixed(1)}%`); }
+    else if(histHead >= 44){ score -= 14; reasons.push(`過去1頭率弱:${histHead.toFixed(1)}%`); }
+    else { score -= 22; reasons.push(`過去1頭率かなり弱:${histHead.toFixed(1)}%`); }
+
+    if(sub === "S"){ score += 4; reasons.push("会場S"); }
+    else if(["A","A-","B+","B+警戒"].includes(sub)){ score += 1; reasons.push(`会場${sub}`); }
+    else if(sub === "B警戒"){ score -= 6; reasons.push("会場B警戒"); }
+    else if(["C","C警戒","D警戒"].includes(sub)){ score -= 10; reasons.push(`会場${sub}`); }
+    else if(sub === "D"){ score -= 14; reasons.push("会場D"); }
+
+    const exh = r?.exh || {};
+    const rank1 = exhibitionRank(exh);
+    if(Number.isFinite(rank1)){
+      if(rank1 === 1){ score += 18; reasons.push("1展示1位"); }
+      else if(rank1 === 2){ score += 10; reasons.push("1展示2位"); }
+      else if(rank1 === 3){ score -= 2; reasons.push("1展示3位"); }
+      else if(rank1 === 4){ score -= 12; reasons.push("1展示4位"); }
+      else if(rank1 === 5){ score -= 20; reasons.push("1展示5位"); }
+      else { score -= 26; reasons.push("1展示6位"); }
+    }else{
+      score -= 5;
+      reasons.push("1展示不明");
+    }
+
+    const threats = [];
+    for(const lane of [2,3,4,5,6]) threats.push(lane1ThreatToWinV216_(r, lane));
+    const faster = threats.filter(x => x.exhFast);
+    const major = threats.filter(x => x.exhMajor);
+    const stThreats = threats.filter(x => x.stFast);
+    const hardThreats = threats.filter(x => x.hardThreat);
+
+    if(faster.length === 0){ score += 6; reasons.push("1展示最速"); }
+    else if(faster.length === 1){ score -= 2; reasons.push("1より速い艇1"); }
+    else if(faster.length === 2){ score -= 8; reasons.push("1より速い艇2"); }
+    else { score -= 16; reasons.push(`1より速い艇${faster.length}`); }
+    if(major.length >= 1){ score -= 10; reasons.push(`1展示大きく劣勢:${major.map(x=>x.lane).join(",")}`); }
+    if(major.length >= 2){ score -= 8; reasons.push("1展示大劣勢複数"); }
+
+    const nc = nearCount(exh, 0.03);
+    if(Number.isFinite(nc)){
+      if(nc <= 1){ score += 5; reasons.push(`混戦小:${nc}`); }
+      else if(nc <= 3){ reasons.push(`混戦中:${nc}`); }
+      else if(nc === 4){ score -= 8; reasons.push("混戦大:4"); }
+      else { score -= 15; reasons.push(`混戦過多:${nc}`); }
+    }
+
+    const s1 = parseStToNum_(r?.st?.["1"]);
+    const stOpp = [];
+    for(const lane of [2,3,4,5,6]){
+      const sx = parseStToNum_(r?.st?.[String(lane)]);
+      if(Number.isFinite(sx)) stOpp.push({lane, sx});
+    }
+    let stLagToBest = null;
+    if(Number.isFinite(s1) && stOpp.length){
+      const best = Math.min(...stOpp.map(x => x.sx));
+      stLagToBest = s1 - best;
+      if(stLagToBest <= -0.03){ score += 10; reasons.push(`1ST優位:${stLagToBest.toFixed(2)}`); }
+      else if(stLagToBest <= 0){ score += 5; reasons.push(`1ST同等:${stLagToBest.toFixed(2)}`); }
+      else if(stLagToBest <= 0.03){ reasons.push(`1ST許容:${stLagToBest.toFixed(2)}`); }
+      else if(stLagToBest <= 0.06){ score -= 12; reasons.push(`1ST遅れ:${stLagToBest.toFixed(2)}`); }
+      else { score -= 25; reasons.push(`1ST大遅れ:${stLagToBest.toFixed(2)}`); }
+      if(stThreats.length >= 2){ score -= 12; reasons.push(`1ST脅威複数:${stThreats.map(x=>x.lane).join(",")}`); }
+    }else{
+      score -= 3;
+      reasons.push("1ST不明");
+    }
+
+    const wind = Number(r?.env?.windMs);
+    const wave = Number(r?.env?.waveCm);
+    if((Number.isFinite(wind) && wind >= 5) || (Number.isFinite(wave) && wave >= 5)){
+      score -= 10;
+      reasons.push(`水面荒れ:風${Number.isFinite(wind)?wind:"-"}/波${Number.isFinite(wave)?wave:"-"}`);
+    }else if((!Number.isFinite(wind) || wind <= 4) && (!Number.isFinite(wave) || wave <= 4)){
+      score += 4;
+      reasons.push("水面OK");
+    }
+    if(Number.isFinite(wave) && wave >= 15){
+      score -= 20;
+      reasons.push("波高hard");
+    }
+
+    score = Math.max(0, Math.min(100, Math.round(score)));
+    const level = score >= 78 ? "strong" : score >= 68 ? "ok" : score >= 55 ? "borderline" : "danger";
+    const hardThreat = hardThreats.length > 0;
+    const minResearch = num("v216MinResearchOneScore") ?? 70;
+    const oneWinCandidate = !!($('v216OneWinResearchOn')?.checked) && score >= minResearch && !hardThreat;
+
+    return {
+      score,
+      level,
+      reasons,
+      official1C,
+      histHead,
+      hist12,
+      venueSub: sub,
+      rank1,
+      near: nc,
+      fasterLanes: faster.map(x=>x.lane),
+      majorFastLanes: major.map(x=>x.lane),
+      stThreatLanes: stThreats.map(x=>x.lane),
+      hardThreat,
+      stLagToBest,
+      oneWinCandidate,
+      detail: threats
+    };
+  }
+
+  function buildV216OneWinFlags_(r){
+    const ow = oneWinScoreV216_(r);
+    return {
+      one_win_score: ow.score,
+      one_win_level: ow.level,
+      one_win_score_reasons: ow.reasons.join(" / "),
+      one_win_candidate: ow.oneWinCandidate,
+      one_win_official_1c: ow.official1C,
+      one_win_hist_head_rate: ow.histHead,
+      one_win_hist_12_rate: ow.hist12,
+      one_win_hard_threat: ow.hardThreat,
+      one_win_fast_lanes: ow.fasterLanes.join(",") || null,
+      one_win_major_fast_lanes: ow.majorFastLanes.join(",") || null,
+      one_win_st_threat_lanes: ow.stThreatLanes.join(",") || null,
+      one_win_st_lag_to_best: ow.stLagToBest,
+      v216_one_win_detail: ow
+    };
+  }
+
   function buildV215ResearchFlags_(r){
     const resultClass = resultClass2T12_(r?.result_top3);
     const l2 = lane2SurvivalScoreV215_(r);
+    const one = buildV216OneWinFlags_(r);
     const minResearch = num("v215MinResearchL2Score") ?? 60;
+    const minTwoStageOne = num("v216MinTwoStageOneScore") ?? 72;
+    const minTwoStageL2 = num("v216MinTwoStageL2Score") ?? 60;
     const d2 = deltaLane(r?.exh, 2);
     const rank1 = exhibitionRank(r?.exh);
     const rank2 = laneExhRank_(r?.exh, 2);
@@ -1505,7 +1744,12 @@
     const venueOk = ["S","A","A-","B+","B+警戒","B"].includes(venueSub);
     const d2Ok = d2 != null && d2 <= 0.12 + EPS;
     const rankOk = (!Number.isFinite(rank1) || rank1 <= 3) && (!Number.isFinite(rank2) || rank2 <= 3);
-    const true12Candidate = !!($('v215ResearchLogOn')?.checked) && l2.score >= minResearch && d2Ok && rankOk && calmWater4_(r) && venueOk;
+    const oldLane2OnlyCandidate = !!($('v215ResearchLogOn')?.checked) && l2.score >= minResearch && d2Ok && rankOk && calmWater4_(r) && venueOk;
+    const oneOk = one.one_win_score >= minTwoStageOne;
+    const l2Ok = l2.score >= minTwoStageL2;
+    const noHardThreat = !$('v216True12NoHardThreatOn')?.checked || !one.one_win_hard_threat;
+    const twoStageCandidate = !!($('v216TwoStageCandidateOn')?.checked) && oldLane2OnlyCandidate && oneOk && l2Ok && noHardThreat;
+    const true12Candidate = $('v216TwoStageCandidateOn')?.checked ? twoStageCandidate : oldLane2OnlyCandidate;
 
     return {
       result_class_2t12: resultClass.cls,
@@ -1525,6 +1769,15 @@
       outer_threat_to_2: l2.outerThreat,
       second_slip_risk: l2.secondSlipRisk,
       true_12_candidate: true12Candidate,
+      true_12_candidate_legacy_lane2_only: oldLane2OnlyCandidate,
+      two_stage_12_candidate: twoStageCandidate,
+      two_stage_blockers: [
+        oldLane2OnlyCandidate ? null : "旧2残存候補外",
+        oneOk ? null : `1勝利score不足(${one.one_win_score}<${minTwoStageOne})`,
+        l2Ok ? null : `2残存score不足(${l2.score}<${minTwoStageL2})`,
+        noHardThreat ? null : "1号艇hard脅威あり"
+      ].filter(Boolean).join(" / ") || null,
+      ...one,
       v215_lane2_detail: l2
     };
   }
@@ -1768,7 +2021,18 @@
       }
     }
 
-    return { level:"final", betType, combo, rank, outerFast, d2, d3, nc, _strong2t12:isStrong2T12_(r,{rank}), _v215Lane2Survival: lane2SurvivalScoreV215_(r), _venueRank: venueRank, _venueSubRank: venueSubRank, _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _venueNote: venueNote2T12_(r.stadium), _locMissing: f1._locMissing };
+    if($('v216StrictOfficialBuyOneScoreOn')?.checked){
+      const oneScore = oneWinScoreV216_(r);
+      const minOneScore = num("v216MinOfficialOneScore") ?? 72;
+      if(oneScore.score < minOneScore){
+        return { level:"no", reasons:[`1号艇勝利スコア不足（${oneScore.score}<${minOneScore}）`], rank, outerFast, d2, d3, nc, betType, combo, _guard:"v216_one_win_score", _v216OneWin:oneScore, _venueRank: venueRank, _venueSubRank: venueSubRank, _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _venueNote: venueNote2T12_(r.stadium), _locMissing: f1._locMissing };
+      }
+      if($('v216True12NoHardThreatOn')?.checked && oneScore.hardThreat && oneScore.score < 78){
+        return { level:"no", reasons:[`1号艇勝利hard脅威（score:${oneScore.score} / 展示大劣勢:${oneScore.majorFastLanes.join(",") || "-"} / ST脅威:${oneScore.stThreatLanes.join(",") || "-"}）`], rank, outerFast, d2, d3, nc, betType, combo, _guard:"v216_one_hard_threat", _v216OneWin:oneScore, _venueRank: venueRank, _venueSubRank: venueSubRank, _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _venueNote: venueNote2T12_(r.stadium), _locMissing: f1._locMissing };
+      }
+    }
+
+    return { level:"final", betType, combo, rank, outerFast, d2, d3, nc, _strong2t12:isStrong2T12_(r,{rank}), _v215Lane2Survival: lane2SurvivalScoreV215_(r), _v216OneWin: oneWinScoreV216_(r), _venueRank: venueRank, _venueSubRank: venueSubRank, _isBMinus: isBMinus, _isHighRiskVenue: isHighRiskVenue_(r.stadium), _venueNote: venueNote2T12_(r.stadium), _locMissing: f1._locMissing };
   }
 
   function parseOddLoose(v){
@@ -1992,6 +2256,8 @@
     if(g === "a_outer_2nd_shift") return "上位会場外枠2着ズレ";
     if(g === "v215_lane2_score") return "v2.15 2残存score";
     if(g === "v215_lane34_threat") return "v2.15 3/4脅威";
+    if(g === "v216_one_win_score") return "v2.16 1勝利score";
+    if(g === "v216_one_hard_threat") return "v2.16 1勝利hard脅威";
     if(g === "inner_survival") return "2・3残存";
     if(g === "kiryu_mid") return "桐生5〜8R";
     return g ? String(g) : "-";
@@ -2172,6 +2438,9 @@
     let oddsNo = 0;
     let riskNo = 0;
     let true12Candidate = 0;
+    let oneWinCandidate = 0;
+    let twoStageCandidate = 0;
+    let oneScoreStrong = 0;
     let oneWinNot12 = 0;
     let lane3Slip = 0;
     let lane4Slip = 0;
@@ -2201,6 +2470,9 @@
       if(r.state === "NO" && r.no_type === "odds_no") oddsNo++;
       if(r.state === "NO" && (!r.no_type || r.no_type === "risk_no")) riskNo++;
       if(r.true_12_candidate) true12Candidate++;
+      if(r.one_win_candidate) oneWinCandidate++;
+      if(r.two_stage_12_candidate) twoStageCandidate++;
+      if(Number(r.one_win_score) >= 78) oneScoreStrong++;
       if(r.one_win_not_12) oneWinNot12++;
       if(r.result_class_2t12 === "lane3_slip") lane3Slip++;
       if(r.result_class_2t12 === "lane4_slip") lane4Slip++;
@@ -2222,6 +2494,9 @@
       no_odds: oddsNo,
       no_risk: riskNo,
       v215_true12_candidate: true12Candidate,
+      v216_one_win_candidate: oneWinCandidate,
+      v216_one_score_strong: oneScoreStrong,
+      v216_two_stage_candidate: twoStageCandidate,
       v215_12_hit: hit12,
       v215_one_win_not_12: oneWinNot12,
       v215_lane3_slip: lane3Slip,
@@ -2252,7 +2527,7 @@
     const total = races.length;
     const f1pass = races.filter(r => passFilter1(r).ok).length;
     let buy=0,no=0,wait=0,filtered=0,finals=0,oddsReady=0,beforeReady=0,resReady=0,virtualBuy=0;
-    let oddsNo=0,riskNo=0,true12Candidate=0,hit12=0,oneWinNot12=0,lane3Slip=0,lane4Slip=0;
+    let oddsNo=0,riskNo=0,true12Candidate=0,oneWinCandidate=0,twoStageCandidate=0,oneScoreStrong=0,hit12=0,oneWinNot12=0,lane3Slip=0,lane4Slip=0;
 
     for(const r of races){
       const ev = evaluate(r);
@@ -2272,6 +2547,9 @@
       if(ev.state === "NO" && (!ev.plan?._noType || ev.plan?._noType === "risk_no")) riskNo++;
       const v215 = buildV215ResearchFlags_(r);
       if(v215.true_12_candidate) true12Candidate++;
+      if(v215.one_win_candidate) oneWinCandidate++;
+      if(v215.two_stage_12_candidate) twoStageCandidate++;
+      if(Number(v215.one_win_score) >= 78) oneScoreStrong++;
       if(v215.result_class_2t12 === "12_hit") hit12++;
       if(v215.one_win_not_12) oneWinNot12++;
       if(v215.result_class_2t12 === "lane3_slip") lane3Slip++;
@@ -2279,7 +2557,7 @@
     }
 
     $("summary").textContent =
-      `取得${total}R / 条件①通過${f1pass}R / 2単候補${finals} / BUY${buy} / NO${no}（risk:${riskNo} odds:${oddsNo}） / WAIT${wait} / 条件外${filtered} / 仮想BUY${virtualBuy} / 研究候補${true12Candidate} / 1-2的中${hit12} / 1勝ち2ズレ${oneWinNot12}（1-3:${lane3Slip} 1-4:${lane4Slip}） / 2単odds${oddsReady} / before${beforeReady} / result${resReady}`;
+      `取得${total}R / 条件①通過${f1pass}R / 2単候補${finals} / BUY${buy} / NO${no}（risk:${riskNo} odds:${oddsNo}） / WAIT${wait} / 条件外${filtered} / 仮想BUY${virtualBuy} / 二段階候補${twoStageCandidate} / 1勝候補${oneWinCandidate} / 1score強${oneScoreStrong} / 1-2的中${hit12} / 1勝ち2ズレ${oneWinNot12}（1-3:${lane3Slip} 1-4:${lane4Slip}） / 2単odds${oddsReady} / before${beforeReady} / result${resReady}`;
 
     renderNoDiagnostics_(races);
   }
@@ -2372,13 +2650,13 @@
       ? `<span class="tag mono">仮想BUY:${virtualFlags.labels.join("+")}</span>`
       : ``;
     const v215Badge = $('v215ResearchLogOn')?.checked
-      ? `<span class="tag mono">2残存:${v215Flags.lane2_survival_score}/${v215Flags.lane2_survival_level}</span>${v215Flags.true_12_candidate ? `<span class="tag mono">研究候補</span>` : ``}`
+      ? `<span class="tag mono">1勝:${v215Flags.one_win_score}/${v215Flags.one_win_level}</span><span class="tag mono">2残存:${v215Flags.lane2_survival_score}/${v215Flags.lane2_survival_level}</span>${v215Flags.two_stage_12_candidate ? `<span class="tag mono">二段階候補</span>` : ``}`
       : ``;
     const virtualLine = virtualFlags.count
       ? `<div class="resultLine small">仮想BUYログ: <b>${virtualFlags.labels.join(" / ")}</b> <span class="muted small">※正式収支対象外</span></div>`
       : ``;
     const v215Line = $('v215ResearchLogOn')?.checked
-      ? `<div class="resultLine small">v2.15研究: 結果分類=<b>${v215Flags.result_label_2t12}</b> / 2残存score=<b>${v215Flags.lane2_survival_score}</b> / 3脅威:${v215Flags.lane3_threat_to_2?"Y":"N"} / 4脅威:${v215Flags.lane4_threat_to_2?"Y":"N"} / 1勝ち2ズレ:${v215Flags.one_win_not_12?"Y":"N"}</div>`
+      ? `<div class="resultLine small">v2.16研究: 結果分類=<b>${v215Flags.result_label_2t12}</b> / 1勝score=<b>${v215Flags.one_win_score}</b> / 2残存score=<b>${v215Flags.lane2_survival_score}</b> / 二段階候補:${v215Flags.two_stage_12_candidate?"Y":"N"} / 1hard:${v215Flags.one_win_hard_threat?"Y":"N"} / 3脅威:${v215Flags.lane3_threat_to_2?"Y":"N"} / 4脅威:${v215Flags.lane4_threat_to_2?"Y":"N"} / 1勝ち2ズレ:${v215Flags.one_win_not_12?"Y":"N"}</div>`
       : ``;
 
     card.innerHTML = `
@@ -2966,6 +3244,7 @@
       "lane2SurvivalGuardOn","outerExhLead","outerStLead","lane2WeakRank",
       "v214VirtualLogOn","v214MotorRescueVirtualOn","v214KojimaVirtualOn","aVenueOuterThreatTightenOn",
       "v215ResearchLogOn","v215StrictOfficialBuyOn","v215MinOfficialL2Score","v215MinResearchL2Score","v215Lane2StLagWarn","v215Lane34ExhLeadTo2","v215Lane34StLeadTo2","v215LowOddsNoSeparateOn",
+      "v216OneWinResearchOn","v216StrictOfficialBuyOneScoreOn","v216MinOfficialOneScore","v216MinResearchOneScore","v216MinTwoStageOneScore","v216MinTwoStageL2Score","v216TwoStageCandidateOn","v216True12NoHardThreatOn",
       "autoBeforeScopeCandidatesOnly","resultSingleRetryCandidatesOnly",
       "viewMode","autoRefresh"
     ];
@@ -3025,6 +3304,7 @@
     "lane2SurvivalGuardOn","outerExhLead","outerStLead","lane2WeakRank",
     "v214VirtualLogOn","v214MotorRescueVirtualOn","v214KojimaVirtualOn","aVenueOuterThreatTightenOn",
     "v215ResearchLogOn","v215StrictOfficialBuyOn","v215MinOfficialL2Score","v215MinResearchL2Score","v215Lane2StLagWarn","v215Lane34ExhLeadTo2","v215Lane34StLeadTo2","v215LowOddsNoSeparateOn",
+      "v216OneWinResearchOn","v216StrictOfficialBuyOneScoreOn","v216MinOfficialOneScore","v216MinResearchOneScore","v216MinTwoStageOneScore","v216MinTwoStageL2Score","v216TwoStageCandidateOn","v216True12NoHardThreatOn",
     "autoBeforeScopeCandidatesOnly","resultSingleRetryCandidatesOnly",
     "strictSoftNo2tOn","minOdds2t","strongMinOdds2t","maxOdds2t",
     "roughWind","roughWave","roughNoMode","stOutmuscle","hardWaveOn","hardWave","hardWaveMode",
