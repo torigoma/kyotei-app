@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.18（SIM_RULE/SIM_STRICT/WATCH分離 / 2連単1-2研究版 / SAFE）</title>
+  <title>競艇 v2.19（オッズ帯別SIM検証 / 2連単1-2研究版 / SAFE）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -57,10 +57,11 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.18（SIM_RULE/SIM_STRICT/WATCH分離 / 2連単1-2研究版 / SAFE）</h1>
+  <h1>競艇 v2.19（オッズ帯別SIM検証 / 2連単1-2研究版 / SAFE）</h1>
   <div class="sub">
     ✅ 主戦場は <b>2連単 1-2</b> に固定（1レース1点）。3連単・3連複の買い目分岐は廃止。<br/>
     ✅ v2.18：主力会場別ルールを <b>SIM_RULE</b>、買ったつもり収支用を <b>SIM_STRICT_BUY</b>、広めの観察を <b>WATCH</b> に分離。<br/>
+    ✅ v2.19：SIM_RULEを <b>LOW_ODDS_SIM / VALUE_SIM / HIGH_ODDS_WATCH / ODDS_DANGER</b> に自動分類し、2.2倍前後で耐える会場別条件を検証。正式BUYロジックは変更しない。<br/>
     ✅ SIM_STRICT_BUYは、会場別ルール一致 + オッズOK + 1勝score + 2残存score + ST出負けなし + 1号艇hard脅威なしを要求。<br/>
     ✅ 完全に不要になった旧v2.14仮想BUYログ（モーター40未満救済/児島旧仮想）は画面・集計・JSON出力から除外。上位会場の外枠2着ズレ警戒だけ現役ガードとして維持。<br/>
     ✅ v2.15：2号艇残存スコア、1-2/1-3/1-4/1飛びの結果分類、低オッズNO別枠、研究候補ラベルを維持。<br/>
@@ -288,7 +289,7 @@
 
     <div class="hr"></div>
 
-    <div class="pill">v2.18 SIM検証（SIM_RULE / SIM_STRICT_BUY / WATCH）</div>
+    <div class="pill">v2.19 SIM検証（SIM_RULE / SIM_STRICT_BUY / WATCH / オッズ帯別）</div>
     <div class="grid g2" style="margin-top:10px;">
       <label class="cb" style="margin:0;">
         <input type="checkbox" id="v217VenueRuleLogOn" checked />
@@ -328,6 +329,46 @@
       </label>
       <div><label>SIM/STRICT最低オッズ</label><input id="v217MinSimOdds" type="number" step="0.1" value="3.2" /></div>
     </div>
+
+    <div class="hr"></div>
+    <div class="pill">v2.19 オッズ帯別SIM分類（正式BUYには混ぜない）</div>
+    <div class="grid g2" style="margin-top:10px;">
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="v219LowOddsSimOn" checked />
+        LOW_ODDS_SIMを集計（市場支持型）
+      </label>
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="v219ValueSimOn" checked />
+        VALUE_SIMを集計（期待値候補）
+      </label>
+    </div>
+    <div class="grid g2" style="margin-top:10px;">
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="v219HighOddsWatchOn" checked />
+        HIGH_ODDS_WATCHを集計（高オッズ警戒）
+      </label>
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="v219OddsDangerOn" checked />
+        ODDS_DANGERを集計（強い市場疑念）
+      </label>
+    </div>
+    <div class="grid g3" style="margin-top:10px;">
+      <div><label>LOW min</label><input id="v219LowOddsMin" type="number" step="0.1" value="2.2" /></div>
+      <div><label>LOW max</label><input id="v219LowOddsMax" type="number" step="0.1" value="2.6" /></div>
+      <div><label>VALUE min</label><input id="v219ValueOddsMin" type="number" step="0.1" value="2.7" /></div>
+    </div>
+    <div class="grid g3" style="margin-top:10px;">
+      <div><label>VALUE max</label><input id="v219ValueOddsMax" type="number" step="0.1" value="3.8" /></div>
+      <div><label>HIGH WATCH min</label><input id="v219HighOddsMin" type="number" step="0.1" value="3.9" /></div>
+      <div><label>HIGH WATCH max</label><input id="v219HighOddsMax" type="number" step="0.1" value="5.9" /></div>
+    </div>
+    <div class="grid g3" style="margin-top:10px;">
+      <div><label>DANGER min</label><input id="v219DangerOddsMin" type="number" step="0.1" value="6.0" /></div>
+      <div class="muted small" style="align-self:end;">※2.2未満はTOO_LOW、隙間帯はGAPとして保存。買い候補ではなく分析用。</div>
+      <div class="muted small" style="align-self:end;">※各帯は100円仮想で収支保存。正式BUY収支には混ぜない。</div>
+    </div>
+
+    <div class="hr"></div>
     <div class="grid g3" style="margin-top:10px;">
       <label class="cb" style="margin:0; align-self:end;">
         <input type="checkbox" id="v217IncludeTokonameOn" checked />
@@ -348,11 +389,11 @@
         びわこ・芦屋の旧観察ルールも含める
       </label>
       <div class="muted small" style="align-self:center;">
-        SIM_RULE=会場別ルール一致、SIM_STRICT_BUY=買ったつもり収支対象、WATCH=広め観察。正式BUY収支には混ぜない。
+        SIM_RULE=会場別ルール一致、SIM_STRICT_BUY=厳格買ったつもり、LOW/VALUE/HIGH/DANGER=オッズ帯別検証。正式BUY収支には混ぜない。
       </div>
     </div>
     <div class="muted small" style="margin-top:8px;">
-      ※デフォルトではSTRICTをかなり厳しくし、低オッズ・ST出負け・1号艇hard脅威を除外します。若松/宮島/大村は今日の傾向を見るためWATCHに分離し、STRICT収支には入れません。
+      ※v2.19は買い条件を増やす版ではなく、2連単1-2の市場支持/市場疑念をログ化する検証版です。2.2〜2.6倍をLOW_ODDS_SIM、2.7〜3.8倍をVALUE_SIM、3.9〜5.9倍をHIGH_ODDS_WATCH、6.0倍以上をODDS_DANGERとして保存します。
     </div>
     <div class="hr"></div>
 
@@ -2136,12 +2177,105 @@
     return { strictBuy, state, blockers, hit: strictBuy && hit, oneWinNot12: strictBuy && oneWinNot12, oneLost: strictBuy && oneLost, stake, payout, profit };
   }
 
+
+  function oddsBandV219_(odd){
+    const lowMin = num('v219LowOddsMin') ?? 2.2;
+    const lowMax = num('v219LowOddsMax') ?? 2.6;
+    const valueMin = num('v219ValueOddsMin') ?? 2.7;
+    const valueMax = num('v219ValueOddsMax') ?? 3.8;
+    const highMin = num('v219HighOddsMin') ?? 3.9;
+    const highMax = num('v219HighOddsMax') ?? 5.9;
+    const dangerMin = num('v219DangerOddsMin') ?? 6.0;
+
+    if(!Number.isFinite(odd) || odd <= 0){
+      return { band:'NO_ODDS', label:'オッズ未入力', market:'unknown', support:'unknown', range:null, severity:0 };
+    }
+    if(odd < lowMin - EPS){
+      return { band:'TOO_LOW', label:`TOO_LOW(<${lowMin})`, market:'too_low', support:'too_low', range:`<${lowMin}`, severity:1 };
+    }
+    if(odd >= lowMin - EPS && odd <= lowMax + EPS){
+      return { band:'LOW_ODDS_SIM', label:`LOW ${lowMin}-${lowMax}`, market:'strong_market_support', support:'strong', range:`${lowMin}-${lowMax}`, severity:2 };
+    }
+    if(odd >= valueMin - EPS && odd <= valueMax + EPS){
+      return { band:'VALUE_SIM', label:`VALUE ${valueMin}-${valueMax}`, market:'normal_market_support', support:'normal', range:`${valueMin}-${valueMax}`, severity:3 };
+    }
+    if(odd >= highMin - EPS && odd <= highMax + EPS){
+      return { band:'HIGH_ODDS_WATCH', label:`HIGH ${highMin}-${highMax}`, market:'market_doubt', support:'doubt', range:`${highMin}-${highMax}`, severity:4 };
+    }
+    if(odd >= dangerMin - EPS){
+      return { band:'ODDS_DANGER', label:`DANGER ${dangerMin}+`, market:'strong_market_doubt', support:'danger', range:`${dangerMin}+`, severity:5 };
+    }
+    return { band:'ODDS_GAP', label:'ODDS_GAP', market:'gap', support:'gap', range:null, severity:3 };
+  }
+
+  function simOddsBandEvalV219_(r, vr, odds, resultClass){
+    const odd = odds?.odd;
+    const band = oddsBandV219_(odd);
+    const ruleCandidate = !!vr?.candidate;
+    const hitBase = resultClass.cls === '12_hit';
+    const oneWinNot12Base = resultClass.first === 1 && resultClass.second !== 2;
+    const oneLostBase = resultClass.first != null && resultClass.first !== 1;
+
+    let group = 'NO_RULE';
+    let active = false;
+    let enabled = false;
+    let role = 'none';
+
+    if(ruleCandidate){
+      group = band.band;
+      if(band.band === 'LOW_ODDS_SIM'){
+        enabled = !!$('v219LowOddsSimOn')?.checked;
+        active = enabled;
+        role = 'low_odds_sim';
+      }else if(band.band === 'VALUE_SIM'){
+        enabled = !!$('v219ValueSimOn')?.checked;
+        active = enabled;
+        role = 'value_sim';
+      }else if(band.band === 'HIGH_ODDS_WATCH'){
+        enabled = !!$('v219HighOddsWatchOn')?.checked;
+        active = enabled;
+        role = 'high_odds_watch';
+      }else if(band.band === 'ODDS_DANGER'){
+        enabled = !!$('v219OddsDangerOn')?.checked;
+        active = enabled;
+        role = 'odds_danger';
+      }else{
+        enabled = false;
+        active = false;
+        role = band.band.toLowerCase();
+      }
+    }
+
+    const stake = active ? 100 : 0;
+    const payout = (active && hitBase && Number.isFinite(odd)) ? Math.round(odd * 100) : 0;
+    const profit = active ? (payout - stake) : 0;
+
+    return {
+      band,
+      group,
+      role,
+      enabled,
+      active,
+      hit: active && hitBase,
+      oneWinNot12: active && oneWinNot12Base,
+      oneLost: active && oneLostBase,
+      stake,
+      payout,
+      profit,
+      low: active && band.band === 'LOW_ODDS_SIM',
+      value: active && band.band === 'VALUE_SIM',
+      high: active && band.band === 'HIGH_ODDS_WATCH',
+      danger: active && band.band === 'ODDS_DANGER'
+    };
+  }
+
   function buildV217VenueRuleFlags_(r){
     const vr = venueRuleV217_(r);
     const odds = v217SimOddsCheck_(r, vr);
     const resultClass = resultClass2T12_(r?.result_top3);
     const watch = watchRuleV218_(r, vr);
     const strict = strictSimStateV218_(r, vr, odds, resultClass);
+    const v219 = simOddsBandEvalV219_(r, vr, odds, resultClass);
     const showRule = !!vr.candidate;
     const showWatch = !!watch.candidate;
     const anySimVisible = showRule || showWatch;
@@ -2176,6 +2310,45 @@
       v217_lane3_threat_to_2: !!vr.lane2?.lane3Threat,
       v217_lane4_threat_to_2: !!vr.lane2?.lane4Threat,
       v217_outer_threat_to_2: !!vr.lane2?.outerThreat,
+
+      v219_odds_band: v219.band.band,
+      v219_odds_band_label: v219.band.label,
+      v219_market_support_level: v219.band.market,
+      v219_market_support_short: v219.band.support,
+      v219_odds_range: v219.band.range,
+      v219_sim_eval_group: v219.group,
+      v219_sim_eval_role: v219.role,
+      v219_sim_eval_active: v219.active,
+      v219_sim_eval_enabled: v219.enabled,
+      v219_sim_eval_hit: v219.hit,
+      v219_sim_eval_one_win_not_12: v219.oneWinNot12,
+      v219_sim_eval_one_lost: v219.oneLost,
+      v219_sim_eval_stake: v219.stake,
+      v219_sim_eval_payout: v219.payout,
+      v219_sim_eval_profit: v219.profit,
+      v219_low_odds_sim: v219.low,
+      v219_low_odds_hit: v219.low && v219.hit,
+      v219_low_odds_stake: v219.low ? v219.stake : 0,
+      v219_low_odds_payout: v219.low ? v219.payout : 0,
+      v219_low_odds_profit: v219.low ? v219.profit : 0,
+      v219_value_sim: v219.value,
+      v219_value_hit: v219.value && v219.hit,
+      v219_value_stake: v219.value ? v219.stake : 0,
+      v219_value_payout: v219.value ? v219.payout : 0,
+      v219_value_profit: v219.value ? v219.profit : 0,
+      v219_high_odds_watch: v219.high,
+      v219_high_odds_hit: v219.high && v219.hit,
+      v219_high_odds_stake: v219.high ? v219.stake : 0,
+      v219_high_odds_payout: v219.high ? v219.payout : 0,
+      v219_high_odds_profit: v219.high ? v219.profit : 0,
+      v219_odds_danger: v219.danger,
+      v219_odds_danger_hit: v219.danger && v219.hit,
+      v219_odds_danger_stake: v219.danger ? v219.stake : 0,
+      v219_odds_danger_payout: v219.danger ? v219.payout : 0,
+      v219_odds_danger_profit: v219.danger ? v219.profit : 0,
+      v219_venue_rule_name: vr.ruleName,
+      v219_venue_rule_short: vr.ruleShort,
+      v219_venue_group: vr.tier,
 
       v218_sim_visible: anySimVisible,
       v218_sim_rule_candidate: !!vr.candidate,
@@ -2738,7 +2911,7 @@
       // v2.15/v2.16 研究ラベル（正式収支には含めない）
       ...shallowCloneJson_(v215Flags),
 
-      // v2.18 SIM_RULE / SIM_STRICT_BUY / WATCHログ（正式収支には含めない）
+      // v2.19 SIM_RULE / SIM_STRICT_BUY / WATCH / オッズ帯別ログ（正式収支には含めない）
       ...shallowCloneJson_(v217Flags)
     };
   }
@@ -2752,6 +2925,10 @@
     let simRule = 0, simRuleHit = 0, simStrict = 0, simStrictWait = 0, simStrictOddsNo = 0, simStrictHit = 0;
     let simStrictOneWinNot12 = 0, simStrictOneLost = 0, simStrictStake = 0, simStrictPayout = 0, simStrictProfit = 0;
     let watch = 0, watchHit = 0;
+    let low=0, lowHit=0, lowStake=0, lowPayout=0, lowProfit=0;
+    let value=0, valueHit=0, valueStake=0, valuePayout=0, valueProfit=0;
+    let high=0, highHit=0, highStake=0, highPayout=0, highProfit=0;
+    let danger=0, dangerHit=0, dangerStake=0, dangerPayout=0, dangerProfit=0;
 
     for(const r of racesForExport){
       if(passFilter1(r).ok) f1pass++;
@@ -2792,6 +2969,26 @@
       simStrictProfit += Number(r.v218_sim_strict_profit || 0);
       if(r.v218_watch_candidate) watch++;
       if(r.v218_watch_hit) watchHit++;
+      if(r.v219_low_odds_sim) low++;
+      if(r.v219_low_odds_hit) lowHit++;
+      lowStake += Number(r.v219_low_odds_stake || 0);
+      lowPayout += Number(r.v219_low_odds_payout || 0);
+      lowProfit += Number(r.v219_low_odds_profit || 0);
+      if(r.v219_value_sim) value++;
+      if(r.v219_value_hit) valueHit++;
+      valueStake += Number(r.v219_value_stake || 0);
+      valuePayout += Number(r.v219_value_payout || 0);
+      valueProfit += Number(r.v219_value_profit || 0);
+      if(r.v219_high_odds_watch) high++;
+      if(r.v219_high_odds_hit) highHit++;
+      highStake += Number(r.v219_high_odds_stake || 0);
+      highPayout += Number(r.v219_high_odds_payout || 0);
+      highProfit += Number(r.v219_high_odds_profit || 0);
+      if(r.v219_odds_danger) danger++;
+      if(r.v219_odds_danger_hit) dangerHit++;
+      dangerStake += Number(r.v219_odds_danger_stake || 0);
+      dangerPayout += Number(r.v219_odds_danger_payout || 0);
+      dangerProfit += Number(r.v219_odds_danger_profit || 0);
     }
 
     return {
@@ -2827,7 +3024,27 @@
       v218_sim_strict_payout: simStrictPayout,
       v218_sim_strict_profit: simStrictProfit,
       v218_watch: watch,
-      v218_watch_hit: watchHit
+      v218_watch_hit: watchHit,
+      v219_low_odds_sim: low,
+      v219_low_odds_hit: lowHit,
+      v219_low_odds_stake: lowStake,
+      v219_low_odds_payout: lowPayout,
+      v219_low_odds_profit: lowProfit,
+      v219_value_sim: value,
+      v219_value_hit: valueHit,
+      v219_value_stake: valueStake,
+      v219_value_payout: valuePayout,
+      v219_value_profit: valueProfit,
+      v219_high_odds_watch: high,
+      v219_high_odds_hit: highHit,
+      v219_high_odds_stake: highStake,
+      v219_high_odds_payout: highPayout,
+      v219_high_odds_profit: highProfit,
+      v219_odds_danger: danger,
+      v219_odds_danger_hit: dangerHit,
+      v219_odds_danger_stake: dangerStake,
+      v219_odds_danger_payout: dangerPayout,
+      v219_odds_danger_profit: dangerProfit
     };
   }
 
@@ -2856,6 +3073,7 @@
     let buy=0,no=0,wait=0,filtered=0,finals=0,oddsReady=0,beforeReady=0,resReady=0;
     let oddsNo=0,riskNo=0,true12Candidate=0,oneWinCandidate=0,twoStageCandidate=0,oneScoreStrong=0,hit12=0,oneWinNot12=0,lane3Slip=0,lane4Slip=0;
     let simRule=0,simRuleHit=0,simStrict=0,simStrictWait=0,simStrictOddsNo=0,simStrictHit=0,simStrictOneWinNot12=0,simStrictOneLost=0,simStrictStake=0,simStrictPayout=0,simStrictProfit=0,watch=0,watchHit=0;
+    let low=0,lowHit=0,lowStake=0,lowPayout=0,lowProfit=0,value=0,valueHit=0,valueStake=0,valuePayout=0,valueProfit=0,high=0,highHit=0,highStake=0,highPayout=0,highProfit=0,danger=0,dangerHit=0,dangerStake=0,dangerPayout=0,dangerProfit=0;
 
     for(const r of races){
       const ev = evaluate(r);
@@ -2895,11 +3113,35 @@
       simStrictProfit += Number(v218.v218_sim_strict_profit || 0);
       if(v218.v218_watch_candidate) watch++;
       if(v218.v218_watch_hit) watchHit++;
+      if(v218.v219_low_odds_sim) low++;
+      if(v218.v219_low_odds_hit) lowHit++;
+      lowStake += Number(v218.v219_low_odds_stake || 0);
+      lowPayout += Number(v218.v219_low_odds_payout || 0);
+      lowProfit += Number(v218.v219_low_odds_profit || 0);
+      if(v218.v219_value_sim) value++;
+      if(v218.v219_value_hit) valueHit++;
+      valueStake += Number(v218.v219_value_stake || 0);
+      valuePayout += Number(v218.v219_value_payout || 0);
+      valueProfit += Number(v218.v219_value_profit || 0);
+      if(v218.v219_high_odds_watch) high++;
+      if(v218.v219_high_odds_hit) highHit++;
+      highStake += Number(v218.v219_high_odds_stake || 0);
+      highPayout += Number(v218.v219_high_odds_payout || 0);
+      highProfit += Number(v218.v219_high_odds_profit || 0);
+      if(v218.v219_odds_danger) danger++;
+      if(v218.v219_odds_danger_hit) dangerHit++;
+      dangerStake += Number(v218.v219_odds_danger_stake || 0);
+      dangerPayout += Number(v218.v219_odds_danger_payout || 0);
+      dangerProfit += Number(v218.v219_odds_danger_profit || 0);
     }
 
     const strictRoi = simStrictStake > 0 ? ((simStrictPayout / simStrictStake) * 100).toFixed(1) : '-';
+    const lowRoi = lowStake > 0 ? ((lowPayout / lowStake) * 100).toFixed(1) : '-';
+    const valueRoi = valueStake > 0 ? ((valuePayout / valueStake) * 100).toFixed(1) : '-';
+    const highRoi = highStake > 0 ? ((highPayout / highStake) * 100).toFixed(1) : '-';
+    const dangerRoi = dangerStake > 0 ? ((dangerPayout / dangerStake) * 100).toFixed(1) : '-';
     $("summary").textContent =
-      `取得${total}R / 条件①通過${f1pass}R / 2単候補${finals} / BUY${buy} / NO${no}（risk:${riskNo} odds:${oddsNo}） / WAIT${wait} / 条件外${filtered} / SIM_RULE${simRule}（的中${simRuleHit}） / SIM_STRICT${simStrict}（的中${simStrictHit} 収支${simStrictProfit}円 ROI${strictRoi}% / WAIT${simStrictWait} ODDS_NO${simStrictOddsNo} / 1ズレ${simStrictOneWinNot12} 1飛び${simStrictOneLost}） / WATCH${watch}（的中${watchHit}） / 二段階候補${twoStageCandidate} / 1勝候補${oneWinCandidate} / 1score強${oneScoreStrong} / 1-2的中${hit12} / 1勝ち2ズレ${oneWinNot12}（1-3:${lane3Slip} 1-4:${lane4Slip}） / 2単odds${oddsReady} / before${beforeReady} / result${resReady}`;
+      `取得${total}R / 条件①通過${f1pass}R / 2単候補${finals} / BUY${buy} / NO${no}（risk:${riskNo} odds:${oddsNo}） / WAIT${wait} / 条件外${filtered} / SIM_RULE${simRule}（的中${simRuleHit}） / LOW${low}（的中${lowHit} 収支${lowProfit}円 ROI${lowRoi}%） / VALUE${value}（的中${valueHit} 収支${valueProfit}円 ROI${valueRoi}%） / HIGH${high}（的中${highHit} 収支${highProfit}円 ROI${highRoi}%） / DANGER${danger}（的中${dangerHit} 収支${dangerProfit}円 ROI${dangerRoi}%） / SIM_STRICT${simStrict}（的中${simStrictHit} 収支${simStrictProfit}円 ROI${strictRoi}% / WAIT${simStrictWait} ODDS_NO${simStrictOddsNo} / 1ズレ${simStrictOneWinNot12} 1飛び${simStrictOneLost}） / WATCH${watch}（的中${watchHit}） / 二段階候補${twoStageCandidate} / 1勝候補${oneWinCandidate} / 1score強${oneScoreStrong} / 1-2的中${hit12} / 1勝ち2ズレ${oneWinNot12}（1-3:${lane3Slip} 1-4:${lane4Slip}） / 2単odds${oddsReady} / before${beforeReady} / result${resReady}`;
 
     renderNoDiagnostics_(races);
   }
@@ -2940,7 +3182,7 @@
         const odd = ev.odd;
         buyLine.innerHTML = `買い：<b>2連単 1-2</b>${Number.isFinite(odd) ? ` / odds=${odd}` : ``}`;
       }else if((v217.v218_sim_rule_candidate || v217.v218_watch_candidate) && $('v217VenueRuleAsSimBuyOn')?.checked){
-        buyLine.innerHTML = `SIM検証：<b>2連単 1-2</b> <span class="tag mono">${v217.v217_sim_state}</span>${v217.v218_watch_candidate ? `<span class="tag mono">${v217.v218_watch_short}</span>` : ``}${Number.isFinite(v217.v217_sim_odd) ? ` / odds=${v217.v217_sim_odd}` : ` / odds未入力`}`;
+        buyLine.innerHTML = `SIM検証：<b>2連単 1-2</b> <span class="tag mono">${v217.v217_sim_state}</span><span class="tag mono">${v217.v219_sim_eval_group}</span>${v217.v218_watch_candidate ? `<span class="tag mono">${v217.v218_watch_short}</span>` : ``}${Number.isFinite(v217.v217_sim_odd) ? ` / odds=${v217.v217_sim_odd}` : ` / odds未入力`}`;
       }else{
         buyLine.innerHTML = "";
       }
@@ -2975,7 +3217,7 @@
     const oddsBlock = showOddsBlock ? `
       <div class="hr"></div>
       <div class="muted small">
-        <b>${isFinal ? "最終候補" : "v2.18 SIM検証候補"}</b>：2連単 1-2（1点）
+        <b>${isFinal ? "最終候補" : "v2.19 SIM検証候補"}</b>：2連単 1-2（1点）
         <span class="tag mono">会場:${venueSubRankOf(r.stadium)}</span>
         ${isFinal && plan?._strong2t12 ? `<span class="tag mono">強BUY条件</span>` : ``}
         ${showSimOdds ? `<span class="tag mono">${v217Flags.v218_sim_rule_candidate ? v217Flags.v217_rule_short : v217Flags.v218_watch_short}</span><span class="tag mono">${v217Flags.v217_sim_state}</span>` : ``}
@@ -2999,14 +3241,14 @@
       ? `<span class="tag mono">1勝:${v215Flags.one_win_score}/${v215Flags.one_win_level}</span><span class="tag mono">2残存:${v215Flags.lane2_survival_score}/${v215Flags.lane2_survival_level}</span>${v215Flags.two_stage_12_candidate ? `<span class="tag mono">二段階候補</span>` : ``}`
       : ``;
     const v217Badge = (v217Flags.v218_sim_rule_candidate || v217Flags.v218_watch_candidate)
-      ? `<span class="tag mono">v2.18:${v217Flags.v218_sim_rule_candidate ? v217Flags.v217_rule_short : v217Flags.v218_watch_short}</span><span class="tag mono">${v217Flags.v217_sim_state}</span>`
+      ? `<span class="tag mono">v2.19:${v217Flags.v218_sim_rule_candidate ? v217Flags.v217_rule_short : v217Flags.v218_watch_short}</span><span class="tag mono">${v217Flags.v217_sim_state}</span><span class="tag mono">${v217Flags.v219_sim_eval_group}</span>`
       : ``;
     const v215Line = $('v215ResearchLogOn')?.checked
       ? `<div class="resultLine small">v2.16研究: 結果分類=<b>${v215Flags.result_label_2t12}</b> / 1勝score=<b>${v215Flags.one_win_score}</b> / 2残存score=<b>${v215Flags.lane2_survival_score}</b> / 二段階候補:${v215Flags.two_stage_12_candidate?"Y":"N"} / 1hard:${v215Flags.one_win_hard_threat?"Y":"N"} / 3脅威:${v215Flags.lane3_threat_to_2?"Y":"N"} / 4脅威:${v215Flags.lane4_threat_to_2?"Y":"N"} / 1勝ち2ズレ:${v215Flags.one_win_not_12?"Y":"N"}</div>`
       : ``;
     const v217Line = (v217Flags.v218_sim_rule_candidate || v217Flags.v218_watch_candidate)
-      ? `<div class="resultLine small">v2.18 SIM: <b>${v217Flags.v218_sim_rule_candidate ? v217Flags.v217_rule_short : v217Flags.v218_watch_short}</b> / RULE=${v217Flags.v218_sim_rule_candidate ? "Y" : "N"} / STRICT=${v217Flags.v218_sim_strict_state} / WATCH=${v217Flags.v218_watch_candidate ? "Y" : "N"} / odds=${Number.isFinite(v217Flags.v217_sim_odd) ? v217Flags.v217_sim_odd : "未入力"} / odds判定=${v217Flags.v217_sim_odds_status} / 結果=${v217Flags.v217_result_label} / STRICT阻害=${v217Flags.v218_sim_strict_blockers || "-"}</div>`
-      : ($('v217VenueRuleLogOn')?.checked ? `<div class="resultLine small">v2.18 SIM: 対象外/不一致（${v217Flags.v217_rule_blockers || v217Flags.v218_watch_blockers || "-"}）</div>` : ``);
+      ? `<div class="resultLine small">v2.19 SIM: <b>${v217Flags.v218_sim_rule_candidate ? v217Flags.v217_rule_short : v217Flags.v218_watch_short}</b> / RULE=${v217Flags.v218_sim_rule_candidate ? "Y" : "N"} / STRICT=${v217Flags.v218_sim_strict_state} / WATCH=${v217Flags.v218_watch_candidate ? "Y" : "N"} / odds=${Number.isFinite(v217Flags.v217_sim_odd) ? v217Flags.v217_sim_odd : "未入力"} / odds帯=${v217Flags.v219_odds_band} / market=${v217Flags.v219_market_support_short} / eval=${v217Flags.v219_sim_eval_group} / 仮想収支=${v217Flags.v219_sim_eval_profit}円 / 結果=${v217Flags.v217_result_label} / STRICT阻害=${v217Flags.v218_sim_strict_blockers || "-"}</div>`
+      : ($('v217VenueRuleLogOn')?.checked ? `<div class="resultLine small">v2.19 SIM: 対象外/不一致（${v217Flags.v217_rule_blockers || v217Flags.v218_watch_blockers || "-"}）</div>` : ``);
 
     card.innerHTML = `
       <div class="row">
@@ -3040,7 +3282,7 @@
             結果補正: <input data-result-top3 type="text" inputmode="numeric" placeholder="例: 5-1-2" value="${manualTop3 || ""}" style="width:120px; padding:6px; font-size:12px; display:inline-block;">
             <span class="muted small">※結果未取得/誤取得の時だけ入力</span>
           </div>
-          <div class="resultLine" data-buy-line>${isFinal ? `買い：<b>2連単 1-2</b>${Number.isFinite(ev.odd) ? ` / odds=${ev.odd}` : ``}` : ((v217Flags.v218_sim_rule_candidate || v217Flags.v218_watch_candidate) && $('v217VenueRuleAsSimBuyOn')?.checked ? `SIM検証：<b>2連単 1-2</b> <span class="tag mono">${v217Flags.v217_sim_state}</span>${Number.isFinite(v217Flags.v217_sim_odd) ? ` / odds=${v217Flags.v217_sim_odd}` : ` / odds未入力`}` : ``)}</div>
+          <div class="resultLine" data-buy-line>${isFinal ? `買い：<b>2連単 1-2</b>${Number.isFinite(ev.odd) ? ` / odds=${ev.odd}` : ``}` : ((v217Flags.v218_sim_rule_candidate || v217Flags.v218_watch_candidate) && $('v217VenueRuleAsSimBuyOn')?.checked ? `SIM検証：<b>2連単 1-2</b> <span class="tag mono">${v217Flags.v217_sim_state}</span><span class="tag mono">${v217Flags.v219_sim_eval_group}</span>${Number.isFinite(v217Flags.v217_sim_odd) ? ` / odds=${v217Flags.v217_sim_odd}` : ` / odds未入力`}` : ``)}</div>
         </div>
         <div class="muted small">
           <div data-ev-msg>${ev.msg}</div>
@@ -3594,7 +3836,7 @@
       "aVenueOuterThreatTightenOn",
       "v215ResearchLogOn","v215StrictOfficialBuyOn","v215MinOfficialL2Score","v215MinResearchL2Score","v215Lane2StLagWarn","v215Lane34ExhLeadTo2","v215Lane34StLeadTo2","v215LowOddsNoSeparateOn",
       "v216OneWinResearchOn","v216StrictOfficialBuyOneScoreOn","v216MinOfficialOneScore","v216MinResearchOneScore","v216MinTwoStageOneScore","v216MinTwoStageL2Score","v216TwoStageCandidateOn","v216True12NoHardThreatOn",
-      "v217VenueRuleLogOn","v217VenueRuleAsSimBuyOn","v217ShowOddsInputForSimOn","v217IncludeTokonameOn","v217IncludeWatchVenuesOn","v217MinSimOdds","v218StrictSimOn","v218RequireOddsForStrictOn","v218MinStrictOneScore","v218MinStrictLane2Score","v218RequireNoStOutOn","v218RequireNoHardOneOn","v218WatchWakamatsuOn","v218WatchMiyajimaOmuraOn",
+      "v217VenueRuleLogOn","v217VenueRuleAsSimBuyOn","v217ShowOddsInputForSimOn","v217IncludeTokonameOn","v217IncludeWatchVenuesOn","v217MinSimOdds","v218StrictSimOn","v218RequireOddsForStrictOn","v218MinStrictOneScore","v218MinStrictLane2Score","v218RequireNoStOutOn","v218RequireNoHardOneOn","v218WatchWakamatsuOn","v218WatchMiyajimaOmuraOn","v219LowOddsSimOn","v219ValueSimOn","v219HighOddsWatchOn","v219OddsDangerOn","v219LowOddsMin","v219LowOddsMax","v219ValueOddsMin","v219ValueOddsMax","v219HighOddsMin","v219HighOddsMax","v219DangerOddsMin","v219LowOddsSimOn","v219ValueSimOn","v219HighOddsWatchOn","v219OddsDangerOn","v219LowOddsMin","v219LowOddsMax","v219ValueOddsMin","v219ValueOddsMax","v219HighOddsMin","v219HighOddsMax","v219DangerOddsMin",
       "autoBeforeScopeCandidatesOnly","resultSingleRetryCandidatesOnly",
       "viewMode","autoRefresh"
     ];
