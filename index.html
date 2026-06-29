@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.20.2（対象会場限定 / 会場別LOW_SAFE正式BUY / SAFE）</title>
+  <title>競艇 v2.20.3（会場別条件① / 会場別LOW_SAFE正式BUY / SAFE）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -92,7 +92,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.20.2（対象会場限定 / 会場別LOW_SAFE正式BUY / SAFE）</h1>
+  <h1>競艇 v2.20.3（会場別条件① / 会場別LOW_SAFE正式BUY / SAFE）</h1>
   <div class="sub">
     ✅ <b>正式BUY</b>は、v2.20のメイン6会場LOW_SAFEだけに整理。旧BUYロジックは正式判定から外しています。<br/>
     ✅ <b>検証会場</b>は青表示でログ化し、正式収支には混ぜません。<br/>
@@ -959,7 +959,7 @@
     if($('autoBeforeScopeCandidatesOnly')?.checked){
       // Cloudflare使用量削減：beforeinfo自動補完は、実戦判定に必要な条件①通過レースを中心にする。
       // 条件外の全レースへ個別beforeinfoを叩かない。
-      if(!passFilter1(r).ok) return false;
+      if(!passFilter1Entry_(r).ok) return false;
     }
     return (!r.exhReady) || (!envReady_(r)) || (!stReady13_(r));
   }
@@ -971,7 +971,7 @@
     if($('resultSingleRetryCandidatesOnly')?.checked){
       // 省通信モード時のみ条件①通過レース中心に絞る。
       // 通常運用では全レース結果を補完し、会場別・ランク別・条件外の探索分析に使う。
-      if(!passFilter1(r).ok) return false;
+      if(!passFilter1Entry_(r).ok) return false;
     }
     return true;
   }
@@ -1412,7 +1412,7 @@
   }
 
   // ====== 判定ロジック ======
-  // v2.20.2: 条件①の入口対象を、正式6会場＋検証9会場のみに限定。
+  // v2.20.3: 条件①も会場別に最適化。入口対象は正式6会場＋検証9会場のみ。
   // 対象外会場は全件表示では「条件外」として残るが、条件①クリア/候補表示には載せない。
   function isV220TargetVenueForF1_(stadium){
     const s = Number(stadium);
@@ -1422,13 +1422,13 @@
     ].includes(s);
   }
 
-  function passFilter1(r){
+  function passFilter1Entry_(r){
     const minNat2 = num("minNat2");
     const minLoc2 = num("minLoc2");
     const minMotor2 = num("minMotor2");
     const reasons=[];
 
-    // v2.20.2: 対象外会場は条件①クリアに載せない。
+    // v2.20.3: 対象外会場は条件①クリアに載せない。
     if(!isV220TargetVenueForF1_(r?.stadium)){
       reasons.push("v2.20対象外会場");
     }
@@ -1443,6 +1443,19 @@
 
     if(minMotor2!=null && r.motor2 < minMotor2) reasons.push("モーター2連率不足");
     return { ok: reasons.length===0, reasons, _locMissing: locMissing };
+  }
+
+  function passFilter1(r){
+    const entry = passFilter1Entry_(r);
+    const reasons = [...entry.reasons];
+
+    // v2.20.3: 条件①表示そのものを、対象会場ごとの専用条件へ寄せる。
+    // beforeinfo自動取得では passFilter1Entry_ を使い、展示/ST取得前に候補が死なないよう分離。
+    if(entry.ok){
+      const venueReasons = v220Condition1VenueReasons_(r, { includeSt: v220NeedStReady_() });
+      reasons.push(...venueReasons);
+    }
+    return { ok: reasons.length===0, reasons, _locMissing: entry._locMissing };
   }
 
   function exhibitionRank(exh){
@@ -2498,9 +2511,11 @@
   }
 
   function computePlan(r){
+    const entry = passFilter1Entry_(r);
+    if(!entry.ok) return { level:"out", reasons:entry.reasons, _locMissing: entry._locMissing };
+    if(!r.exhReady) return { level:"wait", reasons:["展示待ち"], _locMissing: entry._locMissing };
     const f1 = passFilter1(r);
     if(!f1.ok) return { level:"out", reasons:f1.reasons, _locMissing: f1._locMissing };
-    if(!r.exhReady) return { level:"wait", reasons:["展示待ち"], _locMissing: f1._locMissing };
 
     const reasons=[];
     const rank = exhibitionRank(r.exh);
@@ -2700,6 +2715,159 @@
     if(!ok) arr.push(reason);
   }
 
+  function v220Condition1VenueReasons_(r, opts={}){
+    const includeSt = opts.includeSt !== false;
+    const stadium = Number(r?.stadium);
+    const meta = v220RuleMeta_(stadium);
+    const reasons = [];
+    if(meta.role === 'none'){
+      reasons.push('v2.20対象外会場');
+      return reasons;
+    }
+
+    // 展示がない段階では、会場別のrank/d2判定はまだ確定させない。
+    if(r?.exhReady !== true){
+      reasons.push('展示待ち');
+      return reasons;
+    }
+
+    const l2 = lane2SurvivalScoreV215_(r);
+    const one = oneWinScoreV216_(r);
+    const rank1 = exhibitionRank(r?.exh);
+    const rank2 = laneExhRank_(r?.exh, 2);
+    const d2 = deltaLane(r?.exh, 2);
+    const stReady = stReady13_(r);
+    const stOut = st1Outmuscled_(r, num('stOutmuscle') ?? 0.05);
+    const noStOut = stOut !== true;
+    const no34 = !l2.lane3Threat && !l2.lane4Threat;
+    const noOuter = !l2.outerThreat;
+    const calm = calmWater4_(r);
+    const noRain = noRainV220_(r);
+    const allStSafe = stSafeAllV220_(r, l2, noStOut);
+    const outerStSafe = outerStSafeV220_(l2);
+
+    const d2Text = () => d2 == null ? '-' : d2.toFixed(2);
+    const d2Ok = (max) => d2 != null && d2 <= max + EPS;
+    const rank1Ok = (max) => Number.isFinite(rank1) && rank1 <= max;
+    const rank2Ok = (max) => Number.isFinite(rank2) && rank2 <= max;
+    const add = (ok, reason) => { if(!ok) reasons.push(reason); };
+
+    if(includeSt && !stReady) reasons.push('ST待ち');
+
+    switch(stadium){
+      case 16: // 児島
+        add(rank1 === 1, `児島:1展示1位ではない(${rank1 ?? '-'})`);
+        add(rank2Ok(3), `児島:2展示>3(${rank2 ?? '-'})`);
+        add(d2Ok(0.03), `児島:d2>0.03(${d2Text()})`);
+        add(noStOut, '児島:ST出負け');
+        add(calm, '児島:水面荒れ');
+        add(no34, '児島:3/4脅威あり');
+        break;
+      case 9: // 津
+        add(rank1 === 1, `津:1展示1位ではない(${rank1 ?? '-'})`);
+        add(rank2Ok(3), `津:2展示>3(${rank2 ?? '-'})`);
+        add(d2Ok(0.05), `津:d2>0.05(${d2Text()})`);
+        add(noStOut, '津:ST出負け');
+        add(noRain, '津:雨表記');
+        add(no34, '津:3/4脅威あり');
+        break;
+      case 13: // 尼崎
+        add(rank1 === 1, `尼崎:1展示1位ではない(${rank1 ?? '-'})`);
+        add(rank2Ok(2), `尼崎:2展示>2(${rank2 ?? '-'})`);
+        add(d2Ok(0.03), `尼崎:d2>0.03(${d2Text()})`);
+        add(noStOut, '尼崎:ST出負け');
+        add(noRain, '尼崎:雨表記');
+        add(no34, '尼崎:3/4脅威あり');
+        break;
+      case 22: // 福岡
+        add(rank1 === 1, `福岡:1展示1位ではない(${rank1 ?? '-'})`);
+        add(rank2Ok(3), `福岡:2展示>3(${rank2 ?? '-'})`);
+        add(d2Ok(0.05), `福岡:d2>0.05(${d2Text()})`);
+        add(allStSafe, '福岡:ST全体安全不足');
+        add(noRain, '福岡:雨表記');
+        break;
+      case 19: // 下関
+        add(rank1 === 1, `下関:1展示1位ではない(${rank1 ?? '-'})`);
+        add(rank2Ok(2), `下関:2展示>2(${rank2 ?? '-'})`);
+        add(d2Ok(0.08), `下関:d2>0.08(${d2Text()})`);
+        add(noStOut, '下関:ST出負け');
+        add(no34, '下関:3/4脅威あり');
+        break;
+      case 14: // 鳴門
+        add(rank1 === 1, `鳴門:1展示1位ではない(${rank1 ?? '-'})`);
+        add(rank2Ok(3), `鳴門:2展示>3(${rank2 ?? '-'})`);
+        add(d2Ok(0.08), `鳴門:d2>0.08(${d2Text()})`);
+        add(allStSafe, '鳴門:ST全体安全不足');
+        add(no34, '鳴門:3/4脅威あり');
+        add(noRain, '鳴門:雨表記');
+        break;
+
+      case 18: // 徳山
+        add(rank1 === 1, `徳山:1展示1位ではない(${rank1 ?? '-'})`);
+        add(rank2Ok(2), `徳山:2展示>2(${rank2 ?? '-'})`);
+        add(d2Ok(0.08), `徳山:d2>0.08(${d2Text()})`);
+        add(no34, '徳山:3/4脅威あり');
+        add(calm, '徳山:水面荒れ');
+        break;
+      case 20: // 若松
+        add(rank1Ok(2), `若松:1展示>2(${rank1 ?? '-'})`);
+        add(rank2Ok(2), `若松:2展示>2(${rank2 ?? '-'})`);
+        add(d2Ok(0.05), `若松:d2>0.05(${d2Text()})`);
+        add(allStSafe, '若松:ST全体安全不足');
+        add(no34, '若松:3/4脅威あり');
+        break;
+      case 24: // 大村
+        add(rank1 === 1, `大村:1展示1位ではない(${rank1 ?? '-'})`);
+        add(rank2Ok(2), `大村:2展示>2(${rank2 ?? '-'})`);
+        add(d2Ok(0.05), `大村:d2>0.05(${d2Text()})`);
+        add(l2.score >= 95, `大村:2残存score<95(${l2.score})`);
+        add(outerStSafe, '大村:外枠ST脅威あり');
+        break;
+      case 23: // 唐津
+        add(rank1 === 1, `唐津:1展示1位ではない(${rank1 ?? '-'})`);
+        add(rank2Ok(2), `唐津:2展示>2(${rank2 ?? '-'})`);
+        add(d2Ok(0.08), `唐津:d2>0.08(${d2Text()})`);
+        add(l2.score >= 90, `唐津:2残存score<90(${l2.score})`);
+        add(calm, '唐津:水面荒れ');
+        break;
+      case 8: // 常滑
+        add(rank1 === 1, `常滑:1展示1位ではない(${rank1 ?? '-'})`);
+        add(rank2Ok(2), `常滑:2展示>2(${rank2 ?? '-'})`);
+        add(d2Ok(0.05), `常滑:d2>0.05(${d2Text()})`);
+        add(noOuter, '常滑:外枠脅威あり');
+        add(calm, '常滑:水面荒れ');
+        break;
+      case 17: // 宮島
+        add(one.score >= 80, `宮島:1勝score<80(${one.score})`);
+        add(d2Ok(0.12), `宮島:d2>0.12(${d2Text()})`);
+        add(noRain, '宮島:雨表記');
+        break;
+      case 15: // 丸亀
+        add(rank1Ok(2), `丸亀:1展示>2(${rank1 ?? '-'})`);
+        add(rank2Ok(4), `丸亀:2展示>4(${rank2 ?? '-'})`);
+        add(d2Ok(0.03), `丸亀:d2>0.03(${d2Text()})`);
+        add(noOuter, '丸亀:外枠脅威あり');
+        add(noRain, '丸亀:雨表記');
+        break;
+      case 21: // 芦屋
+        add(rank1 === 1, `芦屋:1展示1位ではない(${rank1 ?? '-'})`);
+        add(rank2Ok(2), `芦屋:2展示>2(${rank2 ?? '-'})`);
+        add(d2Ok(0.05), `芦屋:d2>0.05(${d2Text()})`);
+        add(no34, '芦屋:3/4脅威あり');
+        break;
+      case 11: // びわこ
+        add(rank1 === 1, `びわこ:1展示1位ではない(${rank1 ?? '-'})`);
+        add(rank2Ok(2), `びわこ:2展示>2(${rank2 ?? '-'})`);
+        add(d2Ok(0.05), `びわこ:d2>0.05(${d2Text()})`);
+        add(no34, 'びわこ:3/4脅威あり');
+        add(noRain, 'びわこ:雨表記');
+        break;
+      default:
+        break;
+    }
+    return reasons;
+  }
+
   function v220RuleMeta_(stadium){
     const s = Number(stadium);
     const venue = VENUES[s] || String(s);
@@ -2738,7 +2906,7 @@
     const researchEnabled = checkedV220_('v220ResearchVenueOn', true);
     const enabled = meta.role === 'official' ? officialEnabled : (meta.role === 'research' ? researchEnabled : false);
 
-    const f1 = passFilter1(r);
+    const f1 = passFilter1Entry_(r);
     const odd = getOddFor(r, '2T', '1-2');
     const band = oddsBandV219_(odd);
     const resultClass = resultClass2T12_(r?.result_top3);
@@ -2986,10 +3154,13 @@
   }
 
   function evaluate(r){
-    const f1 = passFilter1(r);
-    if(!f1.ok) return { state:"条件外", msg:`条件外：${f1.reasons.join(" / ")}` };
+    const entry = passFilter1Entry_(r);
+    if(!entry.ok) return { state:"条件外", msg:`条件外：${entry.reasons.join(" / ")}` };
 
     if(!r.exhReady) return { state:"WAIT", msg:"WAIT：展示（1〜3）待ち", plan:{ level:'wait', reasons:['展示待ち'], betType:'2T', combo:'1-2' } };
+
+    const f1 = passFilter1(r);
+    if(!f1.ok) return { state:"条件外", msg:`条件外：${f1.reasons.join(" / ")}` };
 
     const v220 = buildV220VenueFlags_(r);
     const plan = v220PlanFromFlags_(v220);
