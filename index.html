@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.20.1（UI整理 / 会場別LOW_SAFE正式BUY / SAFE）</title>
+  <title>競艇 v2.20.2（対象会場限定 / 会場別LOW_SAFE正式BUY / SAFE）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -92,7 +92,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.20.1（UI整理 / 会場別LOW_SAFE正式BUY / SAFE）</h1>
+  <h1>競艇 v2.20.2（対象会場限定 / 会場別LOW_SAFE正式BUY / SAFE）</h1>
   <div class="sub">
     ✅ <b>正式BUY</b>は、v2.20のメイン6会場LOW_SAFEだけに整理。旧BUYロジックは正式判定から外しています。<br/>
     ✅ <b>検証会場</b>は青表示でログ化し、正式収支には混ぜません。<br/>
@@ -1412,11 +1412,26 @@
   }
 
   // ====== 判定ロジック ======
+  // v2.20.2: 条件①の入口対象を、正式6会場＋検証9会場のみに限定。
+  // 対象外会場は全件表示では「条件外」として残るが、条件①クリア/候補表示には載せない。
+  function isV220TargetVenueForF1_(stadium){
+    const s = Number(stadium);
+    return [
+      16, 9, 13, 22, 19, 14, // 児島, 津, 尼崎, 福岡, 下関, 鳴門
+      18, 20, 24, 23, 8, 17, 15, 21, 11 // 徳山, 若松, 大村, 唐津, 常滑, 宮島, 丸亀, 芦屋, びわこ
+    ].includes(s);
+  }
+
   function passFilter1(r){
     const minNat2 = num("minNat2");
     const minLoc2 = num("minLoc2");
     const minMotor2 = num("minMotor2");
     const reasons=[];
+
+    // v2.20.2: 対象外会場は条件①クリアに載せない。
+    if(!isV220TargetVenueForF1_(r?.stadium)){
+      reasons.push("v2.20対象外会場");
+    }
 
     if(minNat2!=null && r.nat2 < minNat2) reasons.push("全国2連率不足");
 
@@ -3868,7 +3883,14 @@
   function renderList(races){
     const mode = $("viewMode").value;
     let show = races.slice();
-    if(mode==="candidates") show = show.filter(r => passFilter1(r).ok || buildV217VenueRuleFlags_(r).v218_sim_visible);
+    if(mode==="candidates") {
+      show = show.filter(r => {
+        if(!isV220TargetVenueForF1_(r?.stadium)) return false;
+        const f1ok = passFilter1(r).ok;
+        const v220 = buildV220VenueFlags_(r);
+        return f1ok || !!v220.v220_visible;
+      });
+    }
 
     show.sort((a,b)=>{
       const am = parseCloseMs_(a.race_closed_at);
