@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.20（会場別LOW_SAFE正式BUY / 検証会場分離 / 2連単1-2研究版 / SAFE）</title>
+  <title>競艇 v2.20.1（UI整理 / 会場別LOW_SAFE正式BUY / SAFE）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -53,26 +53,104 @@
     .diagList { margin-top:10px; display:grid; gap:8px; }
     .diagItem { padding:10px; border-radius:12px; border:1px solid #223248; background:#0d141d; }
     .diagItem b { color:#e9eef5; }
+
+
+    .settingsHero { background:linear-gradient(135deg, rgba(34,197,94,.12), rgba(59,130,246,.08)); border:1px solid #244b3a; border-radius:14px; padding:12px; margin-top:10px; }
+    .settingTiles { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; margin-top:10px; }
+    .settingTile { border:1px solid #223248; background:#0d141d; border-radius:12px; padding:10px; }
+    .settingTile b { display:block; font-size:13px; margin-bottom:4px; color:#e9eef5; }
+    .settingsAdvanced { margin-top:14px; border:1px solid #223248; border-radius:14px; background:#0d141d; overflow:hidden; }
+    .settingsAdvanced summary { cursor:pointer; padding:12px 14px; font-weight:900; color:#cfe3ff; list-style:none; }
+    .settingsAdvanced summary::-webkit-details-marker { display:none; }
+    .settingsAdvanced summary::after { content:"開く"; float:right; color:#8aa3c7; font-size:11px; border:1px solid #2a3e5b; border-radius:999px; padding:2px 8px; }
+    .settingsAdvanced[open] summary::after { content:"閉じる"; }
+    .settingsAdvancedInner { padding:0 14px 14px; border-top:1px solid #223248; }
+    .statusLegend { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+    .legendChip { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; border:1px solid #2a3e5b; font-size:12px; background:#0d141d; }
+    .dot { width:10px; height:10px; border-radius:999px; display:inline-block; }
+    .dotBuy { background:#22c55e; box-shadow:0 0 10px rgba(34,197,94,.7); }
+    .dotWait { background:#f59e0b; box-shadow:0 0 10px rgba(245,158,11,.7); }
+    .dotResearch { background:#38bdf8; box-shadow:0 0 10px rgba(56,189,248,.65); }
+    .dotNo { background:#ef4444; box-shadow:0 0 10px rgba(239,68,68,.6); }
+    @media (max-width:760px){ .settingTiles { grid-template-columns:1fr; } }
+
+    .raceCard { transition:border-color .15s ease, box-shadow .15s ease, background .15s ease, transform .15s ease; }
+    .race-official-buy { border-color:#22c55e; box-shadow:0 0 0 1px rgba(34,197,94,.55), 0 10px 26px rgba(34,197,94,.16); background:linear-gradient(135deg, rgba(34,197,94,.16), rgba(17,26,38,1) 56%); }
+    .race-official-buy::before { content:"v2.20 正式BUY"; display:inline-block; margin-bottom:8px; padding:4px 10px; border-radius:999px; color:#bbf7d0; border:1px solid rgba(34,197,94,.55); background:rgba(34,197,94,.10); font-size:12px; font-weight:900; }
+    .race-official-wait { border-color:#f59e0b; box-shadow:0 0 0 1px rgba(245,158,11,.45), 0 10px 24px rgba(245,158,11,.12); background:linear-gradient(135deg, rgba(245,158,11,.13), rgba(17,26,38,1) 58%); }
+    .race-official-wait::before { content:"正式候補：オッズ入力待ち"; display:inline-block; margin-bottom:8px; padding:4px 10px; border-radius:999px; color:#fde68a; border:1px solid rgba(245,158,11,.55); background:rgba(245,158,11,.10); font-size:12px; font-weight:900; }
+    .race-official-oddsno { border-color:#fb7185; box-shadow:0 0 0 1px rgba(251,113,133,.35); background:linear-gradient(135deg, rgba(251,113,133,.10), rgba(17,26,38,1) 60%); }
+    .race-official-oddsno::before { content:"正式候補：オッズ帯NG"; display:inline-block; margin-bottom:8px; padding:4px 10px; border-radius:999px; color:#fecdd3; border:1px solid rgba(251,113,133,.5); background:rgba(251,113,133,.10); font-size:12px; font-weight:900; }
+    .race-research-active { border-color:#38bdf8; box-shadow:0 0 0 1px rgba(56,189,248,.45), 0 10px 24px rgba(56,189,248,.12); background:linear-gradient(135deg, rgba(56,189,248,.13), rgba(17,26,38,1) 58%); }
+    .race-research-active::before { content:"検証候補"; display:inline-block; margin-bottom:8px; padding:4px 10px; border-radius:999px; color:#bae6fd; border:1px solid rgba(56,189,248,.55); background:rgba(56,189,248,.10); font-size:12px; font-weight:900; }
+    .race-research-wait { border-color:#60a5fa; background:linear-gradient(135deg, rgba(96,165,250,.09), rgba(17,26,38,1) 60%); }
+    .race-main-blocked { border-color:#4b5563; opacity:.88; }
+    .badge.b-buy { background:rgba(34,197,94,.14); border-color:rgba(34,197,94,.55); color:#bbf7d0; }
+    .badge.b-wait { background:rgba(245,158,11,.13); border-color:rgba(245,158,11,.55); color:#fde68a; }
+    .badge.b-no { background:rgba(239,68,68,.12); border-color:rgba(239,68,68,.45); color:#fecaca; }
   </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.20（会場別LOW_SAFE正式BUY / 検証会場分離 / 2連単1-2研究版 / SAFE）</h1>
+  <h1>競艇 v2.20.1（UI整理 / 会場別LOW_SAFE正式BUY / SAFE）</h1>
   <div class="sub">
-    ✅ 主戦場は <b>2連単 1-2</b> に固定（1レース1点）。3連単・3連複の買い目分岐は廃止。<br/>
-    ✅ v2.18：主力会場別ルールを <b>SIM_RULE</b>、買ったつもり収支用を <b>SIM_STRICT_BUY</b>、広めの観察を <b>WATCH</b> に分離。<br/>
-    ✅ v2.19：SIM_RULEを <b>LOW_ODDS_SIM / VALUE_SIM / HIGH_ODDS_WATCH / ODDS_DANGER</b> に自動分類し、2.2倍前後で耐える会場別条件を検証。<br/>
-    ✅ v2.20：旧正式BUYロジックを正式判定から外し、<b>メイン6会場（児島/津/尼崎/福岡/下関/鳴門）の会場別LOW_SAFE</b>だけを正式BUY化。未達会場は<b>検証会場</b>としてJSON/画面/集計に分離。<br/>
-    ✅ SIM_STRICT_BUYは、会場別ルール一致 + オッズOK + 1勝score + 2残存score + ST出負けなし + 1号艇hard脅威なしを要求。<br/>
-    ✅ 完全に不要になった旧v2.14仮想BUYログ（モーター40未満救済/児島旧仮想）は画面・集計・JSON出力から除外。上位会場の外枠2着ズレ警戒だけ現役ガードとして維持。<br/>
-    ✅ v2.15：2号艇残存スコア、1-2/1-3/1-4/1飛びの結果分類、低オッズNO別枠、研究候補ラベルを維持。<br/>
-    ✅ v2.16：公式1C勝率＋過去会場1頭率＋展示/STに基づく1号艇勝利スコアを維持。<br/>
-    ✅ v2.17〜v2.19：従来のSIM_RULE / SIM_STRICT / WATCH / オッズ帯別ログは比較研究用として継続。正式BUYには混ぜない。<br/>
-    ✅ 取得系・before/result補完・手動結果補正・.json書き出し・低通信・分析用フル取得は維持。未取得を偽1-2-3扱いしない安全処理も維持。
+    ✅ <b>正式BUY</b>は、v2.20のメイン6会場LOW_SAFEだけに整理。旧BUYロジックは正式判定から外しています。<br/>
+    ✅ <b>検証会場</b>は青表示でログ化し、正式収支には混ぜません。<br/>
+    ✅ v2.15〜v2.19のscore/SIM/オッズ帯ログは、分析用として折りたたみ内に残しています。<br/>
+    ✅ 取得系・before/result補完・手動結果補正・.json書き出し・低通信・偽1-2-3防止は維持。
   </div>
 
-  <div class="card">
-    <div class="pill">条件</div>
+  <div class="card settingsCard">
+    <div class="pill">v2.20 操作パネル</div>
+    <div class="settingsHero">
+      <b>現在の正式判定</b>：メイン6会場の会場別LOW_SAFEだけを正式BUYにします。旧BUYロジックは正式判定には使いません。
+      <div class="settingTiles">
+        <div class="settingTile"><b>正式BUY</b><span class="muted small">児島 / 津 / 尼崎 / 福岡 / 下関 / 鳴門。原則LOW 2.2〜2.6倍。</span></div>
+        <div class="settingTile"><b>検証会場</b><span class="muted small">徳山 / 若松 / 大村 / 唐津 / 常滑 / 宮島など。収支ログのみ。</span></div>
+        <div class="settingTile"><b>旧研究ログ</b><span class="muted small">v2.15〜v2.19のscore/SIMは分析用として残すが、正式BUYには混ぜない。</span></div>
+      </div>
+      <div class="statusLegend">
+        <span class="legendChip"><span class="dot dotBuy"></span>緑：正式BUY</span>
+        <span class="legendChip"><span class="dot dotWait"></span>黄：正式候補・オッズ入力待ち</span>
+        <span class="legendChip"><span class="dot dotResearch"></span>青：検証候補</span>
+        <span class="legendChip"><span class="dot dotNo"></span>赤：候補だがオッズ帯NG/NO</span>
+      </div>
+    </div>
+
+    <div class="pill">v2.20 会場別LOW_SAFE正式BUY（旧BUYロジック不使用）</div>
+    <div class="grid g2" style="margin-top:10px;">
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="v220OfficialBuyOn" checked />
+        メイン6会場を正式BUY化（児島/津/尼崎/福岡/下関/鳴門）
+      </label>
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="v220ResearchVenueOn" checked />
+        未達会場を検証ログとして表示・JSON保存
+      </label>
+    </div>
+    <div class="grid g2" style="margin-top:10px;">
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="v220RequireStReadyOn" checked />
+        正式/検証候補はST取得を要求（未取得はWAIT）
+      </label>
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="v220BlockRainSensitiveOn" checked />
+        雨なし条件のある会場では雨表記を除外
+      </label>
+    </div>
+    <div class="muted small" style="margin-top:8px;">
+      メイン6会場：児島 / 津 / 尼崎 / 福岡 / 下関 / 鳴門。正式BUYは原則LOW 2.2〜2.6のみ。
+      未達会場：徳山/若松/大村/唐津/常滑/宮島/丸亀/芦屋/びわこ等は検証候補として収支ログ化し、正式BUY収支には混ぜません。
+    </div>
+
+    <div class="hr"></div>
+
+
+
+    <details class="settingsAdvanced">
+      <summary>詳細設定・旧研究ログ設定（通常は触らない）</summary>
+      <div class="settingsAdvancedInner">
+        <div class="pill">旧条件・研究設定</div>
 
     <div class="grid g3" style="margin-top:10px;">
       <div><label>全国2連率(%) 下限</label><input id="minNat2" type="number" step="0.1" value="42" /></div>
@@ -398,31 +476,8 @@
     </div>
     <div class="hr"></div>
 
-    <div class="pill">v2.20 会場別LOW_SAFE正式BUY（旧BUYロジック不使用）</div>
-    <div class="grid g2" style="margin-top:10px;">
-      <label class="cb" style="margin:0;">
-        <input type="checkbox" id="v220OfficialBuyOn" checked />
-        メイン6会場を正式BUY化（児島/津/尼崎/福岡/下関/鳴門）
-      </label>
-      <label class="cb" style="margin:0;">
-        <input type="checkbox" id="v220ResearchVenueOn" checked />
-        未達会場を検証ログとして表示・JSON保存
-      </label>
-    </div>
-    <div class="grid g2" style="margin-top:10px;">
-      <label class="cb" style="margin:0;">
-        <input type="checkbox" id="v220RequireStReadyOn" checked />
-        正式/検証候補はST取得を要求（未取得はWAIT）
-      </label>
-      <label class="cb" style="margin:0;">
-        <input type="checkbox" id="v220BlockRainSensitiveOn" checked />
-        雨なし条件のある会場では雨表記を除外
-      </label>
-    </div>
-    <div class="muted small" style="margin-top:8px;">
-      メイン6会場：児島 / 津 / 尼崎 / 福岡 / 下関 / 鳴門。正式BUYは原則LOW 2.2〜2.6のみ。
-      未達会場：徳山/若松/大村/唐津/常滑/宮島/丸亀/芦屋/びわこ等は検証候補として収支ログ化し、正式BUY収支には混ぜません。
-    </div>
+      </div>
+    </details>
 
     <div class="hr"></div>
 
@@ -3559,9 +3614,49 @@
            state==="WAIT" ? "badge b-wait" : "badge b-filter";
   }
 
+  const RACE_VISUAL_CLASSES = [
+    "race-official-buy",
+    "race-official-wait",
+    "race-official-oddsno",
+    "race-research-active",
+    "race-research-wait",
+    "race-main-blocked"
+  ];
+
+  function applyRaceVisualClass_(card, r, ev=null, flags=null){
+    if(!card) return;
+    const v = flags || buildV217VenueRuleFlags_(r);
+    for(const cls of RACE_VISUAL_CLASSES) card.classList.remove(cls);
+
+    if(v.v220_official_buy){
+      card.classList.add("race-official-buy");
+      return;
+    }
+    if(v.v220_role === "official" && v.v220_structure_candidate && !Number.isFinite(v.v220_odd)){
+      card.classList.add("race-official-wait");
+      return;
+    }
+    if(v.v220_role === "official" && v.v220_structure_candidate && v.v220_odds_blockers){
+      card.classList.add("race-official-oddsno");
+      return;
+    }
+    if(v.v220_research_active){
+      card.classList.add("race-research-active");
+      return;
+    }
+    if(v.v220_role === "research" && v.v220_structure_candidate && !Number.isFinite(v.v220_odd)){
+      card.classList.add("race-research-wait");
+      return;
+    }
+    if(v.v220_role === "official" && v.v220_visible && v.v220_structure_blockers){
+      card.classList.add("race-main-blocked");
+    }
+  }
+
   function updateCardUI_(card, r){
     const ev = evaluate(r);
     const v217 = buildV217VenueRuleFlags_(r);
+    applyRaceVisualClass_(card, r, ev, v217);
     const badge = card.querySelector("[data-state-badge]");
     const msgEl = card.querySelector("[data-ev-msg]");
     const buyLine = card.querySelector("[data-buy-line]");
@@ -3611,6 +3706,7 @@
 
     const v215Flags = buildV215ResearchFlags_(r);
     const v217Flags = buildV217VenueRuleFlags_(r);
+    applyRaceVisualClass_(card, r, ev, v217Flags);
     const showSimOdds = !!((v217Flags.v218_sim_rule_candidate || v217Flags.v218_watch_candidate) && $('v217ShowOddsInputForSimOn')?.checked);
     const showV220Odds = !!(v217Flags.v220_official_candidate || v217Flags.v220_research_candidate || v217Flags.v220_research_active || v217Flags.v220_official_buy);
     const showOddsBlock = !!(isFinal || showSimOdds || showV220Odds);
