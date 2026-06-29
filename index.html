@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.19（オッズ帯別SIM検証 / 2連単1-2研究版 / SAFE）</title>
+  <title>競艇 v2.20（会場別LOW_SAFE正式BUY / 検証会場分離 / 2連単1-2研究版 / SAFE）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -57,16 +57,17 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.19（オッズ帯別SIM検証 / 2連単1-2研究版 / SAFE）</h1>
+  <h1>競艇 v2.20（会場別LOW_SAFE正式BUY / 検証会場分離 / 2連単1-2研究版 / SAFE）</h1>
   <div class="sub">
     ✅ 主戦場は <b>2連単 1-2</b> に固定（1レース1点）。3連単・3連複の買い目分岐は廃止。<br/>
     ✅ v2.18：主力会場別ルールを <b>SIM_RULE</b>、買ったつもり収支用を <b>SIM_STRICT_BUY</b>、広めの観察を <b>WATCH</b> に分離。<br/>
-    ✅ v2.19：SIM_RULEを <b>LOW_ODDS_SIM / VALUE_SIM / HIGH_ODDS_WATCH / ODDS_DANGER</b> に自動分類し、2.2倍前後で耐える会場別条件を検証。正式BUYロジックは変更しない。<br/>
+    ✅ v2.19：SIM_RULEを <b>LOW_ODDS_SIM / VALUE_SIM / HIGH_ODDS_WATCH / ODDS_DANGER</b> に自動分類し、2.2倍前後で耐える会場別条件を検証。<br/>
+    ✅ v2.20：旧正式BUYロジックを正式判定から外し、<b>メイン6会場（児島/津/尼崎/福岡/下関/鳴門）の会場別LOW_SAFE</b>だけを正式BUY化。未達会場は<b>検証会場</b>としてJSON/画面/集計に分離。<br/>
     ✅ SIM_STRICT_BUYは、会場別ルール一致 + オッズOK + 1勝score + 2残存score + ST出負けなし + 1号艇hard脅威なしを要求。<br/>
     ✅ 完全に不要になった旧v2.14仮想BUYログ（モーター40未満救済/児島旧仮想）は画面・集計・JSON出力から除外。上位会場の外枠2着ズレ警戒だけ現役ガードとして維持。<br/>
     ✅ v2.15：2号艇残存スコア、1-2/1-3/1-4/1飛びの結果分類、低オッズNO別枠、研究候補ラベルを維持。<br/>
     ✅ v2.16：公式1C勝率＋過去会場1頭率＋展示/STに基づく1号艇勝利スコアを維持。<br/>
-    ✅ v2.17：徳山/尼崎/津/若松/下関/唐津/児島/丸亀/常滑の会場別ルールをSIM_RULEとして継続。<br/>
+    ✅ v2.17〜v2.19：従来のSIM_RULE / SIM_STRICT / WATCH / オッズ帯別ログは比較研究用として継続。正式BUYには混ぜない。<br/>
     ✅ 取得系・before/result補完・手動結果補正・.json書き出し・低通信・分析用フル取得は維持。未取得を偽1-2-3扱いしない安全処理も維持。
   </div>
 
@@ -393,8 +394,36 @@
       </div>
     </div>
     <div class="muted small" style="margin-top:8px;">
-      ※v2.19は買い条件を増やす版ではなく、2連単1-2の市場支持/市場疑念をログ化する検証版です。2.2〜2.6倍をLOW_ODDS_SIM、2.7〜3.8倍をVALUE_SIM、3.9〜5.9倍をHIGH_ODDS_WATCH、6.0倍以上をODDS_DANGERとして保存します。
+      ※v2.19項目は比較研究ログとして残します。v2.20では旧正式BUY判定には使わず、会場別LOW_SAFEを正式BUY、未達会場を検証ログとして分離します。
     </div>
+    <div class="hr"></div>
+
+    <div class="pill">v2.20 会場別LOW_SAFE正式BUY（旧BUYロジック不使用）</div>
+    <div class="grid g2" style="margin-top:10px;">
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="v220OfficialBuyOn" checked />
+        メイン6会場を正式BUY化（児島/津/尼崎/福岡/下関/鳴門）
+      </label>
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="v220ResearchVenueOn" checked />
+        未達会場を検証ログとして表示・JSON保存
+      </label>
+    </div>
+    <div class="grid g2" style="margin-top:10px;">
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="v220RequireStReadyOn" checked />
+        正式/検証候補はST取得を要求（未取得はWAIT）
+      </label>
+      <label class="cb" style="margin:0;">
+        <input type="checkbox" id="v220BlockRainSensitiveOn" checked />
+        雨なし条件のある会場では雨表記を除外
+      </label>
+    </div>
+    <div class="muted small" style="margin-top:8px;">
+      メイン6会場：児島 / 津 / 尼崎 / 福岡 / 下関 / 鳴門。正式BUYは原則LOW 2.2〜2.6のみ。
+      未達会場：徳山/若松/大村/唐津/常滑/宮島/丸亀/芦屋/びわこ等は検証候補として収支ログ化し、正式BUY収支には混ぜません。
+    </div>
+
     <div class="hr"></div>
 
     <div class="pill">集計</div>
@@ -2276,6 +2305,7 @@
     const watch = watchRuleV218_(r, vr);
     const strict = strictSimStateV218_(r, vr, odds, resultClass);
     const v219 = simOddsBandEvalV219_(r, vr, odds, resultClass);
+    const v220 = buildV220VenueFlags_(r);
     const showRule = !!vr.candidate;
     const showWatch = !!watch.candidate;
     const anySimVisible = showRule || showWatch;
@@ -2376,7 +2406,9 @@
       v218_lane2_score: vr.lane2?.score ?? null,
       v218_require_odds_for_strict: !!$('v218RequireOddsForStrictOn')?.checked,
       v218_min_strict_one_score: num('v218MinStrictOneScore') ?? 78,
-      v218_min_strict_lane2_score: num('v218MinStrictLane2Score') ?? 70
+      v218_min_strict_lane2_score: num('v218MinStrictLane2Score') ?? 70,
+
+      ...shallowCloneJson_(v220)
     };
   }
 
@@ -2559,6 +2591,308 @@
     return getManualOddFor(r, betType, combo) ?? getAutoOddFor(r, betType, combo);
   }
 
+  // ===== v2.20: 会場別LOW_SAFE正式BUY / 未達会場検証 =====
+  const V220_MAIN_VENUES = new Set([16, 9, 13, 22, 19, 14]); // 児島, 津, 尼崎, 福岡, 下関, 鳴門
+  const V220_RESEARCH_VENUES = new Set([18, 20, 24, 23, 8, 17, 15, 21, 11]); // 徳山, 若松, 大村, 唐津, 常滑, 宮島, 丸亀, 芦屋, びわこ
+
+  function checkedV220_(id, fallback=true){
+    const el = $(id);
+    if(!el) return fallback;
+    return !!el.checked;
+  }
+
+  function isRainLikeV220_(r){
+    const w = String(r?.env?.weatherText ?? "").trim();
+    return /雨|雪|台風|荒|雷/.test(w);
+  }
+
+  function noRainV220_(r){
+    if(!checkedV220_('v220BlockRainSensitiveOn', true)) return true;
+    return !isRainLikeV220_(r);
+  }
+
+  function stSafeAllV220_(r, l2, noStOut){
+    if(noStOut !== true) return false;
+    const stThreats = [l2?.lane3, l2?.lane4, l2?.lane5, l2?.lane6].filter(x => x && x.stThreat);
+    return stThreats.length === 0;
+  }
+
+  function outerStSafeV220_(l2){
+    const stThreats = [l2?.lane4, l2?.lane5, l2?.lane6].filter(x => x && x.stThreat);
+    return stThreats.length === 0;
+  }
+
+  function v220NeedStReady_(){
+    return checkedV220_('v220RequireStReadyOn', true);
+  }
+
+  function addBlockerV220_(arr, ok, reason){
+    if(!ok) arr.push(reason);
+  }
+
+  function v220RuleMeta_(stadium){
+    const s = Number(stadium);
+    const venue = VENUES[s] || String(s);
+    if(s === 16) return { role:'official', group:'LOW_SAFE_MAIN', ruleShort:'児島MAIN', ruleName:'児島LOW_SAFE：1展示1位＋2展示≤3＋d2≤0.03＋ST安全＋水面OK＋3/4脅威なし', oddsRole:'low' };
+    if(s === 9) return { role:'official', group:'LOW_SAFE_MAIN', ruleShort:'津MAIN', ruleName:'津LOW_SAFE：1展示1位＋2展示≤3＋d2≤0.05＋ST安全＋雨なし＋3/4脅威なし', oddsRole:'low' };
+    if(s === 13) return { role:'official', group:'LOW_SAFE_MAIN', ruleShort:'尼崎MAIN', ruleName:'尼崎LOW_SAFE：1展示1位＋2展示≤2＋d2≤0.03＋ST安全＋雨なし＋3/4脅威なし', oddsRole:'low' };
+    if(s === 22) return { role:'official', group:'LOW_SAFE_RESEARCH_PROMOTED', ruleShort:'福岡MAIN', ruleName:'福岡LOW_SAFE：1展示1位＋2展示≤3＋d2≤0.05＋ST全体安全＋雨なし', oddsRole:'low' };
+    if(s === 19) return { role:'official', group:'LOW_SAFE_RESEARCH_PROMOTED', ruleShort:'下関MAIN', ruleName:'下関LOW_SAFE：1展示1位＋2展示≤2＋d2≤0.08＋ST安全＋3/4脅威なし', oddsRole:'low' };
+    if(s === 14) return { role:'official', group:'C_WATCH_PROMOTED', ruleShort:'鳴門MAIN', ruleName:'鳴門LOW_SAFE：1展示1位＋2展示≤3＋d2≤0.08＋ST全体安全＋雨なし＋3/4脅威なし', oddsRole:'low' };
+
+    if(s === 18) return { role:'research', group:'LOW_BORDER', ruleShort:'徳山BORDER', ruleName:'徳山LOW_BORDER：基礎強いが2.2未達。LOWのみ検証', oddsRole:'low' };
+    if(s === 20) return { role:'research', group:'LOW_BORDER', ruleShort:'若松BORDER', ruleName:'若松LOW_BORDER：2.2未達。LOWのみ検証', oddsRole:'low' };
+    if(s === 24) return { role:'research', group:'VALUE_WATCH', ruleShort:'大村VALUE', ruleName:'大村VALUE_WATCH_STRICT：2.7〜3.8専用検証', oddsRole:'value' };
+    if(s === 23) return { role:'research', group:'LOW_RESEARCH', ruleShort:'唐津LOW検証', ruleName:'唐津LOW_RESEARCH：直近LOWは良いが過去2.2未達', oddsRole:'low' };
+    if(s === 8) return { role:'research', group:'LOW_RESEARCH', ruleShort:'常滑LOW検証', ruleName:'常滑LOW_RESEARCH：LOW限定、VALUE以上禁止', oddsRole:'low' };
+    if(s === 17) return { role:'research', group:'VALUE_RESEARCH', ruleShort:'宮島VALUE検証', ruleName:'宮島VALUE_RESEARCH：買い候補ではなく研究', oddsRole:'value' };
+    if(s === 15) return { role:'research', group:'LOW_RESEARCH_STOP', ruleShort:'丸亀LOW検証', ruleName:'丸亀LOW_RESEARCH：実戦SIM悪く停止寄り。LOWだけ研究', oddsRole:'low' };
+    if(s === 21) return { role:'research', group:'LOW_RESEARCH', ruleShort:'芦屋LOW検証', ruleName:'芦屋LOW_RESEARCH：2着ズレ警戒。LOW_SAFE待ち', oddsRole:'low' };
+    if(s === 11) return { role:'research', group:'LOW_RESEARCH', ruleShort:'びわこLOW検証', ruleName:'びわこLOW_RESEARCH：2.2未達。LOWだけ研究', oddsRole:'low' };
+
+    return { role:'none', group:'NO_TARGET', ruleShort:`${venue}対象外`, ruleName:'v2.20対象外', oddsRole:'none' };
+  }
+
+  function v220ExpectedOddsBandOk_(meta, band){
+    if(meta.oddsRole === 'low') return band.band === 'LOW_ODDS_SIM';
+    if(meta.oddsRole === 'value') return band.band === 'VALUE_SIM';
+    return false;
+  }
+
+  function buildV220VenueFlags_(r){
+    const stadium = Number(r?.stadium);
+    const venue = VENUES[stadium] || r?.venue || '';
+    const meta = v220RuleMeta_(stadium);
+    const target = meta.role !== 'none';
+    const officialEnabled = checkedV220_('v220OfficialBuyOn', true);
+    const researchEnabled = checkedV220_('v220ResearchVenueOn', true);
+    const enabled = meta.role === 'official' ? officialEnabled : (meta.role === 'research' ? researchEnabled : false);
+
+    const f1 = passFilter1(r);
+    const odd = getOddFor(r, '2T', '1-2');
+    const band = oddsBandV219_(odd);
+    const resultClass = resultClass2T12_(r?.result_top3);
+    const l2 = lane2SurvivalScoreV215_(r);
+    const one = oneWinScoreV216_(r);
+    const rank1 = exhibitionRank(r?.exh);
+    const rank2 = laneExhRank_(r?.exh, 2);
+    const d2 = deltaLane(r?.exh, 2);
+    const stReady = stReady13_(r);
+    const needSt = v220NeedStReady_();
+    const stOut = st1Outmuscled_(r, num('stOutmuscle') ?? 0.05);
+    const noStOut = stOut !== true;
+    const no34 = !l2.lane3Threat && !l2.lane4Threat;
+    const noOuter = !l2.outerThreat;
+    const calm = calmWater4_(r);
+    const rain = isRainLikeV220_(r);
+    const noRain = noRainV220_(r);
+    const allStSafe = stSafeAllV220_(r, l2, noStOut);
+    const outerStSafe = outerStSafeV220_(l2);
+    const structureBlockers = [];
+    const oddsBlockers = [];
+    const miscBlockers = [];
+
+    const d2Ok = (max) => d2 != null && d2 <= max + EPS;
+    const rank1Ok = (max) => Number.isFinite(rank1) && rank1 <= max;
+    const rank2Ok = (max) => Number.isFinite(rank2) && rank2 <= max;
+
+    if(!target) miscBlockers.push('v2.20対象外');
+    if(target && !enabled) miscBlockers.push(meta.role === 'official' ? 'v2.20正式BUY OFF' : 'v2.20検証会場 OFF');
+    addBlockerV220_(structureBlockers, f1.ok, f1.reasons.join(' / ') || '条件①外');
+    addBlockerV220_(structureBlockers, r?.exhReady === true, '展示待ち');
+    if(target && needSt) addBlockerV220_(structureBlockers, stReady, 'ST待ち');
+
+    if(target){
+      switch(stadium){
+        case 16: // 児島
+          addBlockerV220_(structureBlockers, rank1 === 1, `1展示1位ではない(${rank1 ?? '-'})`);
+          addBlockerV220_(structureBlockers, rank2Ok(3), `2展示>3(${rank2 ?? '-'})`);
+          addBlockerV220_(structureBlockers, d2Ok(0.03), `d2>0.03(${d2 == null ? '-' : d2.toFixed(2)})`);
+          addBlockerV220_(structureBlockers, noStOut, 'ST出負け');
+          addBlockerV220_(structureBlockers, calm, '水面荒れ');
+          addBlockerV220_(structureBlockers, no34, '3/4が2を食う脅威あり');
+          break;
+        case 9: // 津
+          addBlockerV220_(structureBlockers, rank1 === 1, `1展示1位ではない(${rank1 ?? '-'})`);
+          addBlockerV220_(structureBlockers, rank2Ok(3), `2展示>3(${rank2 ?? '-'})`);
+          addBlockerV220_(structureBlockers, d2Ok(0.05), `d2>0.05(${d2 == null ? '-' : d2.toFixed(2)})`);
+          addBlockerV220_(structureBlockers, noStOut, 'ST出負け');
+          addBlockerV220_(structureBlockers, noRain, '雨表記');
+          addBlockerV220_(structureBlockers, no34, '3/4が2を食う脅威あり');
+          break;
+        case 13: // 尼崎
+          addBlockerV220_(structureBlockers, rank1 === 1, `1展示1位ではない(${rank1 ?? '-'})`);
+          addBlockerV220_(structureBlockers, rank2Ok(2), `2展示>2(${rank2 ?? '-'})`);
+          addBlockerV220_(structureBlockers, d2Ok(0.03), `d2>0.03(${d2 == null ? '-' : d2.toFixed(2)})`);
+          addBlockerV220_(structureBlockers, noStOut, 'ST出負け');
+          addBlockerV220_(structureBlockers, noRain, '雨表記');
+          addBlockerV220_(structureBlockers, no34, '3/4が2を食う脅威あり');
+          break;
+        case 22: // 福岡
+          addBlockerV220_(structureBlockers, rank1 === 1, `1展示1位ではない(${rank1 ?? '-'})`);
+          addBlockerV220_(structureBlockers, rank2Ok(3), `2展示>3(${rank2 ?? '-'})`);
+          addBlockerV220_(structureBlockers, d2Ok(0.05), `d2>0.05(${d2 == null ? '-' : d2.toFixed(2)})`);
+          addBlockerV220_(structureBlockers, allStSafe, 'ST全体安全不足');
+          addBlockerV220_(structureBlockers, noRain, '雨表記');
+          break;
+        case 19: // 下関
+          addBlockerV220_(structureBlockers, rank1 === 1, `1展示1位ではない(${rank1 ?? '-'})`);
+          addBlockerV220_(structureBlockers, rank2Ok(2), `2展示>2(${rank2 ?? '-'})`);
+          addBlockerV220_(structureBlockers, d2Ok(0.08), `d2>0.08(${d2 == null ? '-' : d2.toFixed(2)})`);
+          addBlockerV220_(structureBlockers, noStOut, 'ST出負け');
+          addBlockerV220_(structureBlockers, no34, '3/4が2を食う脅威あり');
+          break;
+        case 14: // 鳴門
+          addBlockerV220_(structureBlockers, rank1 === 1, `1展示1位ではない(${rank1 ?? '-'})`);
+          addBlockerV220_(structureBlockers, rank2Ok(3), `2展示>3(${rank2 ?? '-'})`);
+          addBlockerV220_(structureBlockers, d2Ok(0.08), `d2>0.08(${d2 == null ? '-' : d2.toFixed(2)})`);
+          addBlockerV220_(structureBlockers, allStSafe, 'ST全体安全不足');
+          addBlockerV220_(structureBlockers, no34, '3/4が2を食う脅威あり');
+          addBlockerV220_(structureBlockers, noRain, '雨表記');
+          break;
+
+        case 18: // 徳山
+          addBlockerV220_(structureBlockers, rank1 === 1, `1展示1位ではない(${rank1 ?? '-'})`);
+          addBlockerV220_(structureBlockers, rank2Ok(2), `2展示>2(${rank2 ?? '-'})`);
+          addBlockerV220_(structureBlockers, d2Ok(0.08), `d2>0.08(${d2 == null ? '-' : d2.toFixed(2)})`);
+          addBlockerV220_(structureBlockers, no34, '3/4が2を食う脅威あり');
+          addBlockerV220_(structureBlockers, calm, '水面荒れ');
+          break;
+        case 20: // 若松
+          addBlockerV220_(structureBlockers, rank1Ok(2), `1展示>2(${rank1 ?? '-'})`);
+          addBlockerV220_(structureBlockers, rank2Ok(2), `2展示>2(${rank2 ?? '-'})`);
+          addBlockerV220_(structureBlockers, d2Ok(0.05), `d2>0.05(${d2 == null ? '-' : d2.toFixed(2)})`);
+          addBlockerV220_(structureBlockers, allStSafe, 'ST全体安全不足');
+          addBlockerV220_(structureBlockers, no34, '3/4が2を食う脅威あり');
+          break;
+        case 24: // 大村
+          addBlockerV220_(structureBlockers, rank1 === 1, `1展示1位ではない(${rank1 ?? '-'})`);
+          addBlockerV220_(structureBlockers, rank2Ok(2), `2展示>2(${rank2 ?? '-'})`);
+          addBlockerV220_(structureBlockers, d2Ok(0.05), `d2>0.05(${d2 == null ? '-' : d2.toFixed(2)})`);
+          addBlockerV220_(structureBlockers, l2.score >= 95, `2残存score<95(${l2.score})`);
+          addBlockerV220_(structureBlockers, outerStSafe, '外枠ST脅威あり');
+          break;
+        case 23: // 唐津
+          addBlockerV220_(structureBlockers, rank1 === 1, `1展示1位ではない(${rank1 ?? '-'})`);
+          addBlockerV220_(structureBlockers, rank2Ok(2), `2展示>2(${rank2 ?? '-'})`);
+          addBlockerV220_(structureBlockers, d2Ok(0.08), `d2>0.08(${d2 == null ? '-' : d2.toFixed(2)})`);
+          addBlockerV220_(structureBlockers, l2.score >= 90, `2残存score<90(${l2.score})`);
+          addBlockerV220_(structureBlockers, calm, '水面荒れ');
+          break;
+        case 8: // 常滑
+          addBlockerV220_(structureBlockers, rank1 === 1, `1展示1位ではない(${rank1 ?? '-'})`);
+          addBlockerV220_(structureBlockers, rank2Ok(2), `2展示>2(${rank2 ?? '-'})`);
+          addBlockerV220_(structureBlockers, d2Ok(0.05), `d2>0.05(${d2 == null ? '-' : d2.toFixed(2)})`);
+          addBlockerV220_(structureBlockers, noOuter, '外枠が2を食う脅威あり');
+          addBlockerV220_(structureBlockers, calm, '水面荒れ');
+          break;
+        case 17: // 宮島
+          addBlockerV220_(structureBlockers, one.score >= 80, `1勝score<80(${one.score})`);
+          addBlockerV220_(structureBlockers, d2Ok(0.12), `d2>0.12(${d2 == null ? '-' : d2.toFixed(2)})`);
+          addBlockerV220_(structureBlockers, noRain, '雨表記');
+          break;
+        case 15: // 丸亀
+          addBlockerV220_(structureBlockers, rank1Ok(2), `1展示>2(${rank1 ?? '-'})`);
+          addBlockerV220_(structureBlockers, rank2Ok(4), `2展示>4(${rank2 ?? '-'})`);
+          addBlockerV220_(structureBlockers, d2Ok(0.03), `d2>0.03(${d2 == null ? '-' : d2.toFixed(2)})`);
+          addBlockerV220_(structureBlockers, noOuter, '外枠が2を食う脅威あり');
+          addBlockerV220_(structureBlockers, noRain, '雨表記');
+          break;
+        case 21: // 芦屋
+          addBlockerV220_(structureBlockers, rank1 === 1, `1展示1位ではない(${rank1 ?? '-'})`);
+          addBlockerV220_(structureBlockers, rank2Ok(2), `2展示>2(${rank2 ?? '-'})`);
+          addBlockerV220_(structureBlockers, d2Ok(0.05), `d2>0.05(${d2 == null ? '-' : d2.toFixed(2)})`);
+          addBlockerV220_(structureBlockers, no34, '3/4が2を食う脅威あり');
+          break;
+        case 11: // びわこ
+          addBlockerV220_(structureBlockers, rank1 === 1, `1展示1位ではない(${rank1 ?? '-'})`);
+          addBlockerV220_(structureBlockers, rank2Ok(2), `2展示>2(${rank2 ?? '-'})`);
+          addBlockerV220_(structureBlockers, d2Ok(0.05), `d2>0.05(${d2 == null ? '-' : d2.toFixed(2)})`);
+          addBlockerV220_(structureBlockers, no34, '3/4が2を食う脅威あり');
+          addBlockerV220_(structureBlockers, noRain, '雨表記');
+          break;
+        default:
+          break;
+      }
+    }
+
+    if(target){
+      if(!Number.isFinite(odd) || odd <= 0) oddsBlockers.push('2連単1-2オッズ未入力');
+      else if(!v220ExpectedOddsBandOk_(meta, band)) oddsBlockers.push(`v2.20対象オッズ帯外(${band.band})`);
+    }
+
+    const structureCandidate = target && enabled && structureBlockers.length === 0 && miscBlockers.length === 0;
+    const oddsOk = target && Number.isFinite(odd) && odd > 0 && v220ExpectedOddsBandOk_(meta, band);
+    const officialCandidate = structureCandidate && meta.role === 'official';
+    const officialBuy = officialCandidate && oddsOk;
+    const researchCandidate = structureCandidate && meta.role === 'research';
+    const researchActive = researchCandidate && oddsOk;
+    const hitBase = resultClass.cls === '12_hit';
+    const officialStake = officialBuy ? 100 : 0;
+    const officialPayout = (officialBuy && hitBase && Number.isFinite(odd)) ? Math.round(odd * 100) : 0;
+    const researchStake = researchActive ? 100 : 0;
+    const researchPayout = (researchActive && hitBase && Number.isFinite(odd)) ? Math.round(odd * 100) : 0;
+
+    return {
+      v220_visible: target && enabled,
+      v220_target_venue: target,
+      v220_enabled: enabled,
+      v220_role: meta.role,
+      v220_group: meta.group,
+      v220_rule_name: meta.ruleName,
+      v220_rule_short: meta.ruleShort,
+      v220_expected_odds_role: meta.oddsRole,
+      v220_structure_candidate: structureCandidate,
+      v220_official_candidate: officialCandidate,
+      v220_official_buy: officialBuy,
+      v220_official_hit: officialBuy && hitBase,
+      v220_official_stake: officialStake,
+      v220_official_payout: officialPayout,
+      v220_official_profit: officialBuy ? (officialPayout - officialStake) : 0,
+      v220_research_candidate: researchCandidate,
+      v220_research_active: researchActive,
+      v220_research_hit: researchActive && hitBase,
+      v220_research_stake: researchStake,
+      v220_research_payout: researchPayout,
+      v220_research_profit: researchActive ? (researchPayout - researchStake) : 0,
+      v220_odd: Number.isFinite(odd) ? odd : null,
+      v220_odds_band: band.band,
+      v220_market_support_level: band.market,
+      v220_structure_blockers: structureBlockers.join(' / ') || null,
+      v220_odds_blockers: oddsBlockers.join(' / ') || null,
+      v220_blockers: [...miscBlockers, ...structureBlockers, ...oddsBlockers].join(' / ') || null,
+      v220_result_class: resultClass.cls,
+      v220_result_label: resultClass.label,
+      v220_is_12_hit: hitBase,
+      v220_rain_like: rain,
+      v220_st_ready: stReady,
+      v220_no_st_out: noStOut,
+      v220_all_st_safe: allStSafe,
+      v220_outer_st_safe: outerStSafe,
+      v220_calm: calm,
+      v220_no_rain: noRain,
+      v220_rank1: rank1,
+      v220_rank2: rank2,
+      v220_d2: d2,
+      v220_one_score: one.score,
+      v220_lane2_score: l2.score,
+      v220_no34_threat: no34,
+      v220_no_outer_threat: noOuter,
+      v220_detail: { stadium, venue, rank1, rank2, d2, oneScore:one.score, lane2Score:l2.score, rain, stReady, noStOut, allStSafe, outerStSafe, calm, noRain, no34, noOuter }
+    };
+  }
+
+  function v220PlanFromFlags_(flags){
+    return {
+      level: (flags?.v220_official_candidate ? 'final' : (flags?.v220_research_candidate ? 'research' : 'no')),
+      betType: '2T',
+      combo: '1-2',
+      reasons: flags?.v220_blockers ? [flags.v220_blockers] : [],
+      _v220: flags,
+      _noType: flags?.v220_odds_blockers ? 'odds_no' : 'risk_no'
+    };
+  }
+
   function oddsPass(r, betType, odd){
     if(!$("oddsFilterOn").checked) return { ok:true, reasons:[] };
     const reasons=[];
@@ -2585,29 +2919,48 @@
     const f1 = passFilter1(r);
     if(!f1.ok) return { state:"条件外", msg:`条件外：${f1.reasons.join(" / ")}` };
 
-    const plan = computePlan(r);
-    if(plan.level==="wait") return { state:"WAIT", msg:"WAIT：展示（1〜3）待ち", plan };
-    if(plan.level==="no"){
-      plan._noType = plan._noType || "risk_no";
-      return { state:"NO", msg:`NO：${plan.reasons.join(" / ")}`, plan };
-    }
-    if(plan.level==="out")  return { state:"条件外", msg:`条件外：${plan.reasons.join(" / ")}`, plan };
+    if(!r.exhReady) return { state:"WAIT", msg:"WAIT：展示（1〜3）待ち", plan:{ level:'wait', reasons:['展示待ち'], betType:'2T', combo:'1-2' } };
 
-    const odd = getOddFor(r, plan.betType, plan.combo);
-    const op = oddsPass(r, plan.betType, odd);
+    const v220 = buildV220VenueFlags_(r);
+    const plan = v220PlanFromFlags_(v220);
 
-    if(!op.ok){
-      // v2.14: オッズ未入力だけでNOにせず、前バージョン同様WAIT表示に戻す。
-      if(op.reasons.length === 1 && String(op.reasons[0]).includes("未入力")){
-        return { state:"WAIT", msg:`WAIT：オッズ入力待ち（${plan.betType} ${plan.combo}）`, plan, odd:null };
-      }
-      plan._noType = "odds_no";
-      plan._oddsNoReasons = op.reasons.slice();
-      const prefix = $('v215LowOddsNoSeparateOn')?.checked ? "NO：オッズ見送り" : "NO";
-      return { state:"NO", msg:`${prefix}：${op.reasons.join(" / ")}`, plan, odd };
+    // v2.20: 旧正式BUYロジックは使わず、会場別LOW_SAFEだけを正式BUYにする。
+    if(v220.v220_official_buy){
+      return { state:"BUY", msg:`BUY：v2.20 ${v220.v220_rule_short} / 2連単 1-2`, plan, odd:v220.v220_odd };
     }
 
-    return { state:"BUY", msg:`BUY：2連単 1-2（1点）`, plan, odd };
+    if(v220.v220_official_candidate && !Number.isFinite(v220.v220_odd)){
+      return { state:"WAIT", msg:`WAIT：v2.20正式候補 オッズ入力待ち（${v220.v220_rule_short}）`, plan, odd:null };
+    }
+
+    if(v220.v220_official_candidate && v220.v220_odds_blockers){
+      plan._noType = 'odds_no';
+      plan._oddsNoReasons = [v220.v220_odds_blockers];
+      return { state:"NO", msg:`NO：v2.20正式候補 オッズ帯対象外（${v220.v220_odds_blockers}）`, plan, odd:v220.v220_odd };
+    }
+
+    if(v220.v220_role === 'official' && v220.v220_visible){
+      plan._noType = 'risk_no';
+      return { state:"NO", msg:`NO：v2.20メイン会場条件不足（${v220.v220_structure_blockers || v220.v220_blockers || '-' }）`, plan, odd:v220.v220_odd };
+    }
+
+    if(v220.v220_research_candidate && !Number.isFinite(v220.v220_odd)){
+      return { state:"WAIT", msg:`WAIT：v2.20検証候補 オッズ入力待ち（${v220.v220_rule_short}）`, plan, odd:null };
+    }
+
+    if(v220.v220_research_active){
+      return { state:"条件外", msg:`検証のみ：v2.20 ${v220.v220_rule_short} / ${v220.v220_odds_band}（正式BUY対象外）`, plan, odd:v220.v220_odd };
+    }
+
+    if(v220.v220_research_candidate && v220.v220_odds_blockers){
+      return { state:"条件外", msg:`検証のみ：v2.20 ${v220.v220_rule_short} / オッズ帯対象外（${v220.v220_odds_blockers}）`, plan, odd:v220.v220_odd };
+    }
+
+    if(v220.v220_role === 'research' && v220.v220_visible && v220.v220_structure_blockers){
+      return { state:"条件外", msg:`検証会場条件外：${v220.v220_rule_short}（${v220.v220_structure_blockers}）`, plan, odd:v220.v220_odd };
+    }
+
+    return { state:"条件外", msg:"条件外：v2.20正式/検証対象外", plan:{ level:'out', reasons:['v2.20対象外'], betType:'2T', combo:'1-2' } };
   }
 
   // ====== 結果（0-0-0を出さない厳格版） ======
@@ -2929,6 +3282,9 @@
     let value=0, valueHit=0, valueStake=0, valuePayout=0, valueProfit=0;
     let high=0, highHit=0, highStake=0, highPayout=0, highProfit=0;
     let danger=0, dangerHit=0, dangerStake=0, dangerPayout=0, dangerProfit=0;
+    let v220Official=0, v220OfficialHit=0, v220OfficialStake=0, v220OfficialPayout=0, v220OfficialProfit=0;
+    let v220Research=0, v220ResearchHit=0, v220ResearchStake=0, v220ResearchPayout=0, v220ResearchProfit=0;
+    let v220MainStruct=0, v220ResearchStruct=0;
 
     for(const r of racesForExport){
       if(passFilter1(r).ok) f1pass++;
@@ -2989,6 +3345,18 @@
       dangerStake += Number(r.v219_odds_danger_stake || 0);
       dangerPayout += Number(r.v219_odds_danger_payout || 0);
       dangerProfit += Number(r.v219_odds_danger_profit || 0);
+      if(r.v220_official_candidate) v220MainStruct++;
+      if(r.v220_research_candidate) v220ResearchStruct++;
+      if(r.v220_official_buy) v220Official++;
+      if(r.v220_official_hit) v220OfficialHit++;
+      v220OfficialStake += Number(r.v220_official_stake || 0);
+      v220OfficialPayout += Number(r.v220_official_payout || 0);
+      v220OfficialProfit += Number(r.v220_official_profit || 0);
+      if(r.v220_research_active) v220Research++;
+      if(r.v220_research_hit) v220ResearchHit++;
+      v220ResearchStake += Number(r.v220_research_stake || 0);
+      v220ResearchPayout += Number(r.v220_research_payout || 0);
+      v220ResearchProfit += Number(r.v220_research_profit || 0);
     }
 
     return {
@@ -3044,7 +3412,19 @@
       v219_odds_danger_hit: dangerHit,
       v219_odds_danger_stake: dangerStake,
       v219_odds_danger_payout: dangerPayout,
-      v219_odds_danger_profit: dangerProfit
+      v219_odds_danger_profit: dangerProfit,
+      v220_official_candidates: v220MainStruct,
+      v220_research_candidates: v220ResearchStruct,
+      v220_official_buy: v220Official,
+      v220_official_hit: v220OfficialHit,
+      v220_official_stake: v220OfficialStake,
+      v220_official_payout: v220OfficialPayout,
+      v220_official_profit: v220OfficialProfit,
+      v220_research_active: v220Research,
+      v220_research_hit: v220ResearchHit,
+      v220_research_stake: v220ResearchStake,
+      v220_research_payout: v220ResearchPayout,
+      v220_research_profit: v220ResearchProfit
     };
   }
 
@@ -3074,6 +3454,9 @@
     let oddsNo=0,riskNo=0,true12Candidate=0,oneWinCandidate=0,twoStageCandidate=0,oneScoreStrong=0,hit12=0,oneWinNot12=0,lane3Slip=0,lane4Slip=0;
     let simRule=0,simRuleHit=0,simStrict=0,simStrictWait=0,simStrictOddsNo=0,simStrictHit=0,simStrictOneWinNot12=0,simStrictOneLost=0,simStrictStake=0,simStrictPayout=0,simStrictProfit=0,watch=0,watchHit=0;
     let low=0,lowHit=0,lowStake=0,lowPayout=0,lowProfit=0,value=0,valueHit=0,valueStake=0,valuePayout=0,valueProfit=0,high=0,highHit=0,highStake=0,highPayout=0,highProfit=0,danger=0,dangerHit=0,dangerStake=0,dangerPayout=0,dangerProfit=0;
+    let v220Official=0,v220OfficialHit=0,v220OfficialStake=0,v220OfficialPayout=0,v220OfficialProfit=0;
+    let v220Research=0,v220ResearchHit=0,v220ResearchStake=0,v220ResearchPayout=0,v220ResearchProfit=0;
+    let v220MainStruct=0,v220ResearchStruct=0;
 
     for(const r of races){
       const ev = evaluate(r);
@@ -3133,6 +3516,18 @@
       dangerStake += Number(v218.v219_odds_danger_stake || 0);
       dangerPayout += Number(v218.v219_odds_danger_payout || 0);
       dangerProfit += Number(v218.v219_odds_danger_profit || 0);
+      if(v218.v220_official_candidate) v220MainStruct++;
+      if(v218.v220_research_candidate) v220ResearchStruct++;
+      if(v218.v220_official_buy) v220Official++;
+      if(v218.v220_official_hit) v220OfficialHit++;
+      v220OfficialStake += Number(v218.v220_official_stake || 0);
+      v220OfficialPayout += Number(v218.v220_official_payout || 0);
+      v220OfficialProfit += Number(v218.v220_official_profit || 0);
+      if(v218.v220_research_active) v220Research++;
+      if(v218.v220_research_hit) v220ResearchHit++;
+      v220ResearchStake += Number(v218.v220_research_stake || 0);
+      v220ResearchPayout += Number(v218.v220_research_payout || 0);
+      v220ResearchProfit += Number(v218.v220_research_profit || 0);
     }
 
     const strictRoi = simStrictStake > 0 ? ((simStrictPayout / simStrictStake) * 100).toFixed(1) : '-';
@@ -3140,8 +3535,10 @@
     const valueRoi = valueStake > 0 ? ((valuePayout / valueStake) * 100).toFixed(1) : '-';
     const highRoi = highStake > 0 ? ((highPayout / highStake) * 100).toFixed(1) : '-';
     const dangerRoi = dangerStake > 0 ? ((dangerPayout / dangerStake) * 100).toFixed(1) : '-';
+    const v220OfficialRoi = v220OfficialStake > 0 ? ((v220OfficialPayout / v220OfficialStake) * 100).toFixed(1) : '-';
+    const v220ResearchRoi = v220ResearchStake > 0 ? ((v220ResearchPayout / v220ResearchStake) * 100).toFixed(1) : '-';
     $("summary").textContent =
-      `取得${total}R / 条件①通過${f1pass}R / 2単候補${finals} / BUY${buy} / NO${no}（risk:${riskNo} odds:${oddsNo}） / WAIT${wait} / 条件外${filtered} / SIM_RULE${simRule}（的中${simRuleHit}） / LOW${low}（的中${lowHit} 収支${lowProfit}円 ROI${lowRoi}%） / VALUE${value}（的中${valueHit} 収支${valueProfit}円 ROI${valueRoi}%） / HIGH${high}（的中${highHit} 収支${highProfit}円 ROI${highRoi}%） / DANGER${danger}（的中${dangerHit} 収支${dangerProfit}円 ROI${dangerRoi}%） / SIM_STRICT${simStrict}（的中${simStrictHit} 収支${simStrictProfit}円 ROI${strictRoi}% / WAIT${simStrictWait} ODDS_NO${simStrictOddsNo} / 1ズレ${simStrictOneWinNot12} 1飛び${simStrictOneLost}） / WATCH${watch}（的中${watchHit}） / 二段階候補${twoStageCandidate} / 1勝候補${oneWinCandidate} / 1score強${oneScoreStrong} / 1-2的中${hit12} / 1勝ち2ズレ${oneWinNot12}（1-3:${lane3Slip} 1-4:${lane4Slip}） / 2単odds${oddsReady} / before${beforeReady} / result${resReady}`;
+      `取得${total}R / 条件①通過${f1pass}R / v2.20正式候補${v220MainStruct} / BUY${buy} / NO${no}（risk:${riskNo} odds:${oddsNo}） / WAIT${wait} / 条件外${filtered} / v2.20正式BUY${v220Official}（的中${v220OfficialHit} 収支${v220OfficialProfit}円 ROI${v220OfficialRoi}%） / v2.20検証${v220Research}（構造${v220ResearchStruct} 的中${v220ResearchHit} 収支${v220ResearchProfit}円 ROI${v220ResearchRoi}%） / 旧SIM_RULE${simRule}（的中${simRuleHit}） / LOW${low}（的中${lowHit} 収支${lowProfit}円 ROI${lowRoi}%） / VALUE${value}（的中${valueHit} 収支${valueProfit}円 ROI${valueRoi}%） / HIGH${high}（的中${highHit} 収支${highProfit}円 ROI${highRoi}%） / DANGER${danger}（的中${dangerHit} 収支${dangerProfit}円 ROI${dangerRoi}%） / SIM_STRICT${simStrict}（的中${simStrictHit} 収支${simStrictProfit}円 ROI${strictRoi}% / WAIT${simStrictWait} ODDS_NO${simStrictOddsNo} / 1ズレ${simStrictOneWinNot12} 1飛び${simStrictOneLost}） / WATCH${watch}（的中${watchHit}） / 二段階候補${twoStageCandidate} / 1勝候補${oneWinCandidate} / 1score強${oneScoreStrong} / 1-2的中${hit12} / 1勝ち2ズレ${oneWinNot12}（1-3:${lane3Slip} 1-4:${lane4Slip}） / 2単odds${oddsReady} / before${beforeReady} / result${resReady}`;
 
     renderNoDiagnostics_(races);
   }
@@ -3178,11 +3575,14 @@
     const plan = ev.plan;
     const isFinal = plan && plan.level==="final";
     if(buyLine){
-      if(isFinal){
-        const odd = ev.odd;
-        buyLine.innerHTML = `買い：<b>2連単 1-2</b>${Number.isFinite(odd) ? ` / odds=${odd}` : ``}`;
+      if(v217.v220_official_buy){
+        buyLine.innerHTML = `v2.20正式BUY：<b>2連単 1-2</b> <span class="tag mono">${v217.v220_rule_short}</span>${Number.isFinite(v217.v220_odd) ? ` / odds=${v217.v220_odd}` : ``}`;
+      }else if(v217.v220_research_active){
+        buyLine.innerHTML = `v2.20検証：<b>2連単 1-2</b> <span class="tag mono">${v217.v220_rule_short}</span><span class="tag mono">${v217.v220_group}</span>${Number.isFinite(v217.v220_odd) ? ` / odds=${v217.v220_odd}` : ` / odds未入力`}`;
+      }else if(v217.v220_official_candidate || v217.v220_research_candidate){
+        buyLine.innerHTML = `v2.20候補：<b>2連単 1-2</b> <span class="tag mono">${v217.v220_rule_short}</span>${Number.isFinite(v217.v220_odd) ? ` / odds=${v217.v220_odd}` : ` / odds未入力`}`;
       }else if((v217.v218_sim_rule_candidate || v217.v218_watch_candidate) && $('v217VenueRuleAsSimBuyOn')?.checked){
-        buyLine.innerHTML = `SIM検証：<b>2連単 1-2</b> <span class="tag mono">${v217.v217_sim_state}</span><span class="tag mono">${v217.v219_sim_eval_group}</span>${v217.v218_watch_candidate ? `<span class="tag mono">${v217.v218_watch_short}</span>` : ``}${Number.isFinite(v217.v217_sim_odd) ? ` / odds=${v217.v217_sim_odd}` : ` / odds未入力`}`;
+        buyLine.innerHTML = `旧SIM検証：<b>2連単 1-2</b> <span class="tag mono">${v217.v217_sim_state}</span><span class="tag mono">${v217.v219_sim_eval_group}</span>${v217.v218_watch_candidate ? `<span class="tag mono">${v217.v218_watch_short}</span>` : ``}${Number.isFinite(v217.v217_sim_odd) ? ` / odds=${v217.v217_sim_odd}` : ` / odds未入力`}`;
       }else{
         buyLine.innerHTML = "";
       }
@@ -3212,15 +3612,17 @@
     const v215Flags = buildV215ResearchFlags_(r);
     const v217Flags = buildV217VenueRuleFlags_(r);
     const showSimOdds = !!((v217Flags.v218_sim_rule_candidate || v217Flags.v218_watch_candidate) && $('v217ShowOddsInputForSimOn')?.checked);
-    const showOddsBlock = !!(isFinal || showSimOdds);
+    const showV220Odds = !!(v217Flags.v220_official_candidate || v217Flags.v220_research_candidate || v217Flags.v220_research_active || v217Flags.v220_official_buy);
+    const showOddsBlock = !!(isFinal || showSimOdds || showV220Odds);
 
     const oddsBlock = showOddsBlock ? `
       <div class="hr"></div>
       <div class="muted small">
-        <b>${isFinal ? "最終候補" : "v2.19 SIM検証候補"}</b>：2連単 1-2（1点）
+        <b>${showV220Odds ? (v217Flags.v220_role === 'official' ? "v2.20正式候補" : "v2.20検証候補") : (isFinal ? "最終候補" : "旧v2.19 SIM検証候補")}</b>：2連単 1-2（1点）
         <span class="tag mono">会場:${venueSubRankOf(r.stadium)}</span>
         ${isFinal && plan?._strong2t12 ? `<span class="tag mono">強BUY条件</span>` : ``}
-        ${showSimOdds ? `<span class="tag mono">${v217Flags.v218_sim_rule_candidate ? v217Flags.v217_rule_short : v217Flags.v218_watch_short}</span><span class="tag mono">${v217Flags.v217_sim_state}</span>` : ``}
+        ${showV220Odds ? `<span class="tag mono">${v217Flags.v220_rule_short}</span><span class="tag mono">${v217Flags.v220_group}</span><span class="tag mono">${v217Flags.v220_odds_band}</span>` : ``}
+        ${showSimOdds && !showV220Odds ? `<span class="tag mono">${v217Flags.v218_sim_rule_candidate ? v217Flags.v217_rule_short : v217Flags.v218_watch_short}</span><span class="tag mono">${v217Flags.v217_sim_state}</span>` : ``}
       </div>
 
       <div class="grid g2" style="margin-top:10px;">
@@ -3229,7 +3631,7 @@
           <input data-o2t12 type="text" inputmode="decimal" placeholder="例: 3.2">
         </div>
         <div class="muted small" style="align-self:end;">
-          通常BUY: ${num("minOdds2t") ?? 3.2}倍以上 / 強BUY: ${num("strongMinOdds2t") ?? 2.7}倍以上
+          v2.20正式: LOW 2.2〜2.6 / 検証: 会場別LOWまたはVALUE。旧BUY下限は正式判定に不使用。
         </div>
       </div>
     ` : ``;
@@ -3240,11 +3642,17 @@
     const v215Badge = $('v215ResearchLogOn')?.checked
       ? `<span class="tag mono">1勝:${v215Flags.one_win_score}/${v215Flags.one_win_level}</span><span class="tag mono">2残存:${v215Flags.lane2_survival_score}/${v215Flags.lane2_survival_level}</span>${v215Flags.two_stage_12_candidate ? `<span class="tag mono">二段階候補</span>` : ``}`
       : ``;
+    const v220Badge = v217Flags.v220_visible
+      ? `<span class="tag mono">v2.20:${v217Flags.v220_rule_short}</span><span class="tag mono">${v217Flags.v220_role}</span><span class="tag mono">${v217Flags.v220_group}</span>`
+      : ``;
     const v217Badge = (v217Flags.v218_sim_rule_candidate || v217Flags.v218_watch_candidate)
       ? `<span class="tag mono">v2.19:${v217Flags.v218_sim_rule_candidate ? v217Flags.v217_rule_short : v217Flags.v218_watch_short}</span><span class="tag mono">${v217Flags.v217_sim_state}</span><span class="tag mono">${v217Flags.v219_sim_eval_group}</span>`
       : ``;
     const v215Line = $('v215ResearchLogOn')?.checked
       ? `<div class="resultLine small">v2.16研究: 結果分類=<b>${v215Flags.result_label_2t12}</b> / 1勝score=<b>${v215Flags.one_win_score}</b> / 2残存score=<b>${v215Flags.lane2_survival_score}</b> / 二段階候補:${v215Flags.two_stage_12_candidate?"Y":"N"} / 1hard:${v215Flags.one_win_hard_threat?"Y":"N"} / 3脅威:${v215Flags.lane3_threat_to_2?"Y":"N"} / 4脅威:${v215Flags.lane4_threat_to_2?"Y":"N"} / 1勝ち2ズレ:${v215Flags.one_win_not_12?"Y":"N"}</div>`
+      : ``;
+    const v220Line = v217Flags.v220_visible
+      ? `<div class="resultLine small">v2.20: <b>${v217Flags.v220_rule_short}</b> / role=${v217Flags.v220_role} / group=${v217Flags.v220_group} / 構造=${v217Flags.v220_structure_candidate?"Y":"N"} / 正式BUY=${v217Flags.v220_official_buy?"Y":"N"} / 検証=${v217Flags.v220_research_active?"Y":"N"} / odds=${Number.isFinite(v217Flags.v220_odd) ? v217Flags.v220_odd : "未入力"} / odds帯=${v217Flags.v220_odds_band} / 結果=${v217Flags.v220_result_label} / 収支=${v217Flags.v220_official_buy ? v217Flags.v220_official_profit : v217Flags.v220_research_profit}円 / 阻害=${v217Flags.v220_blockers || "-"}</div>`
       : ``;
     const v217Line = (v217Flags.v218_sim_rule_candidate || v217Flags.v218_watch_candidate)
       ? `<div class="resultLine small">v2.19 SIM: <b>${v217Flags.v218_sim_rule_candidate ? v217Flags.v217_rule_short : v217Flags.v218_watch_short}</b> / RULE=${v217Flags.v218_sim_rule_candidate ? "Y" : "N"} / STRICT=${v217Flags.v218_sim_strict_state} / WATCH=${v217Flags.v218_watch_candidate ? "Y" : "N"} / odds=${Number.isFinite(v217Flags.v217_sim_odd) ? v217Flags.v217_sim_odd : "未入力"} / odds帯=${v217Flags.v219_odds_band} / market=${v217Flags.v219_market_support_short} / eval=${v217Flags.v219_sim_eval_group} / 仮想収支=${v217Flags.v219_sim_eval_profit}円 / 結果=${v217Flags.v217_result_label} / STRICT阻害=${v217Flags.v218_sim_strict_blockers || "-"}</div>`
@@ -3260,6 +3668,7 @@
           ${beforeTag}
           ${softBadge}
           ${v215Badge}
+          ${v220Badge}
           ${v217Badge}
           <span class="tag mono">rank:${venueSubRankOf(r.stadium)}</span>
           ${isHighRiskVenue_(r.stadium) ? `<span class="tag mono">警戒</span>` : ``}
@@ -3277,12 +3686,13 @@
           <div class="resultLine">ST 1:${dispSt(r.st?.["1"])} 2:${dispSt(r.st?.["2"])} 3:${dispSt(r.st?.["3"])} 4:${dispSt(r.st?.["4"])} 5:${dispSt(r.st?.["5"])} 6:${dispSt(r.st?.["6"])}</div>
           ${top3}
           ${v215Line}
+          ${v220Line}
           ${v217Line}
           <div class="resultLine small">
             結果補正: <input data-result-top3 type="text" inputmode="numeric" placeholder="例: 5-1-2" value="${manualTop3 || ""}" style="width:120px; padding:6px; font-size:12px; display:inline-block;">
             <span class="muted small">※結果未取得/誤取得の時だけ入力</span>
           </div>
-          <div class="resultLine" data-buy-line>${isFinal ? `買い：<b>2連単 1-2</b>${Number.isFinite(ev.odd) ? ` / odds=${ev.odd}` : ``}` : ((v217Flags.v218_sim_rule_candidate || v217Flags.v218_watch_candidate) && $('v217VenueRuleAsSimBuyOn')?.checked ? `SIM検証：<b>2連単 1-2</b> <span class="tag mono">${v217Flags.v217_sim_state}</span><span class="tag mono">${v217Flags.v219_sim_eval_group}</span>${Number.isFinite(v217Flags.v217_sim_odd) ? ` / odds=${v217Flags.v217_sim_odd}` : ` / odds未入力`}` : ``)}</div>
+          <div class="resultLine" data-buy-line>${v217Flags.v220_official_buy ? `v2.20正式BUY：<b>2連単 1-2</b> <span class="tag mono">${v217Flags.v220_rule_short}</span>${Number.isFinite(v217Flags.v220_odd) ? ` / odds=${v217Flags.v220_odd}` : ``}` : (v217Flags.v220_research_active ? `v2.20検証：<b>2連単 1-2</b> <span class="tag mono">${v217Flags.v220_rule_short}</span><span class="tag mono">${v217Flags.v220_group}</span>${Number.isFinite(v217Flags.v220_odd) ? ` / odds=${v217Flags.v220_odd}` : ` / odds未入力`}` : ((v217Flags.v220_official_candidate || v217Flags.v220_research_candidate) ? `v2.20候補：<b>2連単 1-2</b> <span class="tag mono">${v217Flags.v220_rule_short}</span>${Number.isFinite(v217Flags.v220_odd) ? ` / odds=${v217Flags.v220_odd}` : ` / odds未入力`}` : (((v217Flags.v218_sim_rule_candidate || v217Flags.v218_watch_candidate) && $('v217VenueRuleAsSimBuyOn')?.checked) ? `旧SIM検証：<b>2連単 1-2</b> <span class="tag mono">${v217Flags.v217_sim_state}</span><span class="tag mono">${v217Flags.v219_sim_eval_group}</span>${Number.isFinite(v217Flags.v217_sim_odd) ? ` / odds=${v217Flags.v217_sim_odd}` : ` / odds未入力`}` : ``)))}</div>
         </div>
         <div class="muted small">
           <div data-ev-msg>${ev.msg}</div>
