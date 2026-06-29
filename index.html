@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.20.8（候補表示＝オッズ入力欄ルート同期FIX / 会場別LOW_SAFE正式BUY / SAFE）</title>
+  <title>競艇 v2.20.9（検証オッズ入力待ち別枠 / 会場別LOW_SAFE正式BUY / SAFE）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -92,7 +92,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.20.8（候補表示＝オッズ入力欄ルート同期FIX / 会場別LOW_SAFE正式BUY / SAFE）</h1>
+  <h1>競艇 v2.20.9（検証オッズ入力待ち別枠 / 会場別LOW_SAFE正式BUY / SAFE）</h1>
   <div class="sub">
     ✅ <b>正式BUY</b>は、v2.20のメイン6会場LOW_SAFEだけに整理。旧BUYロジックは正式判定から外しています。<br/>
     ✅ <b>検証会場</b>は青表示でログ化し、正式収支には混ぜません。<br/>
@@ -586,6 +586,22 @@
     <div class="muted small" style="margin-top:10px;">
       Worker: <span class="mono" id="workerBase"></span>
     </div>
+  </div>
+
+
+
+  <div class="card" id="researchOddsCard">
+    <div class="row">
+      <div class="rowL">
+        <div class="pill">検証用オッズ入力待ち（別枠）</div>
+        <span class="tag mono" id="researchOddsCount">0</span>
+      </div>
+      <div class="muted small">候補のみ表示に混ぜず、条件外・旧SIM/WATCHなどの2連単1-2検証オッズ未入力レースをここに出します。</div>
+    </div>
+    <div class="muted small" style="margin-top:8px;">
+      ※正式BUY/NO/WAITは通常の候補欄で確認。この枠は「買い指示」ではなく、検証用のオッズ入力補助です。
+    </div>
+    <div id="researchOddsList" style="margin-top:10px;"></div>
   </div>
 
   <div class="card">
@@ -4095,6 +4111,140 @@
     return false;
   }
 
+
+
+  // v2.20.9: 「候補のみ」表示とは別に、検証用オッズ入力待ちだけを専用枠へ出す。
+  // 目的：候補表示ルートに左右されず、全レース表示側で拾いたい2T1-2オッズ未入力レースを確実に入力できるようにする。
+  function researchOddsReasonV2209_(r){
+    const odd = getOddFor(r, '2T', '1-2');
+    if(Number.isFinite(odd)) return null;
+
+    const ev = evaluate(r);
+    const v = buildV217VenueRuleFlags_(r);
+
+    // すでに通常候補欄で操作対象になるものは別枠で重複させない。
+    if(ev && (ev.state === 'BUY' || ev.state === 'NO' || ev.state === 'WAIT')) return null;
+
+    const simInputOn = !!$('v217ShowOddsInputForSimOn')?.checked;
+    if(simInputOn && (v.v218_sim_rule_candidate || v.v218_watch_candidate)){
+      const label = v.v218_sim_rule_candidate ? (v.v217_rule_short || 'SIM_RULE') : (v.v218_watch_short || 'WATCH');
+      return `旧SIM/WATCH検証オッズ待ち：${label}`;
+    }
+
+    // v2.20対象15場は、会場別条件を満たさず「条件外」でも、検証用にオッズを取りたいケースがある。
+    // 展示が全く無い段階まで出すと多すぎるため、展示取得済みを条件にする。
+    if(v.v220_visible && r.exhReady){
+      if(v.v220_role === 'research'){
+        return `v2.20検証会場・条件外オッズ待ち：${v.v220_rule_short}`;
+      }
+      if(v.v220_role === 'official'){
+        return `v2.20メイン会場・条件外確認オッズ待ち：${v.v220_rule_short}`;
+      }
+    }
+
+    return null;
+  }
+
+  function makeResearchOddsMiniCardV2209_(r, reason){
+    const ev = evaluate(r);
+    const v = buildV217VenueRuleFlags_(r);
+    const card = document.createElement('div');
+    card.className = 'raceCard race-research-wait';
+    card.dataset.key = r.key;
+
+    const closeTag = r.race_closed_at
+      ? `<span class="tag mono">締切:${String(r.race_closed_at).slice(11,16)}</span>`
+      : `<span class="tag mono">締切:-</span>`;
+
+    card.innerHTML = `
+      <div class="row">
+        <div>
+          <span class="pill">${r.venue} ${r.race}R</span>
+          <span class="badge b-wait">検証オッズ待ち</span>
+          <span class="tag">${r.date}</span>
+          ${closeTag}
+          <span class="tag mono">${v.v220_rule_short || v.v217_rule_short || v.v218_watch_short || '-'}</span>
+          <span class="tag mono">${v.v220_group || v.v219_sim_eval_group || '-'}</span>
+        </div>
+        <div class="rowL">
+          <button class="btn2" data-fetch-before-mini>before取得</button>
+        </div>
+      </div>
+      <div class="muted small" style="margin-top:8px;">
+        <b>${reason}</b><br/>
+        現在判定：${ev.state} / ${ev.msg}<br/>
+        v2.20阻害：${v.v220_blockers || '-'} / 旧SIM阻害：${v.v217_rule_blockers || v.v218_watch_blockers || '-'}
+      </div>
+      <div class="grid g2" style="margin-top:10px;">
+        <div>
+          <label>2連単 1-2（検証用・手入力）</label>
+          <input data-research-o2t12-v2209 type="text" inputmode="decimal" placeholder="例: 2.4">
+        </div>
+        <div class="muted small" style="align-self:end;">
+          入力するとlocalStorageへ保存され、JSON書き出しの manual_odds / o2t12 に反映されます。
+        </div>
+      </div>
+    `;
+
+    const inp = card.querySelector('[data-research-o2t12-v2209]');
+    if(inp){
+      inp.value = getManualOdds(r.key).o2t12 || '';
+      inp.addEventListener('input', ()=>{
+        setManualOdds(r.key, { o2t12: inp.value });
+        renderSummary(LAST_RACES);
+      });
+      inp.addEventListener('blur', ()=>{
+        renderSummary(LAST_RACES);
+        renderList(LAST_RACES);
+      });
+    }
+
+    const btn = card.querySelector('[data-fetch-before-mini]');
+    if(btn){
+      btn.addEventListener('click', async ()=>{
+        btn.disabled = true;
+        btn.textContent = '取得中…';
+        try{ await ensureBeforeAuto(r, true); }catch(e){}
+        btn.disabled = false;
+        btn.textContent = 'before取得';
+        renderSummary(LAST_RACES);
+        renderList(LAST_RACES);
+      });
+    }
+
+    return card;
+  }
+
+  function renderResearchOddsPanelV2209_(races){
+    const box = $('researchOddsList');
+    const count = $('researchOddsCount');
+    const card = $('researchOddsCard');
+    if(!box || !count || !card) return;
+
+    const rows = [];
+    for(const r of races || []){
+      const reason = researchOddsReasonV2209_(r);
+      if(reason) rows.push({ r, reason });
+    }
+    rows.sort((a,b)=>{
+      const am = parseCloseMs_(a.r.race_closed_at);
+      const bm = parseCloseMs_(b.r.race_closed_at);
+      if(am !== bm) return am - bm;
+      return (a.r.stadium-b.r.stadium) || (a.r.race-b.r.race);
+    });
+
+    count.textContent = `${rows.length}件`;
+    box.innerHTML = '';
+    if(!rows.length){
+      box.innerHTML = '<div class="muted small">現在、別枠で入力が必要な検証用オッズ待ちはありません。</div>';
+      return;
+    }
+    for(const item of rows){
+      box.appendChild(makeResearchOddsMiniCardV2209_(item.r, item.reason));
+    }
+  }
+
+
   function renderList(races){
     const mode = $("viewMode").value;
     let show = races.slice();
@@ -4112,6 +4262,9 @@
     const list = $("list");
     list.innerHTML="";
     for(const r of show) list.appendChild(makeRaceCard(r));
+
+    // v2.20.9: 候補のみ表示とは別枠で、条件外を含む検証用オッズ入力待ちを常に更新する。
+    renderResearchOddsPanelV2209_(races);
   }
 
   function buildRacesFromBundle(bundle){
