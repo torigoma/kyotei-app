@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.20.3（会場別条件① / 会場別LOW_SAFE正式BUY / SAFE）</title>
+  <title>競艇 v2.20.4（条件①表示整理 / 会場別LOW_SAFE正式BUY / SAFE）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -92,7 +92,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.20.3（会場別条件① / 会場別LOW_SAFE正式BUY / SAFE）</h1>
+  <h1>競艇 v2.20.4（条件①表示整理 / 会場別LOW_SAFE正式BUY / SAFE）</h1>
   <div class="sub">
     ✅ <b>正式BUY</b>は、v2.20のメイン6会場LOW_SAFEだけに整理。旧BUYロジックは正式判定から外しています。<br/>
     ✅ <b>検証会場</b>は青表示でログ化し、正式収支には混ぜません。<br/>
@@ -532,7 +532,7 @@
       <div>
         <label>表示</label>
         <select id="viewMode">
-          <option value="candidates">候補のみ（条件①通過）</option>
+          <option value="candidates">候補のみ（BUY/NO/WAIT・検証オッズ待ち）</option>
           <option value="all" selected>全件表示（理由確認用）</option>
         </select>
       </div>
@@ -4051,16 +4051,29 @@
     return card;
   }
 
+  // v2.20.4: 条件①表示は「操作が必要なレース」だけに絞る。
+  // - 正式会場: BUY / NO / WAIT を表示
+  // - 検証会場: 会場別条件を通過し、2連単1-2オッズ入力が必要なレースだけ表示
+  // - 検証会場でオッズ入力済み・条件外・対象外は、候補表示から外す
+  function shouldShowInCondition1List_(r){
+    if(!isV220TargetVenueForF1_(r?.stadium)) return false;
+    const ev = evaluate(r);
+    if(ev.state === "BUY" || ev.state === "NO") return true;
+    if(ev.state === "WAIT"){
+      const v220 = buildV220VenueFlags_(r);
+      if(v220.v220_role === 'research'){
+        return !!v220.v220_research_candidate && !Number.isFinite(v220.v220_odd);
+      }
+      return true;
+    }
+    return false;
+  }
+
   function renderList(races){
     const mode = $("viewMode").value;
     let show = races.slice();
     if(mode==="candidates") {
-      show = show.filter(r => {
-        if(!isV220TargetVenueForF1_(r?.stadium)) return false;
-        const f1ok = passFilter1(r).ok;
-        const v220 = buildV220VenueFlags_(r);
-        return f1ok || !!v220.v220_visible;
-      });
+      show = show.filter(r => shouldShowInCondition1List_(r));
     }
 
     show.sort((a,b)=>{
