@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.20.6（条件①表示FIX / 会場別LOW_SAFE正式BUY / SAFE）</title>
+  <title>競艇 v2.20.7（候補表示＋検証オッズ待ち同期 / 会場別LOW_SAFE正式BUY / SAFE）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -92,7 +92,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.20.6（条件①表示FIX / 会場別LOW_SAFE正式BUY / SAFE）</h1>
+  <h1>競艇 v2.20.7（候補表示＋検証オッズ待ち同期 / 会場別LOW_SAFE正式BUY / SAFE）</h1>
   <div class="sub">
     ✅ <b>正式BUY</b>は、v2.20のメイン6会場LOW_SAFEだけに整理。旧BUYロジックは正式判定から外しています。<br/>
     ✅ <b>検証会場</b>は青表示でログ化し、正式収支には混ぜません。<br/>
@@ -4051,19 +4051,15 @@
     return card;
   }
 
-  // v2.20.6: 候補のみ表示FIX。
-  // これまでの候補表示は buildV220VenueFlags_() 直呼びや evaluate() だけに寄せていたため、
-  // 全件表示カードで実際にオッズ入力欄が出る条件とズレて、候補のみが空になるケースがあった。
-  // ここでは「カード側で使っている buildV217VenueRuleFlags_() のv2.20フラグ」を正とし、
-  // さらに evaluate() の BUY/NO/WAIT も拾う。
+  // v2.20.7: 候補のみ表示FIX 2。
+  // v2.20.6では BUY/NO/WAIT と v2.20正式/検証候補は表示できたが、
+  // 「条件外」扱いのまま旧SIM/WATCHなど検証用オッズ入力欄だけが出るレースを拾えていなかった。
+  // ここでは候補のみ表示を、カード側のオッズ入力欄表示条件と同期する。
   // 表示対象:
   // - BUY / NO / WAIT 状態のレース
   // - 正式6会場で v2.20正式候補になっているレース（オッズ未入力WAIT、LOW帯BUY、帯外NO）
   // - 検証9会場で v2.20検証候補になっていて、2連単1-2オッズが未入力のレース
-  // 非表示対象:
-  // - 対象外会場
-  // - 条件外
-  // - 検証会場でオッズ入力済みのもの
+  // - 条件外でも、旧SIM_RULE/WATCH等の検証用2連単1-2オッズ入力欄が出ていて未入力のレース
   function shouldShowInCondition1List_(r){
     const ev = evaluate(r);
     const v = buildV217VenueRuleFlags_(r);
@@ -4073,18 +4069,33 @@
       return true;
     }
 
-    if(!v || !v.v220_visible) return false;
+    if(!v) return false;
 
     // 正式6会場：構造候補を通ったものは、オッズ状態にかかわらず候補欄へ出す。
     // evaluate側で BUY / WAIT / NO に分かれる。
-    if(v.v220_role === 'official'){
+    if(v.v220_visible && v.v220_role === 'official'){
       return !!v.v220_official_candidate;
     }
 
-    // 検証9会場：オッズ入力が必要なものだけ出す。
-    if(v.v220_role === 'research'){
-      const needsOdds = !!v.v220_research_candidate && !Number.isFinite(v.v220_odd);
-      return needsOdds;
+    // 検証9会場：v2.20検証候補で、まだ2連単1-2オッズ入力が必要なものだけ出す。
+    if(v.v220_visible && v.v220_role === 'research'){
+      const needsV220ResearchOdds = !!v.v220_research_candidate && !Number.isFinite(v.v220_odd);
+      if(needsV220ResearchOdds) return true;
+    }
+
+    // 条件外でも、全レース表示で旧SIM/WATCHの検証用オッズ入力欄が出るものは拾う。
+    // makeRaceCard() の showSimOdds と同じ条件を使う。
+    const showLegacySimOdds = !!((v.v218_sim_rule_candidate || v.v218_watch_candidate) && $('v217ShowOddsInputForSimOn')?.checked);
+    if(showLegacySimOdds && !Number.isFinite(v.v217_sim_odd)){
+      return true;
+    }
+
+    // 念のため、旧final候補としてオッズ入力欄が出るが未入力のものも拾う。
+    const plan = ev?.plan || computePlan(r);
+    const isFinal = !!(plan && plan.level === 'final');
+    const o2t12 = getOddFor(r, '2T', '1-2');
+    if(isFinal && !Number.isFinite(o2t12)){
+      return true;
     }
 
     return false;
