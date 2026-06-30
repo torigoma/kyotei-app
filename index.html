@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.20.10（検証ログ強化 / オッズ入力統合 / WAIT→NO保持 / SAFE）</title>
+  <title>競艇 v2.20.12（過去大データ寄せ / 会場別条件再調整 / SAFE）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -92,11 +92,11 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.20.10（検証ログ強化 / オッズ入力統合 / WAIT→NO保持 / SAFE）</h1>
+  <h1>競艇 v2.20.12（過去大データ寄せ / 会場別条件再調整 / SAFE）</h1>
   <div class="sub">
     ✅ <b>正式BUY</b>は、v2.20のメイン6会場LOW_SAFEだけに整理。旧BUYロジックは正式判定から外しています。<br/>
     ✅ <b>検証会場</b>は青表示でログ化し、正式収支には混ぜません。<br/>
-    ✅ <b>v2.20.10検証ログ</b>として、尼崎RELAX / 津RANK3 / 常滑VALUEを追加し、会場別SIM-BUY精査に使えるJSON項目を出します。<br/>
+    ✅ <b>v2.20.12検証ログ</b>として、1日ブレではなく過去大データ寄りに条件を締め直します。下関/尼崎/津を強め、児島/常滑は研究枠へ降格して新規データはそのまま蓄積します。<br/>
     ✅ v2.15〜v2.19のscore/SIM/オッズ帯ログは、分析用として折りたたみ内に残しています。<br/>
     ✅ 取得系・before/result補完・手動結果補正・.json書き出し・低通信・偽1-2-3防止は維持。
   </div>
@@ -142,7 +142,7 @@
     <div class="grid g2" style="margin-top:10px;">
       <label class="cb" style="margin:0;">
         <input type="checkbox" id="v22010TestLogOn" checked />
-        v2.20.10検証ログ強化（尼崎RELAX / 津RANK3 / 常滑VALUE）
+        v2.20.12過去大データ寄せ検証（下関OPT / 尼崎STRICT / 津PAIR_SAFE / 大村PAIR / びわこNARROW / 児島・常滑研究枠）
       </label>
       <div class="muted small" style="align-self:center;">
         ※正式BUYには混ぜず、候補表示・JSON保存・100円仮想収支だけ行います。
@@ -2520,7 +2520,7 @@
 
       ...shallowCloneJson_(v220),
 
-      // v2.20.10 追加検証ログ（正式BUY収支には混ぜない）
+      // v2.20.12 追加検証ログ（正式BUY収支には混ぜない）
       ...shallowCloneJson_(v22010)
     };
   }
@@ -2928,40 +2928,75 @@
   }
 
 
-  // v2.20.10: 会場別の追加検証ログ。
-  // 2026-06-29の結果分析から、正式BUYへ即昇格はせず、以下3条件を検証ログとして追加する。
-  // - 尼崎_RELAX_TEST: rank1≤2 / rank2≤3 / d2≤0.05 / LOW限定
-  // - 津_RANK3_TEST: rank1≤3 / d2≤0.05 / ST出負けなし / LOW限定
-  // - 常滑_VALUE_TEST: rank1=1 / rank2≤4 / d2≤0.08 / VALUE限定
+  // v2.20.12: 過去大データ寄せの会場別検証ログ。
+  // 方針：1日分のブレではなく、phase1〜4＋直近snapshotの大きな傾向に合わせて条件を締め直す。
+  // 正式BUYにはまだ混ぜず、候補表示・JSON保存・100円仮想収支だけを行う。
+  // 新しく取るデータは全レースJSONにそのまま蓄積し、この検証ログは「大データ基準での買い候補」だけを別集計する。
+  // - 下関_SHIMONOSEKI_OPT_TEST: 過去照合で最有望。1展示≤2＋2展示≤3＋2残存score≥70＋3-4脅威なし。
+  // - 尼崎_AMAGASAKI_STRICT_TEST: RELAXをやめ、過去データで強かったSTRICT寄りに戻す。
+  // - 津_TSU_PAIR_SAFE_TEST: 2展示≤2＋3-4脅威なし＋ST出負けなしを重視。
+  // - 大村_OMURA_PAIR_TEST: 2号艇単独強さより、1展示1位＋2展示上位のペア型へ修正。
+  // - びわこ_BIWAKO_NARROW_TEST: 6/30寄りのPAIRを絞り、2展示1位まで狭める。
+  // - 児島_KOJIMA_RESEARCH_HOLD: v2.20.11時点のL2は弱かったため、VALUE研究枠に降格。
+  // - 常滑_TOKONAME_RESEARCH_HOLD: VALUE禁止継続。LOW/VALUE正式候補ではなく研究枠。
   function v22010TestMeta_(stadium){
     const s = Number(stadium);
+    if(s === 19) return {
+      id:'shimonoseki_opt',
+      group:'SHIMONOSEKI_OPT_TEST',
+      ruleShort:'下関OPT',
+      ruleName:'下関_OPT_TEST：1展示≤2＋2展示≤3＋d2≤0.05＋2残存score≥70＋3-4脅威なし＋ST出負けなし＋LOW検証',
+      oddsRole:'low'
+    };
     if(s === 13) return {
-      id:'amagasaki_relax',
-      group:'AMAGASAKI_RELAX_TEST',
-      ruleShort:'尼崎RELAX',
-      ruleName:'尼崎_RELAX_TEST：1展示≤2＋2展示≤3＋d2≤0.05＋LOW 2.2〜2.6検証',
+      id:'amagasaki_strict',
+      group:'AMAGASAKI_STRICT_TEST',
+      ruleShort:'尼崎STRICT',
+      ruleName:'尼崎_STRICT_TEST：1展示1位＋2展示≤2＋d2≤0.08＋2残存score≥80＋3-4脅威なし＋ST出負けなし＋LOW検証',
       oddsRole:'low'
     };
     if(s === 9) return {
-      id:'tsu_rank3',
-      group:'TSU_RANK3_TEST',
-      ruleShort:'津RANK3',
-      ruleName:'津_RANK3_TEST：1展示≤3＋d2≤0.05＋ST出負けなし＋LOW 2.2〜2.6検証',
+      id:'tsu_pair_safe',
+      group:'TSU_PAIR_SAFE_TEST',
+      ruleShort:'津PAIR_SAFE',
+      ruleName:'津_PAIR_SAFE_TEST：1展示≤3＋2展示≤2＋d2≤0.12＋3-4脅威なし＋ST出負けなし＋LOW検証',
       oddsRole:'low'
     };
-    if(s === 8) return {
-      id:'tokoname_value',
-      group:'TOKONAME_VALUE_TEST',
-      ruleShort:'常滑VALUE',
-      ruleName:'常滑_VALUE_TEST：1展示1位＋2展示≤4＋d2≤0.08＋VALUE 2.7〜3.8検証',
+    if(s === 24) return {
+      id:'omura_pair',
+      group:'OMURA_PAIR_TEST',
+      ruleShort:'大村PAIR',
+      ruleName:'大村_PAIR_TEST：1展示1位＋2展示≤2＋d2≤0.03＋ST出負けなし＋LOW検証',
+      oddsRole:'low'
+    };
+    if(s === 11) return {
+      id:'biwako_narrow',
+      group:'BIWAKO_NARROW_TEST',
+      ruleShort:'びわこNARROW',
+      ruleName:'びわこ_NARROW_TEST：1展示≤2＋2展示1位＋d2≤0.03＋2残存score≥60＋ST出負けなし＋LOW検証',
+      oddsRole:'low'
+    };
+    if(s === 16) return {
+      id:'kojima_research_hold',
+      group:'KOJIMA_RESEARCH_HOLD',
+      ruleShort:'児島研究HOLD',
+      ruleName:'児島_RESEARCH_HOLD：1展示≤3＋2展示1位＋d2≤0.03＋3-4脅威なし＋ST出負けなし。LOW正式ではなくVALUE含む研究枠',
       oddsRole:'value'
     };
-    return { id:'none', group:'NO_V22010_TEST', ruleShort:'v2.20.10対象外', ruleName:'v2.20.10検証対象外', oddsRole:'none' };
+    if(s === 8) return {
+      id:'tokoname_research_hold',
+      group:'TOKONAME_RESEARCH_HOLD',
+      ruleShort:'常滑研究HOLD',
+      ruleName:'常滑_RESEARCH_HOLD：1展示≤2＋2展示1位＋d2≤0.03＋2残存score≥90＋3-4脅威なし。VALUE禁止寄りの研究枠',
+      oddsRole:'value'
+    };
+    return { id:'none', group:'NO_V22010_TEST', ruleShort:'v2.20.12対象外', ruleName:'v2.20.12検証対象外', oddsRole:'none' };
   }
 
   function v22010ExpectedOddsBandOk_(meta, band){
     if(meta?.oddsRole === 'low') return band?.band === 'LOW_ODDS_SIM';
     if(meta?.oddsRole === 'value') return band?.band === 'VALUE_SIM';
+    if(meta?.oddsRole === 'low_value') return band?.band === 'LOW_ODDS_SIM' || band?.band === 'VALUE_SIM';
     return false;
   }
 
@@ -2986,8 +3021,10 @@
     const stOut = st1Outmuscled_(r, num('stOutmuscle') ?? 0.05);
     const noStOut = stOut !== true;
     const calm = calmWater4_(r);
+    const noRain = noRainV220_(r);
     const no34 = !l2.lane3Threat && !l2.lane4Threat;
     const noOuter = !l2.outerThreat;
+    const outerStSafe = outerStSafeV220_(l2);
 
     const structureBlockers = [];
     const oddsBlockers = [];
@@ -2998,27 +3035,67 @@
     const rank1Ok = (max) => Number.isFinite(rank1) && rank1 <= max;
     const rank2Ok = (max) => Number.isFinite(rank2) && rank2 <= max;
 
-    if(!target) miscBlockers.push('v2.20.10検証対象外');
-    if(target && !enabled) miscBlockers.push('v2.20.10検証ログOFF');
+    if(!target) miscBlockers.push('v2.20.12検証対象外');
+    if(target && !enabled) miscBlockers.push('v2.20.12検証ログOFF');
     if(target){
       addBlockerV220_(structureBlockers, r?.exhReady === true, '展示待ち');
       if(needSt) addBlockerV220_(structureBlockers, stReady, 'ST待ち');
 
       switch(stadium){
-        case 13: // 尼崎_RELAX_TEST
-          addBlockerV220_(structureBlockers, rank1Ok(2), `尼崎RELAX:1展示>2(${rank1 ?? '-'})`);
-          addBlockerV220_(structureBlockers, rank2Ok(3), `尼崎RELAX:2展示>3(${rank2 ?? '-'})`);
-          addBlockerV220_(structureBlockers, d2Ok(0.05), `尼崎RELAX:d2>0.05(${d2Text()})`);
+        case 19: // 下関_OPT_TEST：過去大データ寄せの最有望枠
+          addBlockerV220_(structureBlockers, rank1Ok(2), `下関OPT:1展示>2(${rank1 ?? '-'})`);
+          addBlockerV220_(structureBlockers, rank2Ok(3), `下関OPT:2展示>3(${rank2 ?? '-'})`);
+          addBlockerV220_(structureBlockers, d2Ok(0.05), `下関OPT:d2>0.05(${d2Text()})`);
+          addBlockerV220_(structureBlockers, l2.score >= 70, `下関OPT:2残存score<70(${l2.score})`);
+          addBlockerV220_(structureBlockers, no34, '下関OPT:3-4脅威あり');
+          addBlockerV220_(structureBlockers, noStOut, '下関OPT:ST出負け');
           break;
-        case 9: // 津_RANK3_TEST
-          addBlockerV220_(structureBlockers, rank1Ok(3), `津RANK3:1展示>3(${rank1 ?? '-'})`);
-          addBlockerV220_(structureBlockers, d2Ok(0.05), `津RANK3:d2>0.05(${d2Text()})`);
-          addBlockerV220_(structureBlockers, noStOut, '津RANK3:ST出負け');
+        case 13: // 尼崎_STRICT_TEST：RELAXではなく過去データ優先のSTRICT
+          addBlockerV220_(structureBlockers, rank1 === 1, `尼崎STRICT:1展示1位ではない(${rank1 ?? '-'})`);
+          addBlockerV220_(structureBlockers, rank2Ok(2), `尼崎STRICT:2展示>2(${rank2 ?? '-'})`);
+          addBlockerV220_(structureBlockers, d2Ok(0.08), `尼崎STRICT:d2>0.08(${d2Text()})`);
+          addBlockerV220_(structureBlockers, l2.score >= 80, `尼崎STRICT:2残存score<80(${l2.score})`);
+          addBlockerV220_(structureBlockers, no34, '尼崎STRICT:3-4脅威あり');
+          addBlockerV220_(structureBlockers, noStOut, '尼崎STRICT:ST出負け');
+          addBlockerV220_(structureBlockers, noRain, '尼崎STRICT:雨表記');
           break;
-        case 8: // 常滑_VALUE_TEST
-          addBlockerV220_(structureBlockers, rank1 === 1, `常滑VALUE:1展示1位ではない(${rank1 ?? '-'})`);
-          addBlockerV220_(structureBlockers, rank2Ok(4), `常滑VALUE:2展示>4(${rank2 ?? '-'})`);
-          addBlockerV220_(structureBlockers, d2Ok(0.08), `常滑VALUE:d2>0.08(${d2Text()})`);
+        case 9: // 津_PAIR_SAFE_TEST
+          addBlockerV220_(structureBlockers, rank1Ok(3), `津PAIR_SAFE:1展示>3(${rank1 ?? '-'})`);
+          addBlockerV220_(structureBlockers, rank2Ok(2), `津PAIR_SAFE:2展示>2(${rank2 ?? '-'})`);
+          addBlockerV220_(structureBlockers, d2Ok(0.12), `津PAIR_SAFE:d2>0.12(${d2Text()})`);
+          addBlockerV220_(structureBlockers, no34, '津PAIR_SAFE:3-4脅威あり');
+          addBlockerV220_(structureBlockers, noStOut, '津PAIR_SAFE:ST出負け');
+          addBlockerV220_(structureBlockers, noRain, '津PAIR_SAFE:雨表記');
+          break;
+        case 24: // 大村_PAIR_TEST
+          addBlockerV220_(structureBlockers, rank1 === 1, `大村PAIR:1展示1位ではない(${rank1 ?? '-'})`);
+          addBlockerV220_(structureBlockers, rank2Ok(2), `大村PAIR:2展示>2(${rank2 ?? '-'})`);
+          addBlockerV220_(structureBlockers, d2Ok(0.03), `大村PAIR:d2>0.03(${d2Text()})`);
+          addBlockerV220_(structureBlockers, noStOut, '大村PAIR:ST出負け');
+          break;
+        case 11: // びわこ_NARROW_TEST
+          addBlockerV220_(structureBlockers, rank1Ok(2), `びわこNARROW:1展示>2(${rank1 ?? '-'})`);
+          addBlockerV220_(structureBlockers, rank2 === 1, `びわこNARROW:2展示1位ではない(${rank2 ?? '-'})`);
+          addBlockerV220_(structureBlockers, d2Ok(0.03), `びわこNARROW:d2>0.03(${d2Text()})`);
+          addBlockerV220_(structureBlockers, l2.score >= 60, `びわこNARROW:2残存score<60(${l2.score})`);
+          addBlockerV220_(structureBlockers, noStOut, 'びわこNARROW:ST出負け');
+          addBlockerV220_(structureBlockers, noRain, 'びわこNARROW:雨表記');
+          break;
+        case 16: // 児島_RESEARCH_HOLD：弱いため正式寄せではなくVALUE研究
+          addBlockerV220_(structureBlockers, rank1Ok(3), `児島研究:1展示>3(${rank1 ?? '-'})`);
+          addBlockerV220_(structureBlockers, rank2 === 1, `児島研究:2展示1位ではない(${rank2 ?? '-'})`);
+          addBlockerV220_(structureBlockers, d2Ok(0.03), `児島研究:d2>0.03(${d2Text()})`);
+          addBlockerV220_(structureBlockers, no34, '児島研究:3-4脅威あり');
+          addBlockerV220_(structureBlockers, noStOut, '児島研究:ST出負け');
+          addBlockerV220_(structureBlockers, calm, '児島研究:水面荒れ');
+          break;
+        case 8: // 常滑_RESEARCH_HOLD：弱いため研究枠。VALUEの再昇格はまだしない。
+          addBlockerV220_(structureBlockers, rank1Ok(2), `常滑研究:1展示>2(${rank1 ?? '-'})`);
+          addBlockerV220_(structureBlockers, rank2 === 1, `常滑研究:2展示1位ではない(${rank2 ?? '-'})`);
+          addBlockerV220_(structureBlockers, d2Ok(0.03), `常滑研究:d2>0.03(${d2Text()})`);
+          addBlockerV220_(structureBlockers, l2.score >= 90, `常滑研究:2残存score<90(${l2.score})`);
+          addBlockerV220_(structureBlockers, no34, '常滑研究:3-4脅威あり');
+          addBlockerV220_(structureBlockers, calm, '常滑研究:水面荒れ');
           break;
         default:
           break;
@@ -3028,7 +3105,7 @@
     const structureCandidate = target && enabled && miscBlockers.length === 0 && structureBlockers.length === 0;
     if(structureCandidate){
       if(!Number.isFinite(odd) || odd <= 0) oddsBlockers.push('2連単1-2オッズ未入力');
-      else if(!v22010ExpectedOddsBandOk_(meta, band)) oddsBlockers.push(`v2.20.10対象オッズ帯外(${band.band})`);
+      else if(!v22010ExpectedOddsBandOk_(meta, band)) oddsBlockers.push(`v2.20.12対象オッズ帯外(${band.band})`);
     }
 
     const hasOdd = Number.isFinite(odd) && odd > 0;
@@ -3073,14 +3150,28 @@
       v22010_d2: d2,
       v22010_no_st_out: noStOut,
       v22010_calm: calm,
+      v22010_no_rain: noRain,
       v22010_no34_threat: no34,
       v22010_no_outer_threat: noOuter,
       v22010_one_score: one.score,
       v22010_lane2_score: l2.score,
-      v22010_amagasaki_relax_test: meta.id === 'amagasaki_relax' && structureCandidate,
-      v22010_tsu_rank3_test: meta.id === 'tsu_rank3' && structureCandidate,
-      v22010_tokoname_value_test: meta.id === 'tokoname_value' && structureCandidate,
-      v22010_detail: { stadium, venue, rank1, rank2, d2, noStOut, calm, no34, noOuter, oneScore:one.score, lane2Score:l2.score, f1Ok:f1.ok, f1Reasons:f1.reasons }
+      v22010_shimonoseki_opt_test: meta.id === 'shimonoseki_opt' && structureCandidate,
+      v22010_amagasaki_strict_test: meta.id === 'amagasaki_strict' && structureCandidate,
+      v22010_tsu_pair_safe_test: meta.id === 'tsu_pair_safe' && structureCandidate,
+      v22010_omura_pair_test: meta.id === 'omura_pair' && structureCandidate,
+      v22010_biwako_narrow_test: meta.id === 'biwako_narrow' && structureCandidate,
+      v22010_kojima_research_hold_test: meta.id === 'kojima_research_hold' && structureCandidate,
+      v22010_tokoname_research_hold_test: meta.id === 'tokoname_research_hold' && structureCandidate,
+      // legacy aliases kept for old spreadsheet/analysis compatibility
+      v22010_kojima_l2_test: false,
+      v22010_amagasaki_relax_test: false,
+      v22010_tsu_rank3_test: false,
+      v22010_shimonoseki_l2_test: false,
+      v22010_omura_l2_strong_test: false,
+      v22010_biwako_pair_test: false,
+      v22010_tokoname_low_recheck_test: false,
+      v22010_tokoname_value_test: false,
+      v22010_detail: { stadium, venue, rank1, rank2, d2, noStOut, calm, noRain, no34, noOuter, oneScore:one.score, lane2Score:l2.score, f1Ok:f1.ok, f1Reasons:f1.reasons, historicalTuned:true }
     };
   }
 
@@ -3342,25 +3433,42 @@
 
   function evaluate(r){
     const entry = passFilter1Entry_(r);
-    if(!entry.ok) return { state:"条件外", msg:`条件外：${entry.reasons.join(" / ")}` };
+    if(!entry.ok){
+      // v2.20.12検証ログは、全国/当地/モーターなど旧条件①入口で落ちたレースも、
+      // 会場別テスト条件に合えば候補欄へ残す。方針は「会場ごとの当たりを拾う条件」を探すこと。
+      const v22010Entry = buildV22010TestFlags_(r);
+      const plan10Entry = { level:'research', betType:'2T', combo:'1-2', reasons: v22010Entry.v22010_test_blockers ? [v22010Entry.v22010_test_blockers] : [], _v22010:v22010Entry };
+      if(v22010Entry.v22010_test_wait_odds){
+        return { state:"WAIT", msg:`WAIT：v2.20.12検証ログ オッズ入力待ち（${v22010Entry.v22010_test_rule_short}）`, plan:plan10Entry, odd:null };
+      }
+      if(v22010Entry.v22010_test_active){
+        return { state:"条件外", msg:`検証ログのみ：v2.20.12 ${v22010Entry.v22010_test_rule_short} / ${v22010Entry.v22010_test_odds_band}（入口条件外・正式BUY対象外）`, plan:plan10Entry, odd:v22010Entry.v22010_test_odd };
+      }
+      if(v22010Entry.v22010_test_odds_no){
+        plan10Entry._noType = 'odds_no';
+        plan10Entry._oddsNoReasons = [v22010Entry.v22010_test_odds_blockers];
+        return { state:"NO", msg:`NO：v2.20.12検証ログ オッズ帯対象外（${v22010Entry.v22010_test_odds_blockers}）※入口条件外・正式収支外`, plan:plan10Entry, odd:v22010Entry.v22010_test_odd };
+      }
+      return { state:"条件外", msg:`条件外：${entry.reasons.join(" / ")}` };
+    }
 
     if(!r.exhReady) return { state:"WAIT", msg:"WAIT：展示（1〜3）待ち", plan:{ level:'wait', reasons:['展示待ち'], betType:'2T', combo:'1-2' } };
 
     const f1 = passFilter1(r);
     if(!f1.ok){
-      // v2.20.10検証ログは、旧条件①で落ちたレースでも会場別テスト条件に合えば入力・記録できるようにする。
+      // v2.20.12検証ログは、旧条件①で落ちたレースでも会場別テスト条件に合えば入力・記録できるようにする。
       const v22010Pre = buildV22010TestFlags_(r);
       const plan10Pre = { level:'research', betType:'2T', combo:'1-2', reasons: v22010Pre.v22010_test_blockers ? [v22010Pre.v22010_test_blockers] : [], _v22010:v22010Pre };
       if(v22010Pre.v22010_test_wait_odds){
-        return { state:"WAIT", msg:`WAIT：v2.20.10検証ログ オッズ入力待ち（${v22010Pre.v22010_test_rule_short}）`, plan:plan10Pre, odd:null };
+        return { state:"WAIT", msg:`WAIT：v2.20.12検証ログ オッズ入力待ち（${v22010Pre.v22010_test_rule_short}）`, plan:plan10Pre, odd:null };
       }
       if(v22010Pre.v22010_test_active){
-        return { state:"条件外", msg:`検証ログのみ：v2.20.10 ${v22010Pre.v22010_test_rule_short} / ${v22010Pre.v22010_test_odds_band}（条件①外・正式BUY対象外）`, plan:plan10Pre, odd:v22010Pre.v22010_test_odd };
+        return { state:"条件外", msg:`検証ログのみ：v2.20.12 ${v22010Pre.v22010_test_rule_short} / ${v22010Pre.v22010_test_odds_band}（条件①外・正式BUY対象外）`, plan:plan10Pre, odd:v22010Pre.v22010_test_odd };
       }
       if(v22010Pre.v22010_test_odds_no){
         plan10Pre._noType = 'odds_no';
         plan10Pre._oddsNoReasons = [v22010Pre.v22010_test_odds_blockers];
-        return { state:"NO", msg:`NO：v2.20.10検証ログ オッズ帯対象外（${v22010Pre.v22010_test_odds_blockers}）※条件①外・正式収支外`, plan:plan10Pre, odd:v22010Pre.v22010_test_odd };
+        return { state:"NO", msg:`NO：v2.20.12検証ログ オッズ帯対象外（${v22010Pre.v22010_test_odds_blockers}）※条件①外・正式収支外`, plan:plan10Pre, odd:v22010Pre.v22010_test_odd };
       }
       return { state:"条件外", msg:`条件外：${f1.reasons.join(" / ")}` };
     }
@@ -3383,6 +3491,22 @@
       return { state:"NO", msg:`NO：v2.20正式候補 オッズ帯対象外（${v220.v220_odds_blockers}）`, plan, odd:v220.v220_odd };
     }
 
+    // v2.20.12検証ログは、v2.20正式メイン条件不足NOより優先して表示する。
+    // これにより「公式メイン条件は外れたが、会場別の拾いやすい条件には合う」レースをWAIT/検証として残せる。
+    const v22010Priority = buildV22010TestFlags_(r);
+    const plan10Priority = { level:'research', betType:'2T', combo:'1-2', reasons: v22010Priority.v22010_test_blockers ? [v22010Priority.v22010_test_blockers] : [], _v22010:v22010Priority };
+    if(v22010Priority.v22010_test_wait_odds){
+      return { state:"WAIT", msg:`WAIT：v2.20.12検証ログ オッズ入力待ち（${v22010Priority.v22010_test_rule_short}）`, plan:plan10Priority, odd:null };
+    }
+    if(v22010Priority.v22010_test_active){
+      return { state:"条件外", msg:`検証ログのみ：v2.20.12 ${v22010Priority.v22010_test_rule_short} / ${v22010Priority.v22010_test_odds_band}（正式BUY対象外）`, plan:plan10Priority, odd:v22010Priority.v22010_test_odd };
+    }
+    if(v22010Priority.v22010_test_odds_no){
+      plan10Priority._noType = 'odds_no';
+      plan10Priority._oddsNoReasons = [v22010Priority.v22010_test_odds_blockers];
+      return { state:"NO", msg:`NO：v2.20.12検証ログ オッズ帯対象外（${v22010Priority.v22010_test_odds_blockers}）※正式収支外`, plan:plan10Priority, odd:v22010Priority.v22010_test_odd };
+    }
+
     if(v220.v220_role === 'official' && v220.v220_visible){
       plan._noType = 'risk_no';
       return { state:"NO", msg:`NO：v2.20メイン会場条件不足（${v220.v220_structure_blockers || v220.v220_blockers || '-' }）`, plan, odd:v220.v220_odd };
@@ -3397,7 +3521,7 @@
     }
 
     if(v220.v220_research_candidate && v220.v220_odds_blockers){
-      // v2.20.10: WAIT→オッズ入力後に帯外になった検証候補も、昔のようにNOとして候補欄に残す。
+      // v2.20.12: WAIT→オッズ入力後に帯外になった検証候補も、昔のようにNOとして候補欄に残す。
       plan._noType = 'odds_no';
       plan._oddsNoReasons = [v220.v220_odds_blockers];
       return { state:"NO", msg:`NO：v2.20検証候補 オッズ帯対象外（${v220.v220_odds_blockers}）※正式収支外`, plan, odd:v220.v220_odd };
@@ -3406,16 +3530,16 @@
     const v22010 = buildV22010TestFlags_(r);
     const plan10 = { level:'research', betType:'2T', combo:'1-2', reasons: v22010.v22010_test_blockers ? [v22010.v22010_test_blockers] : [], _v22010:v22010 };
     if(v22010.v22010_test_wait_odds){
-      return { state:"WAIT", msg:`WAIT：v2.20.10検証ログ オッズ入力待ち（${v22010.v22010_test_rule_short}）`, plan:plan10, odd:null };
+      return { state:"WAIT", msg:`WAIT：v2.20.12検証ログ オッズ入力待ち（${v22010.v22010_test_rule_short}）`, plan:plan10, odd:null };
     }
     if(v22010.v22010_test_active){
-      return { state:"条件外", msg:`検証ログのみ：v2.20.10 ${v22010.v22010_test_rule_short} / ${v22010.v22010_test_odds_band}（正式BUY対象外）`, plan:plan10, odd:v22010.v22010_test_odd };
+      return { state:"条件外", msg:`検証ログのみ：v2.20.12 ${v22010.v22010_test_rule_short} / ${v22010.v22010_test_odds_band}（正式BUY対象外）`, plan:plan10, odd:v22010.v22010_test_odd };
     }
     if(v22010.v22010_test_odds_no){
-      // v2.20.10: WAIT→NOを候補欄に残す。正式NOではなく検証ログNO。
+      // v2.20.12: WAIT→NOを候補欄に残す。正式NOではなく検証ログNO。
       plan10._noType = 'odds_no';
       plan10._oddsNoReasons = [v22010.v22010_test_odds_blockers];
-      return { state:"NO", msg:`NO：v2.20.10検証ログ オッズ帯対象外（${v22010.v22010_test_odds_blockers}）※正式収支外`, plan:plan10, odd:v22010.v22010_test_odd };
+      return { state:"NO", msg:`NO：v2.20.12検証ログ オッズ帯対象外（${v22010.v22010_test_odds_blockers}）※正式収支外`, plan:plan10, odd:v22010.v22010_test_odd };
     }
 
     if(v220.v220_role === 'research' && v220.v220_visible && v220.v220_structure_blockers){
@@ -4027,7 +4151,7 @@
     const v220ResearchRoi = v220ResearchStake > 0 ? ((v220ResearchPayout / v220ResearchStake) * 100).toFixed(1) : '-';
     const v22010Roi = v22010Stake > 0 ? ((v22010Payout / v22010Stake) * 100).toFixed(1) : '-';
     $("summary").textContent =
-      `取得${total}R / 条件①通過${f1pass}R / v2.20正式候補${v220MainStruct} / BUY${buy} / NO${no}（risk:${riskNo} odds:${oddsNo}） / WAIT${wait} / 条件外${filtered} / v2.20正式BUY${v220Official}（的中${v220OfficialHit} 収支${v220OfficialProfit}円 ROI${v220OfficialRoi}%） / v2.20検証${v220Research}（構造${v220ResearchStruct} 的中${v220ResearchHit} 収支${v220ResearchProfit}円 ROI${v220ResearchRoi}%） / v2.20.10検証${v22010Active}（構造${v22010Struct} WAIT${v22010Wait} NO${v22010OddsNo} 的中${v22010Hit} 収支${v22010Profit}円 ROI${v22010Roi}%） / 旧SIM_RULE${simRule}（的中${simRuleHit}） / LOW${low}（的中${lowHit} 収支${lowProfit}円 ROI${lowRoi}%） / VALUE${value}（的中${valueHit} 収支${valueProfit}円 ROI${valueRoi}%） / HIGH${high}（的中${highHit} 収支${highProfit}円 ROI${highRoi}%） / DANGER${danger}（的中${dangerHit} 収支${dangerProfit}円 ROI${dangerRoi}%） / SIM_STRICT${simStrict}（的中${simStrictHit} 収支${simStrictProfit}円 ROI${strictRoi}% / WAIT${simStrictWait} ODDS_NO${simStrictOddsNo} / 1ズレ${simStrictOneWinNot12} 1飛び${simStrictOneLost}） / WATCH${watch}（的中${watchHit}） / 二段階候補${twoStageCandidate} / 1勝候補${oneWinCandidate} / 1score強${oneScoreStrong} / 1-2的中${hit12} / 1勝ち2ズレ${oneWinNot12}（1-3:${lane3Slip} 1-4:${lane4Slip}） / 2単odds${oddsReady} / before${beforeReady} / result${resReady}`;
+      `取得${total}R / 条件①通過${f1pass}R / v2.20正式候補${v220MainStruct} / BUY${buy} / NO${no}（risk:${riskNo} odds:${oddsNo}） / WAIT${wait} / 条件外${filtered} / v2.20正式BUY${v220Official}（的中${v220OfficialHit} 収支${v220OfficialProfit}円 ROI${v220OfficialRoi}%） / v2.20検証${v220Research}（構造${v220ResearchStruct} 的中${v220ResearchHit} 収支${v220ResearchProfit}円 ROI${v220ResearchRoi}%） / v2.20.12検証${v22010Active}（構造${v22010Struct} WAIT${v22010Wait} NO${v22010OddsNo} 的中${v22010Hit} 収支${v22010Profit}円 ROI${v22010Roi}%） / 旧SIM_RULE${simRule}（的中${simRuleHit}） / LOW${low}（的中${lowHit} 収支${lowProfit}円 ROI${lowRoi}%） / VALUE${value}（的中${valueHit} 収支${valueProfit}円 ROI${valueRoi}%） / HIGH${high}（的中${highHit} 収支${highProfit}円 ROI${highRoi}%） / DANGER${danger}（的中${dangerHit} 収支${dangerProfit}円 ROI${dangerRoi}%） / SIM_STRICT${simStrict}（的中${simStrictHit} 収支${simStrictProfit}円 ROI${strictRoi}% / WAIT${simStrictWait} ODDS_NO${simStrictOddsNo} / 1ズレ${simStrictOneWinNot12} 1飛び${simStrictOneLost}） / WATCH${watch}（的中${watchHit}） / 二段階候補${twoStageCandidate} / 1勝候補${oneWinCandidate} / 1score強${oneScoreStrong} / 1-2的中${hit12} / 1勝ち2ズレ${oneWinNot12}（1-3:${lane3Slip} 1-4:${lane4Slip}） / 2単odds${oddsReady} / before${beforeReady} / result${resReady}`;
 
     renderNoDiagnostics_(races);
   }
@@ -4123,7 +4247,7 @@
       }else if(v217.v220_official_candidate || v217.v220_research_candidate){
         buyLine.innerHTML = `v2.20候補：<b>2連単 1-2</b> <span class="tag mono">${v217.v220_rule_short}</span>${Number.isFinite(v217.v220_odd) ? ` / odds=${v217.v220_odd}` : ` / odds未入力`}`;
       }else if(v217.v22010_test_candidate || v217.v22010_test_active || v217.v22010_test_odds_no){
-        buyLine.innerHTML = `v2.20.10検証ログ：<b>2連単 1-2</b> <span class="tag mono">${v217.v22010_test_rule_short}</span><span class="tag mono">${v217.v22010_test_group}</span>${Number.isFinite(v217.v22010_test_odd) ? ` / odds=${v217.v22010_test_odd}` : ` / odds未入力`}`;
+        buyLine.innerHTML = `v2.20.12検証ログ：<b>2連単 1-2</b> <span class="tag mono">${v217.v22010_test_rule_short}</span><span class="tag mono">${v217.v22010_test_group}</span>${Number.isFinite(v217.v22010_test_odd) ? ` / odds=${v217.v22010_test_odd}` : ` / odds未入力`}`;
       }else if((v217.v218_sim_rule_candidate || v217.v218_watch_candidate) && $('v217VenueRuleAsSimBuyOn')?.checked){
         buyLine.innerHTML = `旧SIM検証：<b>2連単 1-2</b> <span class="tag mono">${v217.v217_sim_state}</span><span class="tag mono">${v217.v219_sim_eval_group}</span>${v217.v218_watch_candidate ? `<span class="tag mono">${v217.v218_watch_short}</span>` : ``}${Number.isFinite(v217.v217_sim_odd) ? ` / odds=${v217.v217_sim_odd}` : ` / odds未入力`}`;
       }else{
@@ -4164,7 +4288,7 @@
     const oddsBlock = showOddsBlock ? `
       <div class="hr"></div>
       <div class="muted small">
-        <b>${showV220Odds ? (v217Flags.v220_role === 'official' ? "v2.20正式候補" : "v2.20検証候補") : (showV22010Odds ? "v2.20.10検証ログ" : (isFinal ? "最終候補" : "旧v2.19 SIM検証候補"))}</b>：2連単 1-2（1点）
+        <b>${showV220Odds ? (v217Flags.v220_role === 'official' ? "v2.20正式候補" : "v2.20検証候補") : (showV22010Odds ? "v2.20.12検証ログ" : (isFinal ? "最終候補" : "旧v2.19 SIM検証候補"))}</b>：2連単 1-2（1点）
         <span class="tag mono">会場:${venueSubRankOf(r.stadium)}</span>
         ${isFinal && plan?._strong2t12 ? `<span class="tag mono">強BUY条件</span>` : ``}
         ${showV220Odds ? `<span class="tag mono">${v217Flags.v220_rule_short}</span><span class="tag mono">${v217Flags.v220_group}</span><span class="tag mono">${v217Flags.v220_odds_band}</span>` : ``}
@@ -4178,7 +4302,7 @@
           <input data-o2t12 type="text" inputmode="decimal" placeholder="例: 3.2">
         </div>
         <div class="muted small" style="align-self:end;">
-          v2.20正式: LOW 2.2〜2.6 / v2.20.10検証: 尼崎RELAX・津RANK3はLOW、常滑VALUEは2.7〜3.8。旧BUY下限は正式判定に不使用。
+          v2.20正式: LOW 2.2〜2.6 / v2.20.12検証: 下関OPT・尼崎STRICT・津PAIR_SAFE・大村PAIR・びわこNARROWはLOW、児島/常滑はVALUE研究枠。旧BUY下限は正式判定に不使用。
         </div>
       </div>
     ` : ``;
@@ -4193,7 +4317,7 @@
       ? `<span class="tag mono">v2.20:${v217Flags.v220_rule_short}</span><span class="tag mono">${v217Flags.v220_role}</span><span class="tag mono">${v217Flags.v220_group}</span>`
       : ``;
     const v22010Badge = v217Flags.v22010_test_visible
-      ? `<span class="tag mono">v2.20.10:${v217Flags.v22010_test_rule_short}</span><span class="tag mono">${v217Flags.v22010_test_group}</span>`
+      ? `<span class="tag mono">v2.20.12:${v217Flags.v22010_test_rule_short}</span><span class="tag mono">${v217Flags.v22010_test_group}</span>`
       : ``;
     const v217Badge = (v217Flags.v218_sim_rule_candidate || v217Flags.v218_watch_candidate)
       ? `<span class="tag mono">v2.19:${v217Flags.v218_sim_rule_candidate ? v217Flags.v217_rule_short : v217Flags.v218_watch_short}</span><span class="tag mono">${v217Flags.v217_sim_state}</span><span class="tag mono">${v217Flags.v219_sim_eval_group}</span>`
@@ -4205,7 +4329,7 @@
       ? `<div class="resultLine small">v2.20: <b>${v217Flags.v220_rule_short}</b> / role=${v217Flags.v220_role} / group=${v217Flags.v220_group} / 構造=${v217Flags.v220_structure_candidate?"Y":"N"} / 正式BUY=${v217Flags.v220_official_buy?"Y":"N"} / 検証=${v217Flags.v220_research_active?"Y":"N"} / odds=${Number.isFinite(v217Flags.v220_odd) ? v217Flags.v220_odd : "未入力"} / odds帯=${v217Flags.v220_odds_band} / 結果=${v217Flags.v220_result_label} / 収支=${v217Flags.v220_official_buy ? v217Flags.v220_official_profit : v217Flags.v220_research_profit}円 / 阻害=${v217Flags.v220_blockers || "-"}</div>`
       : ``;
     const v22010Line = v217Flags.v22010_test_visible
-      ? `<div class="resultLine small">v2.20.10検証: <b>${v217Flags.v22010_test_rule_short}</b> / group=${v217Flags.v22010_test_group} / 構造=${v217Flags.v22010_test_candidate?"Y":"N"} / WAIT=${v217Flags.v22010_test_wait_odds?"Y":"N"} / ODDS_NO=${v217Flags.v22010_test_odds_no?"Y":"N"} / ACTIVE=${v217Flags.v22010_test_active?"Y":"N"} / odds=${Number.isFinite(v217Flags.v22010_test_odd) ? v217Flags.v22010_test_odd : "未入力"} / odds帯=${v217Flags.v22010_test_odds_band} / 結果=${v217Flags.v22010_test_result_label} / 仮想収支=${v217Flags.v22010_test_profit}円 / 阻害=${v217Flags.v22010_test_blockers || "-"}</div>`
+      ? `<div class="resultLine small">v2.20.12検証: <b>${v217Flags.v22010_test_rule_short}</b> / group=${v217Flags.v22010_test_group} / 構造=${v217Flags.v22010_test_candidate?"Y":"N"} / WAIT=${v217Flags.v22010_test_wait_odds?"Y":"N"} / ODDS_NO=${v217Flags.v22010_test_odds_no?"Y":"N"} / ACTIVE=${v217Flags.v22010_test_active?"Y":"N"} / odds=${Number.isFinite(v217Flags.v22010_test_odd) ? v217Flags.v22010_test_odd : "未入力"} / odds帯=${v217Flags.v22010_test_odds_band} / 結果=${v217Flags.v22010_test_result_label} / 仮想収支=${v217Flags.v22010_test_profit}円 / 阻害=${v217Flags.v22010_test_blockers || "-"}</div>`
       : ``;
     const v217Line = (v217Flags.v218_sim_rule_candidate || v217Flags.v218_watch_candidate)
       ? `<div class="resultLine small">v2.19 SIM: <b>${v217Flags.v218_sim_rule_candidate ? v217Flags.v217_rule_short : v217Flags.v218_watch_short}</b> / RULE=${v217Flags.v218_sim_rule_candidate ? "Y" : "N"} / STRICT=${v217Flags.v218_sim_strict_state} / WATCH=${v217Flags.v218_watch_candidate ? "Y" : "N"} / odds=${Number.isFinite(v217Flags.v217_sim_odd) ? v217Flags.v217_sim_odd : "未入力"} / odds帯=${v217Flags.v219_odds_band} / market=${v217Flags.v219_market_support_short} / eval=${v217Flags.v219_sim_eval_group} / 仮想収支=${v217Flags.v219_sim_eval_profit}円 / 結果=${v217Flags.v217_result_label} / STRICT阻害=${v217Flags.v218_sim_strict_blockers || "-"}</div>`
@@ -4247,7 +4371,7 @@
             結果補正: <input data-result-top3 type="text" inputmode="numeric" placeholder="例: 5-1-2" value="${manualTop3 || ""}" style="width:120px; padding:6px; font-size:12px; display:inline-block;">
             <span class="muted small">※結果未取得/誤取得の時だけ入力</span>
           </div>
-          <div class="resultLine" data-buy-line>${v217Flags.v220_official_buy ? `v2.20正式BUY：<b>2連単 1-2</b> <span class="tag mono">${v217Flags.v220_rule_short}</span>${Number.isFinite(v217Flags.v220_odd) ? ` / odds=${v217Flags.v220_odd}` : ``}` : (v217Flags.v220_research_active ? `v2.20検証：<b>2連単 1-2</b> <span class="tag mono">${v217Flags.v220_rule_short}</span><span class="tag mono">${v217Flags.v220_group}</span>${Number.isFinite(v217Flags.v220_odd) ? ` / odds=${v217Flags.v220_odd}` : ` / odds未入力`}` : ((v217Flags.v220_official_candidate || v217Flags.v220_research_candidate) ? `v2.20候補：<b>2連単 1-2</b> <span class="tag mono">${v217Flags.v220_rule_short}</span>${Number.isFinite(v217Flags.v220_odd) ? ` / odds=${v217Flags.v220_odd}` : ` / odds未入力`}` : ((v217Flags.v22010_test_candidate || v217Flags.v22010_test_active || v217Flags.v22010_test_odds_no) ? `v2.20.10検証ログ：<b>2連単 1-2</b> <span class="tag mono">${v217Flags.v22010_test_rule_short}</span><span class="tag mono">${v217Flags.v22010_test_group}</span>${Number.isFinite(v217Flags.v22010_test_odd) ? ` / odds=${v217Flags.v22010_test_odd}` : ` / odds未入力`}` : (((v217Flags.v218_sim_rule_candidate || v217Flags.v218_watch_candidate) && $('v217VenueRuleAsSimBuyOn')?.checked) ? `旧SIM検証：<b>2連単 1-2</b> <span class="tag mono">${v217Flags.v217_sim_state}</span><span class="tag mono">${v217Flags.v219_sim_eval_group}</span>${Number.isFinite(v217Flags.v217_sim_odd) ? ` / odds=${v217Flags.v217_sim_odd}` : ` / odds未入力`}` : ``))))}</div>
+          <div class="resultLine" data-buy-line>${v217Flags.v220_official_buy ? `v2.20正式BUY：<b>2連単 1-2</b> <span class="tag mono">${v217Flags.v220_rule_short}</span>${Number.isFinite(v217Flags.v220_odd) ? ` / odds=${v217Flags.v220_odd}` : ``}` : (v217Flags.v220_research_active ? `v2.20検証：<b>2連単 1-2</b> <span class="tag mono">${v217Flags.v220_rule_short}</span><span class="tag mono">${v217Flags.v220_group}</span>${Number.isFinite(v217Flags.v220_odd) ? ` / odds=${v217Flags.v220_odd}` : ` / odds未入力`}` : ((v217Flags.v220_official_candidate || v217Flags.v220_research_candidate) ? `v2.20候補：<b>2連単 1-2</b> <span class="tag mono">${v217Flags.v220_rule_short}</span>${Number.isFinite(v217Flags.v220_odd) ? ` / odds=${v217Flags.v220_odd}` : ` / odds未入力`}` : ((v217Flags.v22010_test_candidate || v217Flags.v22010_test_active || v217Flags.v22010_test_odds_no) ? `v2.20.12検証ログ：<b>2連単 1-2</b> <span class="tag mono">${v217Flags.v22010_test_rule_short}</span><span class="tag mono">${v217Flags.v22010_test_group}</span>${Number.isFinite(v217Flags.v22010_test_odd) ? ` / odds=${v217Flags.v22010_test_odd}` : ` / odds未入力`}` : (((v217Flags.v218_sim_rule_candidate || v217Flags.v218_watch_candidate) && $('v217VenueRuleAsSimBuyOn')?.checked) ? `旧SIM検証：<b>2連単 1-2</b> <span class="tag mono">${v217Flags.v217_sim_state}</span><span class="tag mono">${v217Flags.v219_sim_eval_group}</span>${Number.isFinite(v217Flags.v217_sim_odd) ? ` / odds=${v217Flags.v217_sim_odd}` : ` / odds未入力`}` : ``))))}</div>
         </div>
         <div class="muted small">
           <div data-ev-msg>${ev.msg}</div>
@@ -4324,7 +4448,7 @@
     return card;
   }
 
-  // v2.20.10: オッズ入力欄の表示条件を1か所に集約。
+  // v2.20.12: オッズ入力欄の表示条件を1か所に集約。
   // ここを makeRaceCard / 候補のみ / 検証オッズ別枠の全てで使う。
   // これにより「カードにはオッズ欄が出るのに候補に出ない」逆に
   // 「カードにはオッズ欄が無いのに検証オッズ待ちになる」ズレを防ぐ。
@@ -4347,7 +4471,7 @@
       label = `${v.v220_role === 'official' ? 'v2.20正式候補' : 'v2.20検証候補'}：${v.v220_rule_short || '-'}`;
     }else if(showV22010Odds){
       route = 'v22010';
-      label = `v2.20.10検証ログ：${v.v22010_test_rule_short || '-'}`;
+      label = `v2.20.12検証ログ：${v.v22010_test_rule_short || '-'}`;
     }else if(showSimOdds){
       route = 'sim';
       label = `旧SIM/WATCH検証：${v.v218_sim_rule_candidate ? (v.v217_rule_short || 'SIM_RULE') : (v.v218_watch_short || 'WATCH')}`;
@@ -4383,7 +4507,7 @@
       return true;
     }
 
-    // v2.20.10の本丸。
+    // v2.20.12の本丸。
     // 実カード側で2連単1-2オッズ入力欄が出るレースは、条件外表示でも候補欄へ出す。
     // 入力済みでも確認できるように残す。未入力だけの専用抽出は別枠側で行う。
     const intent = oddsInputIntent2T12_(r, ev, v);
@@ -4397,7 +4521,7 @@
 
 
 
-  // v2.20.10: 検証用オッズ入力欄はメインのレースカード側へ統合。
+  // v2.20.12: 検証用オッズ入力欄はメインのレースカード側へ統合。
   // 別枠は「候補欄に出せない時の保険」だけにし、同一レースで入力欄が二重表示される問題を防ぐ。
   function researchOddsReasonV2209_(r){
     const ev = evaluate(r);
@@ -4441,7 +4565,7 @@
       <div class="muted small" style="margin-top:8px;">
         <b>${reason}</b><br/>
         現在判定：${ev.state} / ${ev.msg}<br/>
-        v2.20阻害：${v.v220_blockers || '-'} / v2.20.10阻害：${v.v22010_test_blockers || '-'} / 旧SIM阻害：${v.v217_rule_blockers || v.v218_watch_blockers || '-'}
+        v2.20阻害：${v.v220_blockers || '-'} / v2.20.12阻害：${v.v22010_test_blockers || '-'} / 旧SIM阻害：${v.v217_rule_blockers || v.v218_watch_blockers || '-'}
       </div>
       <div class="grid g2" style="margin-top:10px;">
         <div>
@@ -4539,7 +4663,7 @@
     list.innerHTML="";
     for(const r of show) list.appendChild(makeRaceCard(r));
 
-    // v2.20.10: 候補のみ表示とは別枠で、条件外を含む検証用オッズ入力待ちを常に更新する。
+    // v2.20.12: 候補のみ表示とは別枠で、条件外を含む検証用オッズ入力待ちを常に更新する。
     renderResearchOddsPanelV2209_(races);
   }
 
