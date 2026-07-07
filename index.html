@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.20.13（大データ再照合 / 追加会場別TEST / SAFE）</title>
+  <title>競艇 v2.20.14（LOW_NO診断 / 選手軽量収集 / 追加TEST / SAFE）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -92,13 +92,15 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.20.13（大データ再照合 / 追加会場別TEST / SAFE）</h1>
+  <h1>競艇 v2.20.14（LOW_NO診断 / 選手軽量収集 / 追加TEST / SAFE）</h1>
   <div class="sub">
     ✅ <b>正式BUY</b>は、v2.20のメイン6会場LOW_SAFEだけに整理。旧BUYロジックは正式判定から外しています。<br/>
     ✅ <b>検証会場</b>は青表示でログ化し、正式収支には混ぜません。<br/>
-    ✅ <b>v2.20.13検証ログ</b>として、過去大データ＋直近snapshotを再照合。既存7条件を維持し、福岡PAIR_BALANCEと若松R2_VALUE_SAFEを追加します。正式BUY条件は変更しません。<br/>
+    ✅ <b>既存検証ログ</b>は維持し、福岡PAIR_BALANCE・若松R2_VALUE_SAFEも継続。v2.20.14では津LOW雨比較と徳山入口緩和を別TESTとして追加し、正式BUY条件は変更しません。<br/>
     ✅ v2.15〜v2.19のscore/SIM/オッズ帯ログは、分析用として折りたたみ内に残しています。<br/>
-    ✅ 取得系・before/result補完・手動結果補正・.json書き出し・低通信・偽1-2-3防止は維持。
+    ✅ 取得系・before/result補完・手動結果補正・.json書き出し・低通信・偽1-2-3防止は維持。<br/>
+    ✅ <b>選手情報</b>はprograms内の既存情報だけを軽量収集。各レースは登録番号6人＋当日何走目、氏名/級別/支部は共通辞書に1回だけ保存（追加API通信なし）。<br/>
+    ✅ <b>LOW_NO診断</b>は2.2〜2.6倍帯のNOを、オッズのみ/入口能力値/雨/ST/1勝/2残存/3-4脅威など理由別にJSON集計します。<br/>
   </div>
 
   <div class="card settingsCard">
@@ -142,11 +144,11 @@
     <div class="grid g2" style="margin-top:10px;">
       <label class="cb" style="margin:0;">
         <input type="checkbox" id="v22010TestLogOn" checked />
-        v2.20.13大データ再照合検証（下関OPT / 尼崎STRICT / 津PAIR_SAFE / 大村PAIR / びわこNARROW / 福岡PAIR_BAL / 若松R2_VALUE / 児島・常滑研究枠）
+        v2.20.14検証（既存条件維持＋津LOW雨比較 / 徳山入口緩和 / LOW_NO理由別診断）
       </label>
       <div class="muted small" style="align-self:center;">
         ※正式BUYには混ぜず、候補表示・JSON保存・100円仮想収支だけ行います。
-        福岡はLOW〜VALUE比較、若松はVALUE帯だけを追加検証。短期だけ強い条件は追加しません。
+        既存9条件は維持。津はLOW雨許容比較、徳山は入口能力値を外した構造比較を追加。短期だけ強い条件は追加しません。
       </div>
     </div>
     <div class="muted small" style="margin-top:8px;">
@@ -762,6 +764,11 @@
 
   let enabledStadiums = new Set(Array.from({length:24}, (_,i)=>i+1));
   let LAST_RACES = [];
+
+  // v2.20.14: 選手情報はprogramsに既に含まれる範囲だけを利用。追加通信はしない。
+  // レースごとは racer_ids[6] と racer_run_no[6] のみ、氏名/級別/支部は共通辞書へ重複排除して保存する。
+  const RACER_CATALOG_RUNTIME = new Map(); // racer_id -> {n,c,b}
+
 
   // manual odds cache (オッズ入力欄維持)
   const ODDS_KEY = "kyotei_odds_manual_2t_v1";
@@ -2408,6 +2415,88 @@
     };
   }
 
+  // v2.20.14: 大データ＋直近の両方を見て追加する比較TEST。
+  // 既存v2.20.13条件は壊さず、別系統の検証ログとして並走させる。
+  function buildV22014ExtraTestFlags_(r){
+    const stadium = Number(r?.stadium);
+    let id = 'none', group = 'NO_V22014_EXTRA', ruleShort = 'v2.20.14追加対象外', ruleName = 'v2.20.14追加TEST対象外';
+    let minOdd = null, maxOdd = null;
+    if(stadium === 9){
+      id = 'tsu_low_tight_rain_compare';
+      group = 'TSU_LOW_TIGHT_RAIN_COMPARE';
+      ruleShort = '津LOW雨比較';
+      ruleName = '津_LOW_TIGHT_RAIN_COMPARE：1展示1位＋2展示≤2＋d2≤0.03＋ST出負けなし＋3-4脅威なし＋水面穏やか。雨は除外しない';
+      minOdd = 2.2; maxOdd = 2.6;
+    }else if(stadium === 18){
+      id = 'tokuyama_core_entry_relax';
+      group = 'TOKUYAMA_CORE_ENTRY_RELAX';
+      ruleShort = '徳山入口緩和';
+      ruleName = '徳山_CORE_ENTRY_RELAX：1展示1位＋2展示≤2＋d2≤0.08＋3-4脅威なし＋水面穏やか。全国/当地/モーター入口は要求しない';
+      minOdd = 2.4; maxOdd = 3.8;
+    }
+
+    const target = id !== 'none';
+    const odd = getOddFor(r, '2T', '1-2');
+    const resultClass = resultClass2T12_(r?.result_top3);
+    const l2 = lane2SurvivalScoreV215_(r);
+    const rank1 = exhibitionRank(r?.exh);
+    const rank2 = laneExhRank_(r?.exh, 2);
+    const d2 = deltaLane(r?.exh, 2);
+    const stReady = stReady13_(r);
+    const noStOut = st1Outmuscled_(r, num('stOutmuscle') ?? 0.05) !== true;
+    const no34 = !l2.lane3Threat && !l2.lane4Threat;
+    const calm = calmWater4_(r);
+    const blockers = [];
+    const add = (ok, reason)=>{ if(!ok) blockers.push(reason); };
+    const rank2Ok = max => Number.isFinite(rank2) && rank2 <= max;
+    const d2Ok = max => d2 != null && d2 <= max + EPS;
+
+    if(target){
+      add(r?.exhReady === true, '展示待ち');
+      if(v220NeedStReady_()) add(stReady, 'ST待ち');
+      if(stadium === 9){
+        add(rank1 === 1, `津LOW雨比較:1展示1位ではない(${rank1 ?? '-'})`);
+        add(rank2Ok(2), `津LOW雨比較:2展示>2(${rank2 ?? '-'})`);
+        add(d2Ok(0.03), `津LOW雨比較:d2>0.03(${d2 == null ? '-' : d2.toFixed(2)})`);
+        add(noStOut, '津LOW雨比較:ST出負け');
+        add(no34, '津LOW雨比較:3-4脅威あり');
+        add(calm, '津LOW雨比較:水面荒れ');
+      }else if(stadium === 18){
+        add(rank1 === 1, `徳山入口緩和:1展示1位ではない(${rank1 ?? '-'})`);
+        add(rank2Ok(2), `徳山入口緩和:2展示>2(${rank2 ?? '-'})`);
+        add(d2Ok(0.08), `徳山入口緩和:d2>0.08(${d2 == null ? '-' : d2.toFixed(2)})`);
+        add(no34, '徳山入口緩和:3-4脅威あり');
+        add(calm, '徳山入口緩和:水面荒れ');
+      }
+    }
+
+    const structureCandidate = target && blockers.length === 0;
+    const hasOdd = Number.isFinite(odd) && odd > 0;
+    const oddsOk = structureCandidate && hasOdd && odd >= minOdd - EPS && odd <= maxOdd + EPS;
+    const waitOdds = structureCandidate && !hasOdd;
+    const oddsNo = structureCandidate && hasOdd && !oddsOk;
+    const hit = resultClass.cls === '12_hit';
+    return {
+      v22014_extra_visible: target,
+      v22014_extra_test_id: id,
+      v22014_extra_group: group,
+      v22014_extra_rule_short: ruleShort,
+      v22014_extra_rule_name: ruleName,
+      v22014_extra_min_odd: minOdd,
+      v22014_extra_max_odd: maxOdd,
+      v22014_extra_structure_candidate: structureCandidate,
+      v22014_extra_wait_odds: waitOdds,
+      v22014_extra_odds_no: oddsNo,
+      v22014_extra_active: oddsOk,
+      v22014_extra_hit: oddsOk && hit,
+      v22014_extra_odd: hasOdd ? odd : null,
+      v22014_extra_result_class: resultClass.cls,
+      v22014_extra_blockers: blockers.join(' / ') || null,
+      v22014_tsu_low_tight_rain_compare_test: id === 'tsu_low_tight_rain_compare' && structureCandidate,
+      v22014_tokuyama_core_entry_relax_test: id === 'tokuyama_core_entry_relax' && structureCandidate
+    };
+  }
+
   function buildV217VenueRuleFlags_(r){
     const vr = venueRuleV217_(r);
     const odds = v217SimOddsCheck_(r, vr);
@@ -2417,6 +2506,7 @@
     const v219 = simOddsBandEvalV219_(r, vr, odds, resultClass);
     const v220 = buildV220VenueFlags_(r);
     const v22010 = buildV22010TestFlags_(r);
+    const v22014Extra = buildV22014ExtraTestFlags_(r);
     const showRule = !!vr.candidate;
     const showWatch = !!watch.candidate;
     const anySimVisible = showRule || showWatch;
@@ -2521,8 +2611,9 @@
 
       ...shallowCloneJson_(v220),
 
-      // v2.20.13 追加検証ログ（正式BUY収支には混ぜない）
-      ...shallowCloneJson_(v22010)
+      // v2.20.13既存検証ログ＋v2.20.14追加比較TEST（正式BUY収支には混ぜない）
+      ...shallowCloneJson_(v22010),
+      ...shallowCloneJson_(v22014Extra)
     };
   }
 
@@ -3213,7 +3304,7 @@
       v22010_biwako_pair_test: false,
       v22010_tokoname_low_recheck_test: false,
       v22010_tokoname_value_test: false,
-      v22010_detail: { stadium, venue, rank1, rank2, d2, noStOut, calm, noRain, no34, noOuter, oneScore:one.score, lane2Score:l2.score, f1Ok:f1.ok, f1Reasons:f1.reasons, historicalTuned:true, largeDataRetuned:true, testVersion:'v2.20.13' }
+      v22010_detail: { stadium, venue, rank1, rank2, d2, noStOut, calm, noRain, no34, noOuter, oneScore:one.score, lane2Score:l2.score, f1Ok:f1.ok, f1Reasons:f1.reasons, historicalTuned:true, largeDataRetuned:true, testVersion:'v2.20.14' }
     };
   }
 
@@ -3824,6 +3915,80 @@
     missList.innerHTML = noMiss.slice(0, limit).map(toHtml).join("") || `<div class="muted small">（なし）</div>`;
   }
 
+  // ===== v2.20.14 LOW_NO reason diagnostic =====
+  function lowNoReasonGroupV22014_(r, ev){
+    const pl = ev?.plan || {};
+    if(pl?._noType === 'odds_no') return 'ODDS_ONLY';
+    const reason = [ev?.msg, ...(pl?.reasons || []), ...(pl?._oddsNoReasons || [])].filter(Boolean).join(' / ');
+    if(/全国2連率不足|当地2連率不足|モーター2連率不足|条件①/.test(reason)) return 'ENTRY_ABILITY';
+    if(/雨/.test(reason)) return 'RAIN_GUARD';
+    if(/ST出負け|ST全体安全|ST脅威/.test(reason)) return 'ST_RISK';
+    if(/1号艇勝利|1勝score|1号艇hard|1展示/.test(reason)) return 'ONE_WIN_RISK';
+    if(/2号艇残存|2残存score|2展示|2号艇2着ズレ/.test(reason)) return 'LANE2_SURVIVAL';
+    if(/3\/4脅威|3-4脅威|3号艇|4号艇/.test(reason)) return 'LANE34_THREAT';
+    if(/水面|荒れ|波高|風波/.test(reason)) return 'WATER_RISK';
+    return 'OTHER';
+  }
+
+  function buildLowNoDiagnosticFlagsV22014_(r, ev=null){
+    const e = ev || evaluate(r);
+    const odd = getOddFor(r, '2T', '1-2');
+    if(!Number.isFinite(odd) || odd < 2.2 - EPS || odd > 2.6 + EPS) return {};
+    const isNo = e?.state === 'NO';
+    const hit = resultClass2T12_(r?.result_top3).cls === '12_hit';
+    return {
+      low_no_diag_band: 'LOW_2.2_2.6',
+      low_no_diag_odd: odd,
+      low_no_diag_state: e?.state || null,
+      low_no_diag_reason_group: isNo ? lowNoReasonGroupV22014_(r, e) : 'NOT_NO',
+      low_no_diag_is_no: isNo,
+      low_no_diag_hit: hit,
+      low_no_diag_opportunity_miss: isNo && hit,
+      low_no_diag_avoid_success: isNo && !hit && !!r?.result_top3
+    };
+  }
+
+  function buildLowNoSummaryV22014_(racesForExport){
+    const out = { total_low_odds:0, no_total:0, no_hit:0, no_miss:0, by_reason:{} };
+    for(const r of racesForExport || []){
+      if(r?.low_no_diag_band !== 'LOW_2.2_2.6') continue;
+      out.total_low_odds++;
+      if(!r.low_no_diag_is_no) continue;
+      out.no_total++;
+      if(r.low_no_diag_opportunity_miss) out.no_hit++;
+      if(r.low_no_diag_avoid_success) out.no_miss++;
+      const g = r.low_no_diag_reason_group || 'OTHER';
+      if(!out.by_reason[g]) out.by_reason[g] = { n:0, hit:0, miss:0 };
+      out.by_reason[g].n++;
+      if(r.low_no_diag_opportunity_miss) out.by_reason[g].hit++;
+      if(r.low_no_diag_avoid_success) out.by_reason[g].miss++;
+    }
+    return out;
+  }
+
+  function buildV22014ExtraSummary_(racesForExport){
+    const out = {};
+    for(const r of racesForExport || []){
+      const id = r?.v22014_extra_test_id;
+      if(!id || id === 'none') continue;
+      if(!out[id]) out[id] = { structure:0, wait_odds:0, odds_no:0, active:0, hit:0, stake:0, payout:0, profit:0 };
+      const x = out[id];
+      if(r.v22014_extra_structure_candidate) x.structure++;
+      if(r.v22014_extra_wait_odds) x.wait_odds++;
+      if(r.v22014_extra_odds_no) x.odds_no++;
+      if(r.v22014_extra_active){
+        x.active++;
+        x.stake += 100;
+        if(r.v22014_extra_hit && Number.isFinite(Number(r.v22014_extra_odd))){
+          x.hit++;
+          x.payout += Math.round(Number(r.v22014_extra_odd) * 100);
+        }
+      }
+      x.profit = x.payout - x.stake;
+    }
+    return out;
+  }
+
   // ===== snapshot/export helpers（★ここがバグ修正本体） =====
   function shallowCloneJson_(obj){
     return JSON.parse(JSON.stringify(obj));
@@ -3893,7 +4058,10 @@
       ...shallowCloneJson_(v215Flags),
 
       // v2.19 SIM_RULE / SIM_STRICT_BUY / WATCH / オッズ帯別ログ（正式収支には含めない）
-      ...shallowCloneJson_(v217Flags)
+      ...shallowCloneJson_(v217Flags),
+
+      // v2.20.14: LOW帯だけを条件付きで保存。該当しないレースには空フィールドを増やさない。
+      ...buildLowNoDiagnosticFlagsV22014_(r, ev)
     };
   }
 
@@ -4504,16 +4672,20 @@
     const showSimOdds = !!((v.v218_sim_rule_candidate || v.v218_watch_candidate) && $('v217ShowOddsInputForSimOn')?.checked);
     const showV220Odds = !!(v.v220_official_candidate || v.v220_research_candidate || v.v220_research_active || v.v220_official_buy);
     const showV22010Odds = !!(v.v22010_test_candidate || v.v22010_test_active || v.v22010_test_wait_odds || v.v22010_test_odds_no);
-    const showOddsBlock = !!(isFinal || showSimOdds || showV220Odds || showV22010Odds);
+    const showV22014ExtraOdds = !!(v.v22014_extra_structure_candidate || v.v22014_extra_active || v.v22014_extra_wait_odds || v.v22014_extra_odds_no);
+    const showOddsBlock = !!(isFinal || showSimOdds || showV220Odds || showV22010Odds || showV22014ExtraOdds);
 
     let route = '';
     let label = '';
     if(showV220Odds){
       route = 'v220';
       label = `${v.v220_role === 'official' ? 'v2.20正式候補' : 'v2.20検証候補'}：${v.v220_rule_short || '-'}`;
+    }else if(showV22014ExtraOdds){
+      route = 'v22014extra';
+      label = `v2.20.14追加TEST：${v.v22014_extra_rule_short || '-'}`;
     }else if(showV22010Odds){
       route = 'v22010';
-      label = `v2.20.13検証ログ：${v.v22010_test_rule_short || '-'}`;
+      label = `v2.20.14既存検証ログ：${v.v22010_test_rule_short || '-'}`;
     }else if(showSimOdds){
       route = 'sim';
       label = `旧SIM/WATCH検証：${v.v218_sim_rule_candidate ? (v.v217_rule_short || 'SIM_RULE') : (v.v218_watch_short || 'WATCH')}`;
@@ -4531,6 +4703,7 @@
       showSimOdds,
       showV220Odds,
       showV22010Odds,
+      showV22014ExtraOdds,
       route,
       label
     };
@@ -4597,8 +4770,8 @@
           <span class="badge b-wait">検証オッズ待ち</span>
           <span class="tag">${r.date}</span>
           ${closeTag}
-          <span class="tag mono">${v.v220_rule_short || v.v22010_test_rule_short || v.v217_rule_short || v.v218_watch_short || '-'}</span>
-          <span class="tag mono">${v.v220_group || v.v22010_test_group || v.v219_sim_eval_group || '-'}</span>
+          <span class="tag mono">${v.v22014_extra_rule_short || v.v220_rule_short || v.v22010_test_rule_short || v.v217_rule_short || v.v218_watch_short || '-'}</span>
+          <span class="tag mono">${v.v22014_extra_group || v.v220_group || v.v22010_test_group || v.v219_sim_eval_group || '-'}</span>
         </div>
         <div class="rowL">
           <button class="btn2" data-fetch-before-mini>before取得</button>
@@ -4607,7 +4780,7 @@
       <div class="muted small" style="margin-top:8px;">
         <b>${reason}</b><br/>
         現在判定：${ev.state} / ${ev.msg}<br/>
-        v2.20阻害：${v.v220_blockers || '-'} / v2.20.13阻害：${v.v22010_test_blockers || '-'} / 旧SIM阻害：${v.v217_rule_blockers || v.v218_watch_blockers || '-'}
+        追加TEST阻害：${v.v22014_extra_blockers || '-'} / v2.20阻害：${v.v220_blockers || '-'} / 既存検証阻害：${v.v22010_test_blockers || '-'} / 旧SIM阻害：${v.v217_rule_blockers || v.v218_watch_blockers || '-'}
       </div>
       <div class="grid g2" style="margin-top:10px;">
         <div>
@@ -4709,7 +4882,80 @@
     renderResearchOddsPanelV2209_(races);
   }
 
+  // ===== v2.20.14 compact racer data =====
+  function firstPresentV22014_(obj, keys){
+    for(const k of keys){
+      const v = obj?.[k];
+      if(v !== undefined && v !== null && String(v).trim() !== '') return v;
+    }
+    return null;
+  }
+
+  function compactRacerFromProgramBoatV22014_(boat){
+    if(!boat || typeof boat !== 'object') return null;
+    const idRaw = firstPresentV22014_(boat, [
+      'racer_number','racer_registration_number','racer_registration_no','racer_id','racer_code','registration_number','touban','racer_touban'
+    ]);
+    if(idRaw == null) return null;
+    const id = String(idRaw).trim();
+    if(!id) return null;
+    const nRaw = firstPresentV22014_(boat, ['racer_name','racer_name_kanji','racer_display_name','name']);
+    const cRaw = firstPresentV22014_(boat, ['racer_rank','racer_class','racer_grade','class','rank']);
+    const bRaw = firstPresentV22014_(boat, ['racer_branch','racer_branch_name','branch','branch_name']);
+    const item = {};
+    if(nRaw != null) item.n = String(nRaw).trim();
+    if(cRaw != null) item.c = String(cRaw).trim();
+    if(bRaw != null) item.b = String(bRaw).trim();
+    return { id, item };
+  }
+
+  function registerRaceRacersV22014_(programRow){
+    const ids = Array(6).fill(null);
+    const boats = Array.isArray(programRow?.boats) ? programRow.boats : [];
+    for(const boat of boats){
+      const lane = Number(boat?.racer_boat_number ?? boat?.boat_number ?? boat?.lane ?? boat?.course);
+      if(!Number.isFinite(lane) || lane < 1 || lane > 6) continue;
+      const info = compactRacerFromProgramBoatV22014_(boat);
+      if(!info) continue;
+      ids[lane-1] = info.id;
+      const old = RACER_CATALOG_RUNTIME.get(info.id) || {};
+      RACER_CATALOG_RUNTIME.set(info.id, { ...old, ...info.item });
+    }
+    return ids;
+  }
+
+  function assignRacerRunNoV22014_(races){
+    const counts = new Map();
+    const sorted = (races || []).slice().sort((a,b)=>{
+      const dk = String(a?.date || '').localeCompare(String(b?.date || ''));
+      if(dk) return dk;
+      const am = parseCloseMs_(a?.race_closed_at);
+      const bm = parseCloseMs_(b?.race_closed_at);
+      if(am !== bm) return am - bm;
+      return (Number(a?.stadium)-Number(b?.stadium)) || (Number(a?.race)-Number(b?.race));
+    });
+    for(const r of sorted){
+      const arr = Array.isArray(r?.racer_ids) ? r.racer_ids : [];
+      r.racer_run_no = arr.map(id=>{
+        if(!id) return null;
+        const key = `${r.date}|${id}`;
+        const n = (counts.get(key) || 0) + 1;
+        counts.set(key, n);
+        return n;
+      });
+    }
+  }
+
+  function racerCatalogForExportV22014_(){
+    const out = {};
+    for(const [id, item] of Array.from(RACER_CATALOG_RUNTIME.entries()).sort((a,b)=>String(a[0]).localeCompare(String(b[0])))){
+      out[id] = item;
+    }
+    return out;
+  }
+
   function buildRacesFromBundle(bundle){
+    RACER_CATALOG_RUNTIME.clear();
     const programs = bundle.programs?.programs || [];
     const previews = bundle.previews?.previews || [];
     const results = getResultsArrayFromAnyBundle_(bundle);
@@ -4732,6 +4978,7 @@
       const key = `${pr.race_date}-${stadium}-${pr.race_number}`;
       const b1 = (pr.boats || []).find(b=>b.racer_boat_number===1);
       if(!b1) continue;
+      const racerIds = registerRaceRacersV22014_(pr);
 
       const pv = prevMap.get(key);
       const exh={};
@@ -4756,6 +5003,10 @@
         race: pr.race_number,
         date: pr.race_date,
         race_closed_at: pr.race_closed_at ?? null,
+
+        // v2.20.14 compact racer linkage: 1〜6号艇順の登録番号。氏名等はsnapshot上部のracer_catalogへ重複排除。
+        racer_ids: racerIds,
+        racer_run_no: Array(6).fill(null),
 
         nat2: Number(b1.racer_national_top_2_percent ?? 0),
         loc2: Number(b1.racer_local_top_2_percent ?? 0),
@@ -4789,6 +5040,7 @@
 
       races.push(r);
     }
+    assignRacerRunNoV22014_(races);
     return races;
   }
 
@@ -5207,6 +5459,10 @@
       enabled_stadiums: Array.from(enabledStadiums).sort((a,b)=>a-b),
       settings: collectSettings_(),
       summary: summaryForExport,
+      low_no_diagnostic_summary: buildLowNoSummaryV22014_(racesForExport),
+      v22014_extra_test_summary: buildV22014ExtraSummary_(racesForExport),
+      racer_data_meta: { schema:"racer_compact_v1", source:"programs_bundle", extra_api_calls:0, race_fields:["racer_ids","racer_run_no"], catalog_fields:{n:"name",c:"class",b:"branch"} },
+      racer_catalog: racerCatalogForExportV22014_(),
       races: racesForExport,
       caches: {
         before_auto: mapToObj_(BEFORE_AUTO),
