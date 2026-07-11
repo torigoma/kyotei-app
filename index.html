@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.20.20（取得フォールバック維持 / 事前候補 / 品質NO / SAFE）</title>
+  <title>競艇 v2.20.23（能力値復旧 / API v1 program結合 / 取得診断 / SAFE）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -94,7 +94,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.20.20（取得フォールバック維持 / 事前候補 / 品質NO / SAFE）</h1>
+  <h1>競艇 v2.20.23（能力値復旧 / API v1 program結合 / 取得診断 / SAFE）</h1>
   <div class="sub">
     ✅ <b>正式BUY</b>は、v2.20のメイン6会場LOW_SAFEだけに整理。旧BUYロジックは正式判定から外しています。<br/>
     ✅ <b>検証会場</b>は青表示でログ化し、正式収支には混ぜません。<br/>
@@ -104,7 +104,8 @@
     ✅ <b>選手情報</b>はprograms内の既存情報だけを軽量収集。各レースは登録番号6人＋当日何走目、氏名/級別/支部は共通辞書に1回だけ保存（追加API通信なし）。<br/>
     ✅ <b>LOW_NO診断</b>は2.2〜2.6倍帯のNOを、オッズのみ/入口能力値/雨/ST/1勝/2残存/3-4脅威など理由別にJSON集計します。<br/>
     ✅ <b>v2.20.19</b>の取得フォールバックを維持し、/api/todayが空/失敗してもOpenAPI直取得で復旧します。<br/>
-    ✅ <b>v2.20.20</b>では、直前データ待ちの事前候補表示と、福岡PAIR_BALANCE・若松R2_VALUE_SAFEの品質NOを追加します。取得・描画本線には混ぜません。<br/>
+    ✅ <b>v2.20.20では、直前データ待ちの事前候補表示と、福岡PAIR_BALANCE・若松R2_VALUE_SAFEの品質NOを追加します。取得・描画本線には混ぜません。<br/>
+    ✅ <b>v2.20.23</b>では、Worker programsを主データにした場合でもAPI v1 programsの選手登録番号・全国/当地/モーター2連率をlane別に補完し、能力値0落ちを防ぎます。<br/>
   </div>
 
   <div class="card settingsCard">
@@ -1086,32 +1087,137 @@
     return `${d}-${st}-${rn}`;
   }
 
+  function v22023FirstNonEmpty_(...vals){
+    for(const v of vals){
+      if(v !== undefined && v !== null && String(v).trim() !== '') return v;
+    }
+    return null;
+  }
+
+  function v22023NumOrNull_(v){
+    if(v === undefined || v === null || String(v).trim() === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function v22023LaneOfBoat_(boat, fallbackLane=null){
+    const lane = Number(boat?.racer_boat_number ?? boat?.entry_number ?? boat?.boat_number ?? boat?.lane ?? boat?.course ?? fallbackLane);
+    return Number.isFinite(lane) && lane >= 1 && lane <= 6 ? lane : null;
+  }
+
+  function v22023HasUsefulAbilityBoat_(boat){
+    if(!boat || typeof boat !== 'object') return false;
+    const n = v22023NumOrNull_(boat.racer_national_top_2_percent ?? boat.national_top_2_percent);
+    const l = v22023NumOrNull_(boat.racer_local_top_2_percent ?? boat.local_top_2_percent);
+    const m = v22023NumOrNull_(boat.racer_assigned_motor_top_2_percent ?? boat.motor_top_2_percent);
+    const id = v22023FirstNonEmpty_(boat.racer_number, boat.racer_registration_number, boat.number, boat.registration_number);
+    return !!id || (Number.isFinite(n) && n > 0) || (Number.isFinite(l) && l > 0) || (Number.isFinite(m) && m > 0);
+  }
+
+  function v22023NormalizeProgramBoat_(rc, fallbackLane=null){
+    if(!rc || typeof rc !== 'object') return null;
+    const lane = v22023LaneOfBoat_(rc, fallbackLane);
+    if(!lane) return null;
+    return {
+      ...rc,
+      racer_boat_number: lane,
+      boat_number: lane,
+      entry_number: lane,
+      lane,
+      racer_number: v22023FirstNonEmpty_(rc.racer_number, rc.racer_registration_number, rc.racer_registration_no, rc.racer_id, rc.racer_code, rc.registration_number, rc.number, rc.touban, rc.racer_touban),
+      racer_registration_number: v22023FirstNonEmpty_(rc.racer_registration_number, rc.racer_number, rc.registration_number, rc.number, rc.racer_id, rc.racer_code, rc.touban, rc.racer_touban),
+      racer_name: v22023FirstNonEmpty_(rc.racer_name, rc.racer_name_kanji, rc.racer_display_name, rc.name),
+      racer_rank: v22023FirstNonEmpty_(rc.racer_rank, rc.racer_class, rc.racer_grade, rc.class, rc.rank, rc.rank_number),
+      racer_branch: v22023FirstNonEmpty_(rc.racer_branch, rc.racer_branch_name, rc.branch, rc.branch_name, rc.branch_number),
+      racer_national_top_2_percent: v22023NumOrNull_(rc.racer_national_top_2_percent ?? rc.national_top_2_percent ?? rc.nationalTop2Percent ?? rc.national_top2_percent ?? rc.national_top_2_rate),
+      racer_local_top_2_percent: v22023NumOrNull_(rc.racer_local_top_2_percent ?? rc.local_top_2_percent ?? rc.localTop2Percent ?? rc.local_top2_percent ?? rc.local_top_2_rate),
+      racer_assigned_motor_top_2_percent: v22023NumOrNull_(rc.racer_assigned_motor_top_2_percent ?? rc.motor_top_2_percent ?? rc.assigned_motor_top_2_percent ?? rc.motorTop2Percent ?? rc.motor_top2_percent ?? rc.motor_top_2_rate),
+      racer_exhibition_time: v22023NumOrNull_(rc.racer_exhibition_time ?? rc.exhibition_time ?? rc.exhibitionTime),
+      racer_start_timing: v22023FirstNonEmpty_(rc.racer_start_timing, rc.start_timing, rc.startTiming, rc.st)
+    };
+  }
+
   function boatsObjectToLegacyArrayV22022_(racersObj){
     const out = [];
     if(!racersObj || typeof racersObj !== 'object') return out;
     for(const [laneKey, rc] of Object.entries(racersObj)){
-      if(!rc || typeof rc !== 'object') continue;
-      const lane = Number(rc.entry_number ?? rc.racer_boat_number ?? rc.boat_number ?? rc.lane ?? laneKey);
-      if(!Number.isFinite(lane) || lane < 1 || lane > 6) continue;
-      out.push({
-        ...rc,
-        racer_boat_number: lane,
-        boat_number: lane,
-        lane,
-        racer_number: rc.number ?? rc.racer_number ?? rc.registration_number ?? null,
-        racer_registration_number: rc.number ?? rc.racer_number ?? rc.registration_number ?? null,
-        racer_name: rc.name ?? rc.racer_name ?? null,
-        racer_rank: rc.rank ?? rc.rank_number ?? rc.class ?? null,
-        racer_branch: rc.branch ?? rc.branch_name ?? rc.branch_number ?? null,
-        racer_national_top_2_percent: rc.national_top_2_percent ?? rc.racer_national_top_2_percent ?? 0,
-        racer_local_top_2_percent: rc.local_top_2_percent ?? rc.racer_local_top_2_percent ?? 0,
-        racer_assigned_motor_top_2_percent: rc.motor_top_2_percent ?? rc.racer_assigned_motor_top_2_percent ?? 0,
-        racer_exhibition_time: rc.exhibition_time ?? rc.racer_exhibition_time ?? null,
-        racer_start_timing: rc.start_timing ?? rc.racer_start_timing ?? null
-      });
+      const b = v22023NormalizeProgramBoat_(rc, laneKey);
+      if(b) out.push(b);
     }
     out.sort((a,b)=>Number(a.racer_boat_number)-Number(b.racer_boat_number));
     return out;
+  }
+
+  function v22023BoatMap_(boats){
+    const map = new Map();
+    const arr = Array.isArray(boats) ? boats : Object.values(boats || {});
+    for(const b of arr){
+      const lane = v22023LaneOfBoat_(b);
+      if(lane) map.set(lane, b);
+    }
+    return map;
+  }
+
+  function v22023ShouldFillField_(base, key){
+    const v = base?.[key];
+    if(v === undefined || v === null || String(v).trim() === '') return true;
+    if(['racer_national_top_2_percent','racer_local_top_2_percent','racer_assigned_motor_top_2_percent'].includes(key)){
+      const n = Number(v);
+      return !Number.isFinite(n) || n <= 0;
+    }
+    return false;
+  }
+
+  function v22023MergeBoat_(primary, secondary, lane){
+    const a = v22023NormalizeProgramBoat_(primary || {}, lane) || { racer_boat_number: lane, boat_number: lane, lane };
+    const b = v22023NormalizeProgramBoat_(secondary || {}, lane);
+    if(!b) return a;
+    const out = { ...a };
+    // API v1側の元フィールドも保持しつつ、既存アプリが読むlegacyキーを優先的に補完。
+    for(const [k,v] of Object.entries(b)){
+      if(v === undefined || v === null || String(v).trim?.() === '') continue;
+      if(out[k] === undefined || out[k] === null || String(out[k]).trim?.() === '') out[k] = v;
+    }
+    for(const k of [
+      'racer_number','racer_registration_number','racer_name','racer_rank','racer_branch',
+      'racer_national_top_2_percent','racer_local_top_2_percent','racer_assigned_motor_top_2_percent'
+    ]){
+      if(v22023ShouldFillField_(out, k) && b[k] !== undefined && b[k] !== null && String(b[k]).trim() !== '') out[k] = b[k];
+    }
+    out.racer_boat_number = lane;
+    out.boat_number = lane;
+    out.lane = lane;
+    out.entry_number = lane;
+    return out;
+  }
+
+  function v22023EnrichProgramBoats_(primaryProgram, secondaryProgram){
+    if(!primaryProgram || !secondaryProgram) return primaryProgram;
+    const pMap = v22023BoatMap_(primaryProgram.boats || primaryProgram.racers);
+    const sMap = v22023BoatMap_(secondaryProgram.boats || secondaryProgram.racers);
+    if(!sMap.size) return primaryProgram;
+    const merged = [];
+    for(let lane=1; lane<=6; lane++){
+      const mb = v22023MergeBoat_(pMap.get(lane), sMap.get(lane), lane);
+      if(mb) merged.push(mb);
+    }
+    const useful = merged.some(v22023HasUsefulAbilityBoat_);
+    if(useful){
+      primaryProgram.boats = merged;
+      primaryProgram.__v22023_ability_enriched = true;
+    }
+    return primaryProgram;
+  }
+
+  function v22023AbilityReady_(r){
+    const nat = Number(r?.nat2);
+    const motor = Number(r?.motor2);
+    // loc2=0は当地成績欠損として許容しているため、入口能力値の復旧判定はnat/motorを主に見る。
+    return Number.isFinite(nat) && nat > 0 && Number.isFinite(motor) && motor > 0;
+  }
+
+  function v22023RacerIdsReady_(r){
+    return Array.isArray(r?.racer_ids) && r.racer_ids.some(x => x != null && String(x).trim() !== '');
   }
 
   function resultTop3FromUnifiedResultV22022_(result){
@@ -1241,7 +1347,7 @@
   }
 
   function mergeLegacyTodayBundlesV22022_(primary, secondary, meta={}){
-    const pPrograms = getProgramsArrayFromAnyBundle_(primary).map(x=>({ ...x }));
+    const pProgramsRaw = getProgramsArrayFromAnyBundle_(primary).map(x=>({ ...x }));
     const sPrograms = getProgramsArrayFromAnyBundle_(secondary);
     const sProgramMap = new Map();
     for(const sp of sPrograms){
@@ -1249,15 +1355,28 @@
       if(k) sProgramMap.set(k, sp);
     }
 
-    for(const pp of pPrograms){
+    const pPrograms = [];
+    let abilityEnriched = 0;
+    for(const pp0 of pProgramsRaw){
+      const pp = { ...pp0 };
       const k = legacyRaceKeyV22022_(pp);
       const sp = k ? sProgramMap.get(k) : null;
-      if(!sp) continue;
-      if(!pp.race_closed_at && !pp.closed_at){
-        pp.race_closed_at = sp.race_closed_at ?? sp.closed_at ?? null;
-        pp.closed_at = pp.race_closed_at;
+      if(sp){
+        if(!pp.race_closed_at && !pp.closed_at){
+          pp.race_closed_at = sp.race_closed_at ?? sp.closed_at ?? null;
+          pp.closed_at = pp.race_closed_at;
+        }
+        const beforeUseful = v22023BoatMap_(pp.boats || pp.racers);
+        v22023EnrichProgramBoats_(pp, sp);
+        const afterUseful = (Array.isArray(pp.boats) ? pp.boats : Object.values(pp.boats || {})).some(v22023HasUsefulAbilityBoat_);
+        if(afterUseful) abilityEnriched++;
       }
+      pPrograms.push(pp);
     }
+
+    // Worker側programsが空、または能力値を持たない場合はAPI v1側programsをそのまま使う。
+    const primaryHasUsefulAbility = pPrograms.some(pr => (Array.isArray(pr.boats) ? pr.boats : Object.values(pr.boats || {})).some(v22023HasUsefulAbilityBoat_));
+    const finalPrograms = (pPrograms.length && primaryHasUsefulAbility) ? pPrograms : sPrograms;
 
     const pPreviews = getPreviewsArrayFromAnyBundle_(primary);
     const sPreviews = getPreviewsArrayFromAnyBundle_(secondary);
@@ -1266,7 +1385,7 @@
 
     return {
       ...primary,
-      programs: { programs: pPrograms.length ? pPrograms : sPrograms },
+      programs: { programs: finalPrograms },
       previews: { previews: mergeArraysByRaceKeyV22022_(pPreviews, sPreviews) },
       results: { results: mergeArraysByRaceKeyV22022_(pResults, sResults) },
       __source: meta.source || 'merged_today_bundle',
@@ -1274,7 +1393,9 @@
       __api_v1_enrich: true,
       __api_v1_programs: sPrograms.length,
       __api_v1_previews: sPreviews.length,
-      __api_v1_results: sResults.length
+      __api_v1_results: sResults.length,
+      __v22023_ability_enriched_programs: abilityEnriched,
+      __v22023_program_source: finalPrograms === sPrograms ? 'api_v1_programs' : 'worker_programs_enriched'
     };
   }
 
@@ -4710,6 +4831,7 @@
     let v220MainStruct=0, v220ResearchStruct=0;
     let v22010Struct=0, v22010Wait=0, v22010OddsNo=0, v22010Active=0, v22010Hit=0, v22010Stake=0, v22010Payout=0, v22010Profit=0;
     let v22020Pre=0, v22020QualityNo=0;
+    let v22023AbilityReady=0, v22023RacerIdReady=0;
 
     for(const r of racesForExport){
       if(passFilter1(r).ok) f1pass++;
@@ -4789,6 +4911,8 @@
       if(r.v22020_test_quality_no) v22020QualityNo++;
       if(r.v22010_test_active) v22010Active++;
       if(r.v22010_test_hit) v22010Hit++;
+      if(v22023AbilityReady_(r)) v22023AbilityReady++;
+      if(v22023RacerIdsReady_(r)) v22023RacerIdReady++;
       v22010Stake += Number(r.v22010_test_stake || 0);
       v22010Payout += Number(r.v22010_test_payout || 0);
       v22010Profit += Number(r.v22010_test_profit || 0);
@@ -4865,6 +4989,8 @@
       v22010_test_odds_no: v22010OddsNo,
       v22020_pre_candidates: v22020Pre,
       v22020_quality_no: v22020QualityNo,
+      v22023_ability_ready: v22023AbilityReady,
+      v22023_racer_id_ready: v22023RacerIdReady,
       v22010_test_active: v22010Active,
       v22010_test_hit: v22010Hit,
       v22010_test_stake: v22010Stake,
@@ -4904,6 +5030,7 @@
     let v220MainStruct=0,v220ResearchStruct=0;
     let v22010Struct=0,v22010Wait=0,v22010OddsNo=0,v22010Active=0,v22010Hit=0,v22010Stake=0,v22010Payout=0,v22010Profit=0;
     let v22020Pre=0,v22020QualityNo=0;
+    let v22023AbilityReady=0,v22023RacerIdReady=0;
 
     for(const r of races){
       const ev = evaluate(r);
@@ -4982,6 +5109,8 @@
       if(v218.v22020_test_quality_no) v22020QualityNo++;
       if(v218.v22010_test_active) v22010Active++;
       if(v218.v22010_test_hit) v22010Hit++;
+      if(v22023AbilityReady_(r)) v22023AbilityReady++;
+      if(v22023RacerIdsReady_(r)) v22023RacerIdReady++;
       v22010Stake += Number(v218.v22010_test_stake || 0);
       v22010Payout += Number(v218.v22010_test_payout || 0);
       v22010Profit += Number(v218.v22010_test_profit || 0);
@@ -4996,7 +5125,7 @@
     const v220ResearchRoi = v220ResearchStake > 0 ? ((v220ResearchPayout / v220ResearchStake) * 100).toFixed(1) : '-';
     const v22010Roi = v22010Stake > 0 ? ((v22010Payout / v22010Stake) * 100).toFixed(1) : '-';
     $("summary").textContent =
-      `取得${total}R / 条件①通過${f1pass}R / v2.20正式候補${v220MainStruct} / BUY${buy} / NO${no}（risk:${riskNo} odds:${oddsNo}） / WAIT${wait} / 条件外${filtered} / v2.20正式BUY${v220Official}（的中${v220OfficialHit} 収支${v220OfficialProfit}円 ROI${v220OfficialRoi}%） / v2.20検証${v220Research}（構造${v220ResearchStruct} 的中${v220ResearchHit} 収支${v220ResearchProfit}円 ROI${v220ResearchRoi}%） / v2.20.13検証${v22010Active}（構造${v22010Struct} WAIT${v22010Wait} NO${v22010OddsNo} 品質NO${v22020QualityNo} 的中${v22010Hit} 収支${v22010Profit}円 ROI${v22010Roi}%） / 事前候補${v22020Pre} / 旧SIM_RULE${simRule}（的中${simRuleHit}） / LOW${low}（的中${lowHit} 収支${lowProfit}円 ROI${lowRoi}%） / VALUE${value}（的中${valueHit} 収支${valueProfit}円 ROI${valueRoi}%） / HIGH${high}（的中${highHit} 収支${highProfit}円 ROI${highRoi}%） / DANGER${danger}（的中${dangerHit} 収支${dangerProfit}円 ROI${dangerRoi}%） / SIM_STRICT${simStrict}（的中${simStrictHit} 収支${simStrictProfit}円 ROI${strictRoi}% / WAIT${simStrictWait} ODDS_NO${simStrictOddsNo} / 1ズレ${simStrictOneWinNot12} 1飛び${simStrictOneLost}） / WATCH${watch}（的中${watchHit}） / 二段階候補${twoStageCandidate} / 1勝候補${oneWinCandidate} / 1score強${oneScoreStrong} / 1-2的中${hit12} / 1勝ち2ズレ${oneWinNot12}（1-3:${lane3Slip} 1-4:${lane4Slip}） / 2単odds${oddsReady} / before${beforeReady} / result${resReady}`;
+      `取得${total}R / 条件①通過${f1pass}R / v2.20正式候補${v220MainStruct} / BUY${buy} / NO${no}（risk:${riskNo} odds:${oddsNo}） / WAIT${wait} / 条件外${filtered} / v2.20正式BUY${v220Official}（的中${v220OfficialHit} 収支${v220OfficialProfit}円 ROI${v220OfficialRoi}%） / v2.20検証${v220Research}（構造${v220ResearchStruct} 的中${v220ResearchHit} 収支${v220ResearchProfit}円 ROI${v220ResearchRoi}%） / v2.20.13検証${v22010Active}（構造${v22010Struct} WAIT${v22010Wait} NO${v22010OddsNo} 品質NO${v22020QualityNo} 的中${v22010Hit} 収支${v22010Profit}円 ROI${v22010Roi}%） / 事前候補${v22020Pre} / 能力${v22023AbilityReady}/${total} / 選手ID${v22023RacerIdReady}/${total} / 旧SIM_RULE${simRule}（的中${simRuleHit}） / LOW${low}（的中${lowHit} 収支${lowProfit}円 ROI${lowRoi}%） / VALUE${value}（的中${valueHit} 収支${valueProfit}円 ROI${valueRoi}%） / HIGH${high}（的中${highHit} 収支${highProfit}円 ROI${highRoi}%） / DANGER${danger}（的中${dangerHit} 収支${dangerProfit}円 ROI${dangerRoi}%） / SIM_STRICT${simStrict}（的中${simStrictHit} 収支${simStrictProfit}円 ROI${strictRoi}% / WAIT${simStrictWait} ODDS_NO${simStrictOddsNo} / 1ズレ${simStrictOneWinNot12} 1飛び${simStrictOneLost}） / WATCH${watch}（的中${watchHit}） / 二段階候補${twoStageCandidate} / 1勝候補${oneWinCandidate} / 1score強${oneScoreStrong} / 1-2的中${hit12} / 1勝ち2ズレ${oneWinNot12}（1-3:${lane3Slip} 1-4:${lane4Slip}） / 2単odds${oddsReady} / before${beforeReady} / result${resReady}`;
 
     renderNoDiagnostics_(races);
   }
@@ -6064,7 +6193,7 @@
       const closeReady = LAST_RACES.filter(r => !!r.race_closed_at).length;
       const beforeReady = LAST_RACES.filter(r => beforeReadyActual_(r)).length;
       const apiV1 = bundle?.__api_v1_enrich ? ` / api_v1 P:${bundle.__api_v1_programs ?? 0} Pr:${bundle.__api_v1_previews ?? 0} R:${bundle.__api_v1_results ?? 0}` : '';
-      setStatus(`OK${fallback}${apiV1} / ${src} / ${nowHms_()} / 取得:${LAST_RACES.length} / 締切:${closeReady} / 直前:${beforeReady} / 結果補完:${resultRetryChanged} / 結果未取得:${countMissingResultsAfterGrace_()}`);
+      setStatus(`OK${fallback}${apiV1} / ${src} / ${nowHms_()} / 取得:${LAST_RACES.length} / 締切:${closeReady} / 直前:${beforeReady} / 能力:${abilityReady} / 選手ID:${racerIdReady} / 結果補完:${resultRetryChanged} / 結果未取得:${countMissingResultsAfterGrace_()}`);
       maybeScheduleAutoRefresh();
     } catch(e){
       console.error('refreshFull failed', e);
@@ -6104,7 +6233,7 @@
       "v215ResearchLogOn","v215StrictOfficialBuyOn","v215MinOfficialL2Score","v215MinResearchL2Score","v215Lane2StLagWarn","v215Lane34ExhLeadTo2","v215Lane34StLeadTo2","v215LowOddsNoSeparateOn",
       "v216OneWinResearchOn","v216StrictOfficialBuyOneScoreOn","v216MinOfficialOneScore","v216MinResearchOneScore","v216MinTwoStageOneScore","v216MinTwoStageL2Score","v216TwoStageCandidateOn","v216True12NoHardThreatOn",
       "v217VenueRuleLogOn","v217VenueRuleAsSimBuyOn","v217ShowOddsInputForSimOn","v217IncludeTokonameOn","v217IncludeWatchVenuesOn","v217MinSimOdds","v218StrictSimOn","v218RequireOddsForStrictOn","v218MinStrictOneScore","v218MinStrictLane2Score","v218RequireNoStOutOn","v218RequireNoHardOneOn","v218WatchWakamatsuOn","v218WatchMiyajimaOmuraOn","v219LowOddsSimOn","v219ValueSimOn","v219HighOddsWatchOn","v219OddsDangerOn","v219LowOddsMin","v219LowOddsMax","v219ValueOddsMin","v219ValueOddsMax","v219HighOddsMin","v219HighOddsMax","v219DangerOddsMin","v219LowOddsSimOn","v219ValueSimOn","v219HighOddsWatchOn","v219OddsDangerOn","v219LowOddsMin","v219LowOddsMax","v219ValueOddsMin","v219ValueOddsMax","v219HighOddsMin","v219HighOddsMax","v219DangerOddsMin",
-      "v220OfficialBuyOn","v220ResearchVenueOn","v220RequireStReadyOn","v220BlockRainSensitiveOn","v22010TestLogOn",
+      "v220OfficialBuyOn","v220ResearchVenueOn","v220RequireStReadyOn","v220BlockRainSensitiveOn","v22010TestLogOn","v22020PreCandidateOn","v22020QualityGuardOn",
       "autoBeforeScopeCandidatesOnly","resultSingleRetryCandidatesOnly",
       "viewMode","autoRefresh"
     ];
@@ -6143,7 +6272,7 @@
       summary: summaryForExport,
       low_no_diagnostic_summary: buildLowNoSummaryV22014_(racesForExport),
       v22014_extra_test_summary: buildV22014ExtraSummary_(racesForExport),
-      v22019_fetch_meta: { fallback_enabled:true, parser:"robust_programs_previews_v1" },
+      v22023_fetch_meta: { fallback_enabled:true, parser:"robust_programs_previews_api_v1", ability_enrich:"api_v1_program_boats_merge" },
       racer_data_meta: { schema:"racer_compact_v1", source:"programs_bundle", extra_api_calls:0, race_fields:["racer_ids","racer_run_no"], catalog_fields:{n:"name",c:"class",b:"branch"} },
       racer_catalog: racerCatalogForExportV22014_(),
       races: racesForExport,
@@ -6171,7 +6300,7 @@
     "v215ResearchLogOn","v215StrictOfficialBuyOn","v215MinOfficialL2Score","v215MinResearchL2Score","v215Lane2StLagWarn","v215Lane34ExhLeadTo2","v215Lane34StLeadTo2","v215LowOddsNoSeparateOn",
       "v216OneWinResearchOn","v216StrictOfficialBuyOneScoreOn","v216MinOfficialOneScore","v216MinResearchOneScore","v216MinTwoStageOneScore","v216MinTwoStageL2Score","v216TwoStageCandidateOn","v216True12NoHardThreatOn",
       "v217VenueRuleLogOn","v217VenueRuleAsSimBuyOn","v217ShowOddsInputForSimOn","v217IncludeTokonameOn","v217IncludeWatchVenuesOn","v217MinSimOdds","v218StrictSimOn","v218RequireOddsForStrictOn","v218MinStrictOneScore","v218MinStrictLane2Score","v218RequireNoStOutOn","v218RequireNoHardOneOn","v218WatchWakamatsuOn","v218WatchMiyajimaOmuraOn",
-    "v220OfficialBuyOn","v220ResearchVenueOn","v220RequireStReadyOn","v220BlockRainSensitiveOn","v22010TestLogOn",
+    "v220OfficialBuyOn","v220ResearchVenueOn","v220RequireStReadyOn","v220BlockRainSensitiveOn","v22010TestLogOn","v22020PreCandidateOn","v22020QualityGuardOn",
     "autoBeforeScopeCandidatesOnly","resultSingleRetryCandidatesOnly",
     "strictSoftNo2tOn","minOdds2t","strongMinOdds2t","maxOdds2t",
     "roughWind","roughWave","roughNoMode","stOutmuscle","hardWaveOn","hardWave","hardWaveMode",
