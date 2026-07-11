@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.20.23（能力値復旧 / API v1 program結合 / 取得診断 / SAFE）</title>
+  <title>競艇 v2.20.24（能力値欠損診断 / 更新ステータス修正 / SAFE）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -94,7 +94,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.20.23（能力値復旧 / API v1 program結合 / 取得診断 / SAFE）</h1>
+  <h1>競艇 v2.20.24（能力値欠損診断 / 更新ステータス修正 / SAFE）</h1>
   <div class="sub">
     ✅ <b>正式BUY</b>は、v2.20のメイン6会場LOW_SAFEだけに整理。旧BUYロジックは正式判定から外しています。<br/>
     ✅ <b>検証会場</b>は青表示でログ化し、正式収支には混ぜません。<br/>
@@ -106,6 +106,7 @@
     ✅ <b>v2.20.19</b>の取得フォールバックを維持し、/api/todayが空/失敗してもOpenAPI直取得で復旧します。<br/>
     ✅ <b>v2.20.20では、直前データ待ちの事前候補表示と、福岡PAIR_BALANCE・若松R2_VALUE_SAFEの品質NOを追加します。取得・描画本線には混ぜません。<br/>
     ✅ <b>v2.20.23</b>では、Worker programsを主データにした場合でもAPI v1 programsの選手登録番号・全国/当地/モーター2連率をlane別に補完し、能力値0落ちを防ぎます。<br/>
+    ✅ <b>v2.20.24</b>では、能力値を全国/当地/モーター/選手IDに分けて診断し、0値を「不足」ではなく「取得欠損」として表示します。更新完了時の abilityReady 未定義エラーも修正します。<br/>
   </div>
 
   <div class="card settingsCard">
@@ -1216,8 +1217,60 @@
     return Number.isFinite(nat) && nat > 0 && Number.isFinite(motor) && motor > 0;
   }
 
+  function v22023PositiveNumber_(v){
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0;
+  }
+
+  function v22023Nat2Ready_(r){
+    return v22023PositiveNumber_(r?.nat2);
+  }
+
+  function v22023Loc2Ready_(r){
+    return v22023PositiveNumber_(r?.loc2);
+  }
+
+  function v22023Motor2Ready_(r){
+    return v22023PositiveNumber_(r?.motor2);
+  }
+
   function v22023RacerIdsReady_(r){
-    return Array.isArray(r?.racer_ids) && r.racer_ids.some(x => x != null && String(x).trim() !== '');
+    if(!Array.isArray(r?.racer_ids)) return false;
+    const arr = r.racer_ids.slice(0,6);
+    return arr.length === 6 && arr.every(x => x != null && String(x).trim() !== '');
+  }
+
+  function v22023ReadinessSummary_(races){
+    const list = Array.isArray(races) ? races : [];
+    const out = {
+      total: list.length,
+      nat2Ready: 0,
+      loc2Ready: 0,
+      motor2Ready: 0,
+      abilityReady: 0,
+      racerIdReady: 0,
+      racerIdAnyReady: 0,
+      missingNat2: 0,
+      missingLoc2: 0,
+      missingMotor2: 0,
+      missingAbility: 0,
+      missingRacerId: 0
+    };
+    for(const r of list){
+      const natOk = v22023Nat2Ready_(r);
+      const locOk = v22023Loc2Ready_(r);
+      const motorOk = v22023Motor2Ready_(r);
+      const abilityOk = v22023AbilityReady_(r);
+      const idFullOk = v22023RacerIdsReady_(r);
+      const idAnyOk = Array.isArray(r?.racer_ids) && r.racer_ids.some(x => x != null && String(x).trim() !== '');
+      if(natOk) out.nat2Ready++; else out.missingNat2++;
+      if(locOk) out.loc2Ready++; else out.missingLoc2++;
+      if(motorOk) out.motor2Ready++; else out.missingMotor2++;
+      if(abilityOk) out.abilityReady++; else out.missingAbility++;
+      if(idFullOk) out.racerIdReady++; else out.missingRacerId++;
+      if(idAnyOk) out.racerIdAnyReady++;
+    }
+    return out;
   }
 
   function resultTop3FromUnifiedResultV22022_(result){
@@ -2119,16 +2172,28 @@
       reasons.push("v2.20対象外会場");
     }
 
-    if(minNat2!=null && r.nat2 < minNat2) reasons.push("全国2連率不足");
+    // v2.20.24: 0/空/NaN は「能力不足」ではなく「取得欠損」として分ける。
+    // 欠損と実力不足を混ぜると、分析時に条件が悪かったのか取得が壊れたのか判別できないため。
+    const natMissing = !v22023Nat2Ready_(r);
+    const locMissing = !v22023Loc2Ready_(r);
+    const motorMissing = !v22023Motor2Ready_(r);
 
-    // loc2=0 は欠損扱い（当地チェックをスキップ）
-    const locMissing = (Number(r.loc2) === 0);
-    if(!locMissing){
-      if(minLoc2!=null && r.loc2 < minLoc2) reasons.push("当地2連率不足");
+    if(minNat2 != null){
+      if(natMissing) reasons.push("全国2連率欠損");
+      else if(Number(r.nat2) < minNat2) reasons.push("全国2連率不足");
     }
 
-    if(minMotor2!=null && r.motor2 < minMotor2) reasons.push("モーター2連率不足");
-    return { ok: reasons.length===0, reasons, _locMissing: locMissing };
+    // loc2=0 は従来通り欠損扱い（当地チェックをスキップ）。ただしsummary/JSONでは欠損として可視化する。
+    if(!locMissing){
+      if(minLoc2 != null && Number(r.loc2) < minLoc2) reasons.push("当地2連率不足");
+    }
+
+    if(minMotor2 != null){
+      if(motorMissing) reasons.push("モーター2連率欠損");
+      else if(Number(r.motor2) < minMotor2) reasons.push("モーター2連率不足");
+    }
+
+    return { ok: reasons.length===0, reasons, _locMissing: locMissing, _natMissing: natMissing, _motorMissing: motorMissing };
   }
 
   function passFilter1(r){
@@ -4832,6 +4897,7 @@
     let v22010Struct=0, v22010Wait=0, v22010OddsNo=0, v22010Active=0, v22010Hit=0, v22010Stake=0, v22010Payout=0, v22010Profit=0;
     let v22020Pre=0, v22020QualityNo=0;
     let v22023AbilityReady=0, v22023RacerIdReady=0;
+    let v22023Nat2Ready=0, v22023Loc2Ready=0, v22023Motor2Ready=0;
 
     for(const r of racesForExport){
       if(passFilter1(r).ok) f1pass++;
@@ -4911,6 +4977,9 @@
       if(r.v22020_test_quality_no) v22020QualityNo++;
       if(r.v22010_test_active) v22010Active++;
       if(r.v22010_test_hit) v22010Hit++;
+      if(v22023Nat2Ready_(r)) v22023Nat2Ready++;
+      if(v22023Loc2Ready_(r)) v22023Loc2Ready++;
+      if(v22023Motor2Ready_(r)) v22023Motor2Ready++;
       if(v22023AbilityReady_(r)) v22023AbilityReady++;
       if(v22023RacerIdsReady_(r)) v22023RacerIdReady++;
       v22010Stake += Number(r.v22010_test_stake || 0);
@@ -4989,8 +5058,16 @@
       v22010_test_odds_no: v22010OddsNo,
       v22020_pre_candidates: v22020Pre,
       v22020_quality_no: v22020QualityNo,
+      v22023_nat2_ready: v22023Nat2Ready,
+      v22023_loc2_ready: v22023Loc2Ready,
+      v22023_motor2_ready: v22023Motor2Ready,
       v22023_ability_ready: v22023AbilityReady,
       v22023_racer_id_ready: v22023RacerIdReady,
+      v22023_nat2_missing: Math.max(0, total - v22023Nat2Ready),
+      v22023_loc2_missing: Math.max(0, total - v22023Loc2Ready),
+      v22023_motor2_missing: Math.max(0, total - v22023Motor2Ready),
+      v22023_ability_missing: Math.max(0, total - v22023AbilityReady),
+      v22023_racer_id_missing: Math.max(0, total - v22023RacerIdReady),
       v22010_test_active: v22010Active,
       v22010_test_hit: v22010Hit,
       v22010_test_stake: v22010Stake,
@@ -5031,6 +5108,7 @@
     let v22010Struct=0,v22010Wait=0,v22010OddsNo=0,v22010Active=0,v22010Hit=0,v22010Stake=0,v22010Payout=0,v22010Profit=0;
     let v22020Pre=0,v22020QualityNo=0;
     let v22023AbilityReady=0,v22023RacerIdReady=0;
+    let v22023Nat2Ready=0,v22023Loc2Ready=0,v22023Motor2Ready=0;
 
     for(const r of races){
       const ev = evaluate(r);
@@ -5109,6 +5187,9 @@
       if(v218.v22020_test_quality_no) v22020QualityNo++;
       if(v218.v22010_test_active) v22010Active++;
       if(v218.v22010_test_hit) v22010Hit++;
+      if(v22023Nat2Ready_(r)) v22023Nat2Ready++;
+      if(v22023Loc2Ready_(r)) v22023Loc2Ready++;
+      if(v22023Motor2Ready_(r)) v22023Motor2Ready++;
       if(v22023AbilityReady_(r)) v22023AbilityReady++;
       if(v22023RacerIdsReady_(r)) v22023RacerIdReady++;
       v22010Stake += Number(v218.v22010_test_stake || 0);
@@ -5125,7 +5206,7 @@
     const v220ResearchRoi = v220ResearchStake > 0 ? ((v220ResearchPayout / v220ResearchStake) * 100).toFixed(1) : '-';
     const v22010Roi = v22010Stake > 0 ? ((v22010Payout / v22010Stake) * 100).toFixed(1) : '-';
     $("summary").textContent =
-      `取得${total}R / 条件①通過${f1pass}R / v2.20正式候補${v220MainStruct} / BUY${buy} / NO${no}（risk:${riskNo} odds:${oddsNo}） / WAIT${wait} / 条件外${filtered} / v2.20正式BUY${v220Official}（的中${v220OfficialHit} 収支${v220OfficialProfit}円 ROI${v220OfficialRoi}%） / v2.20検証${v220Research}（構造${v220ResearchStruct} 的中${v220ResearchHit} 収支${v220ResearchProfit}円 ROI${v220ResearchRoi}%） / v2.20.13検証${v22010Active}（構造${v22010Struct} WAIT${v22010Wait} NO${v22010OddsNo} 品質NO${v22020QualityNo} 的中${v22010Hit} 収支${v22010Profit}円 ROI${v22010Roi}%） / 事前候補${v22020Pre} / 能力${v22023AbilityReady}/${total} / 選手ID${v22023RacerIdReady}/${total} / 旧SIM_RULE${simRule}（的中${simRuleHit}） / LOW${low}（的中${lowHit} 収支${lowProfit}円 ROI${lowRoi}%） / VALUE${value}（的中${valueHit} 収支${valueProfit}円 ROI${valueRoi}%） / HIGH${high}（的中${highHit} 収支${highProfit}円 ROI${highRoi}%） / DANGER${danger}（的中${dangerHit} 収支${dangerProfit}円 ROI${dangerRoi}%） / SIM_STRICT${simStrict}（的中${simStrictHit} 収支${simStrictProfit}円 ROI${strictRoi}% / WAIT${simStrictWait} ODDS_NO${simStrictOddsNo} / 1ズレ${simStrictOneWinNot12} 1飛び${simStrictOneLost}） / WATCH${watch}（的中${watchHit}） / 二段階候補${twoStageCandidate} / 1勝候補${oneWinCandidate} / 1score強${oneScoreStrong} / 1-2的中${hit12} / 1勝ち2ズレ${oneWinNot12}（1-3:${lane3Slip} 1-4:${lane4Slip}） / 2単odds${oddsReady} / before${beforeReady} / result${resReady}`;
+      `取得${total}R / 条件①通過${f1pass}R / v2.20正式候補${v220MainStruct} / BUY${buy} / NO${no}（risk:${riskNo} odds:${oddsNo}） / WAIT${wait} / 条件外${filtered} / v2.20正式BUY${v220Official}（的中${v220OfficialHit} 収支${v220OfficialProfit}円 ROI${v220OfficialRoi}%） / v2.20検証${v220Research}（構造${v220ResearchStruct} 的中${v220ResearchHit} 収支${v220ResearchProfit}円 ROI${v220ResearchRoi}%） / v2.20.13検証${v22010Active}（構造${v22010Struct} WAIT${v22010Wait} NO${v22010OddsNo} 品質NO${v22020QualityNo} 的中${v22010Hit} 収支${v22010Profit}円 ROI${v22010Roi}%） / 事前候補${v22020Pre} / 能力${v22023AbilityReady}/${total}（nat:${v22023Nat2Ready} loc:${v22023Loc2Ready} motor:${v22023Motor2Ready}） / 選手ID${v22023RacerIdReady}/${total} / 旧SIM_RULE${simRule}（的中${simRuleHit}） / LOW${low}（的中${lowHit} 収支${lowProfit}円 ROI${lowRoi}%） / VALUE${value}（的中${valueHit} 収支${valueProfit}円 ROI${valueRoi}%） / HIGH${high}（的中${highHit} 収支${highProfit}円 ROI${highRoi}%） / DANGER${danger}（的中${dangerHit} 収支${dangerProfit}円 ROI${dangerRoi}%） / SIM_STRICT${simStrict}（的中${simStrictHit} 収支${simStrictProfit}円 ROI${strictRoi}% / WAIT${simStrictWait} ODDS_NO${simStrictOddsNo} / 1ズレ${simStrictOneWinNot12} 1飛び${simStrictOneLost}） / WATCH${watch}（的中${watchHit}） / 二段階候補${twoStageCandidate} / 1勝候補${oneWinCandidate} / 1score強${oneScoreStrong} / 1-2的中${hit12} / 1勝ち2ズレ${oneWinNot12}（1-3:${lane3Slip} 1-4:${lane4Slip}） / 2単odds${oddsReady} / before${beforeReady} / result${resReady}`;
 
     renderNoDiagnostics_(races);
   }
@@ -6192,8 +6273,9 @@
       const fallback = bundle?.__fallback ? ' / fallback' : '';
       const closeReady = LAST_RACES.filter(r => !!r.race_closed_at).length;
       const beforeReady = LAST_RACES.filter(r => beforeReadyActual_(r)).length;
+      const ready = v22023ReadinessSummary_(LAST_RACES);
       const apiV1 = bundle?.__api_v1_enrich ? ` / api_v1 P:${bundle.__api_v1_programs ?? 0} Pr:${bundle.__api_v1_previews ?? 0} R:${bundle.__api_v1_results ?? 0}` : '';
-      setStatus(`OK${fallback}${apiV1} / ${src} / ${nowHms_()} / 取得:${LAST_RACES.length} / 締切:${closeReady} / 直前:${beforeReady} / 能力:${abilityReady} / 選手ID:${racerIdReady} / 結果補完:${resultRetryChanged} / 結果未取得:${countMissingResultsAfterGrace_()}`);
+      setStatus(`OK${fallback}${apiV1} / ${src} / ${nowHms_()} / 取得:${LAST_RACES.length} / 締切:${closeReady} / 直前:${beforeReady} / 能力:${ready.abilityReady}/${ready.total}（nat:${ready.nat2Ready} loc:${ready.loc2Ready} motor:${ready.motor2Ready}） / 選手ID:${ready.racerIdReady}/${ready.total} / 結果補完:${resultRetryChanged} / 結果未取得:${countMissingResultsAfterGrace_()}`);
       maybeScheduleAutoRefresh();
     } catch(e){
       console.error('refreshFull failed', e);
