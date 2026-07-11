@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.20.18（v2.20.14復帰 / 事前候補SAFE / 品質NO / SAFE）</title>
+  <title>競艇 v2.20.20（取得フォールバック維持 / 事前候補 / 品質NO / SAFE）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -84,9 +84,8 @@
     .race-research-active { border-color:#38bdf8; box-shadow:0 0 0 1px rgba(56,189,248,.45), 0 10px 24px rgba(56,189,248,.12); background:linear-gradient(135deg, rgba(56,189,248,.13), rgba(17,26,38,1) 58%); }
     .race-research-active::before { content:"検証候補"; display:inline-block; margin-bottom:8px; padding:4px 10px; border-radius:999px; color:#bae6fd; border:1px solid rgba(56,189,248,.55); background:rgba(56,189,248,.10); font-size:12px; font-weight:900; }
     .race-research-wait { border-color:#60a5fa; background:linear-gradient(135deg, rgba(96,165,250,.09), rgba(17,26,38,1) 60%); }
-    .race-pre-candidate { border-color:#a78bfa; box-shadow:0 0 0 1px rgba(167,139,250,.35), 0 10px 24px rgba(167,139,250,.10); background:linear-gradient(135deg, rgba(167,139,250,.12), rgba(17,26,38,1) 60%); }
-    .race-pre-candidate::before { content:"直前データ待ち：事前候補"; display:inline-block; margin-bottom:8px; padding:4px 10px; border-radius:999px; color:#ddd6fe; border:1px solid rgba(167,139,250,.55); background:rgba(167,139,250,.10); font-size:12px; font-weight:900; }
-    .dotPre { background:#a78bfa; box-shadow:0 0 10px rgba(167,139,250,.65); }
+    .race-pre-candidate { border-color:#a78bfa; box-shadow:0 0 0 1px rgba(167,139,250,.45), 0 10px 24px rgba(167,139,250,.12); background:linear-gradient(135deg, rgba(167,139,250,.13), rgba(17,26,38,1) 58%); }
+    .race-pre-candidate::before { content:"事前候補：直前データ待ち"; display:inline-block; margin-bottom:8px; padding:4px 10px; border-radius:999px; color:#ddd6fe; border:1px solid rgba(167,139,250,.55); background:rgba(167,139,250,.10); font-size:12px; font-weight:900; }
     .race-main-blocked { border-color:#4b5563; opacity:.88; }
     .badge.b-buy { background:rgba(34,197,94,.14); border-color:rgba(34,197,94,.55); color:#bbf7d0; }
     .badge.b-wait { background:rgba(245,158,11,.13); border-color:rgba(245,158,11,.55); color:#fde68a; }
@@ -95,15 +94,17 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.20.18（v2.20.14復帰 / 事前候補SAFE / 品質NO / SAFE）</h1>
+  <h1>競艇 v2.20.20（取得フォールバック維持 / 事前候補 / 品質NO / SAFE）</h1>
   <div class="sub">
     ✅ <b>正式BUY</b>は、v2.20のメイン6会場LOW_SAFEだけに整理。旧BUYロジックは正式判定から外しています。<br/>
     ✅ <b>検証会場</b>は青表示でログ化し、正式収支には混ぜません。<br/>
-    ✅ <b>既存検証ログ</b>は維持し、福岡PAIR_BALANCE・若松R2_VALUE_SAFEも継続。v2.20.18ではv2.20.14の安定更新系に戻し、直前データ待ちの事前候補表示と福岡/若松の品質NOだけを安全追加します。<br/>
+    ✅ <b>既存検証ログ</b>は維持し、福岡PAIR_BALANCE・若松R2_VALUE_SAFEも継続。v2.20.14では津LOW雨比較と徳山入口緩和を別TESTとして追加し、正式BUY条件は変更しません。<br/>
     ✅ v2.15〜v2.19のscore/SIM/オッズ帯ログは、分析用として折りたたみ内に残しています。<br/>
     ✅ 取得系・before/result補完・手動結果補正・.json書き出し・低通信・偽1-2-3防止は維持。<br/>
     ✅ <b>選手情報</b>はprograms内の既存情報だけを軽量収集。各レースは登録番号6人＋当日何走目、氏名/級別/支部は共通辞書に1回だけ保存（追加API通信なし）。<br/>
     ✅ <b>LOW_NO診断</b>は2.2〜2.6倍帯のNOを、オッズのみ/入口能力値/雨/ST/1勝/2残存/3-4脅威など理由別にJSON集計します。<br/>
+    ✅ <b>v2.20.19</b>の取得フォールバックを維持し、/api/todayが空/失敗してもOpenAPI直取得で復旧します。<br/>
+    ✅ <b>v2.20.20</b>では、直前データ待ちの事前候補表示と、福岡PAIR_BALANCE・若松R2_VALUE_SAFEの品質NOを追加します。取得・描画本線には混ぜません。<br/>
   </div>
 
   <div class="card settingsCard">
@@ -120,7 +121,6 @@
         <span class="legendChip"><span class="dot dotWait"></span>黄：正式候補・オッズ入力待ち</span>
         <span class="legendChip"><span class="dot dotResearch"></span>青：検証候補</span>
         <span class="legendChip"><span class="dot dotNo"></span>赤：候補だがオッズ帯NG/NO</span>
-        <span class="legendChip"><span class="dot dotPre"></span>紫：直前データ次第で候補化し得る事前候補</span>
       </div>
     </div>
 
@@ -155,20 +155,20 @@
         既存9条件は維持。津はLOW雨許容比較、徳山は入口能力値を外した構造比較を追加。短期だけ強い条件は追加しません。
       </div>
     </div>
-
     <div class="grid g2" style="margin-top:10px;">
       <label class="cb" style="margin:0;">
-        <input type="checkbox" id="v22018PreCandidateOn" checked />
-        v2.20.18 直前データ待ちの事前候補を候補欄へ表示
+        <input type="checkbox" id="v22020PreCandidateOn" checked />
+        v2.20.20 事前候補を表示（直前データ待ち）
       </label>
       <label class="cb" style="margin:0;">
-        <input type="checkbox" id="v22018QualityGuardOn" checked />
-        福岡PAIR_BAL / 若松VALUEの品質NOを有効化
+        <input type="checkbox" id="v22020QualityGuardOn" checked />
+        v2.20.20 福岡/若松の品質NOを有効化
       </label>
     </div>
     <div class="muted small" style="margin-top:8px;">
-      ※事前候補は買い指示ではなく、beforeinfo取得後にBUY/検証化し得るレースの先回り表示です。更新処理本体はv2.20.14の安定系を維持します。
+      ※事前候補はBUY指示ではなく、beforeinfo取得後に正式/検証候補化し得るレースの見落とし防止です。品質NOは正式BUYに混ぜず、v2.20.13検証ログのActive化だけを抑制します。
     </div>
+
     <div class="muted small" style="margin-top:8px;">
       メイン6会場：児島 / 津 / 尼崎 / 福岡 / 下関 / 鳴門。正式BUYは原則LOW 2.2〜2.6のみ。
       未達会場：徳山/若松/大村/唐津/常滑/宮島/丸亀/芦屋/びわこ等は検証候補として収支ログ化し、正式BUY収支には混ぜません。
@@ -854,8 +854,191 @@
     if(!res.ok) throw new Error(`fetch failed ${res.status}: ${url}`);
     return await res.json();
   }
+
+  // v2.20.19: /api/today が空・失敗した場合でも、GitHub Pages側のOpenAPIから当日データを直接取りに行く保険。
+  // 更新ボタンで「0件」のままになる時、Workerの返却形式変更/一時失敗をここで吸収する。
+  function jstTodayYmd_(){
+    const d = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const da = String(d.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${da}`;
+  }
+
+  function hdFromYmd_(ymd){
+    return String(ymd || '').replace(/-/g, '');
+  }
+
+  function filterProgramRecords_(arr){
+    if(!Array.isArray(arr)) return [];
+    return arr.filter(looksLikeProgramRecord_);
+  }
+
+  function looksLikeProgramRecord_(x){
+    if(!x || typeof x !== 'object' || Array.isArray(x)) return false;
+    const hasRaceKey = x.race_date != null && x.race_stadium_number != null && x.race_number != null;
+    if(!hasRaceKey) return false;
+    const boats = x.boats;
+    if(Array.isArray(boats)) return boats.some(b => Number(b?.racer_boat_number) === 1 || Number(b?.boat_number) === 1 || Number(b?.lane) === 1);
+    if(boats && typeof boats === 'object') return !!(boats['1'] || boats[1]);
+    return false;
+  }
+
+  function looksLikePreviewRecord_(x){
+    if(!x || typeof x !== 'object' || Array.isArray(x)) return false;
+    const hasRaceKey = x.race_date != null && x.race_stadium_number != null && x.race_number != null;
+    if(!hasRaceKey) return false;
+    const boats = x.boats;
+    if(!boats || typeof boats !== 'object') return false;
+    const arr = Array.isArray(boats) ? boats : Object.values(boats);
+    // programのboatsをpreviewと誤認しないよう、直前情報らしい展示/ST系のキーを要求する。
+    return arr.some(b => b && typeof b === 'object' && (
+      b.racer_exhibition_time != null || b.exhibition_time != null || b.exhibitionTime != null ||
+      b.racer_start_timing != null || b.start_timing != null || b.st != null
+    ));
+  }
+
+  function filterPreviewRecords_(arr){
+    if(!Array.isArray(arr)) return [];
+    return arr.filter(looksLikePreviewRecord_);
+  }
+
+  function getArrayByPath_(obj, path){
+    let cur = obj;
+    for(const p of path){
+      if(cur == null) return [];
+      cur = cur[p];
+    }
+    return Array.isArray(cur) ? cur : [];
+  }
+
+  function findRecordsByKnownKeys_(bundle, recordFilter, preferredKeys){
+    if(!bundle || typeof bundle !== 'object') return [];
+
+    // よくある形を優先して拾う。bundle.programs が配列でも、bundle.programs.programs でも対応。
+    const knownPaths = [
+      ['programs','programs'], ['programs','races'], ['programs','items'], ['programs'],
+      ['previews','previews'], ['previews','races'], ['previews','items'], ['previews'],
+      ['results','results'], ['results','races'], ['results','items'], ['results'],
+      ['data','programs'], ['data','previews'], ['data','results'], ['data','races'], ['data','items'],
+      ['races'], ['items']
+    ];
+    for(const path of knownPaths){
+      const arr = getArrayByPath_(bundle, path);
+      const filtered = arr.filter(recordFilter);
+      if(filtered.length) return filtered;
+    }
+
+    // 返却形式が変わった時の浅め探索。programs/previews/results/races/items/data という明示キーだけ見る。
+    const stack = [bundle];
+    const seen = new Set();
+    while(stack.length){
+      const cur = stack.pop();
+      if(!cur || typeof cur !== 'object' || seen.has(cur)) continue;
+      seen.add(cur);
+      for(const k of preferredKeys){
+        const v = cur[k];
+        if(Array.isArray(v)){
+          const filtered = v.filter(recordFilter);
+          if(filtered.length) return filtered;
+        }else if(v && typeof v === 'object'){
+          stack.push(v);
+        }
+      }
+    }
+    return [];
+  }
+
+  function getProgramsArrayFromAnyBundle_(bundle){
+    return findRecordsByKnownKeys_(bundle, looksLikeProgramRecord_, ['programs','races','items','data']);
+  }
+
+  function getPreviewsArrayFromAnyBundle_(bundle){
+    return findRecordsByKnownKeys_(bundle, looksLikePreviewRecord_, ['previews','races','items','data']);
+  }
+
+  function countProgramsInBundle_(bundle){
+    try{ return getProgramsArrayFromAnyBundle_(bundle).length; }catch(_){ return 0; }
+  }
+
+  async function tryFetchJsonV22019_(url){
+    try{ return await fetchJson(url); }catch(e){ return { __fetch_error:true, __url:url, __error:String(e?.message || e) }; }
+  }
+
+  async function fetchOpenApiTodayFallbackBundle_(dateYmd=null, workerError=null){
+    const ymd = dateYmd || jstTodayYmd_();
+    const hd = hdFromYmd_(ymd);
+    const yyyy = hd.slice(0,4);
+    const stamp = Date.now();
+
+    const programUrls = [
+      `https://boatraceopenapi.github.io/programs/v3/${yyyy}/${hd}.json?v=${stamp}`,
+      `https://boatraceopenapi.github.io/programs/v2/${yyyy}/${hd}.json?v=${stamp}`
+    ];
+    const previewUrls = [
+      `https://boatraceopenapi.github.io/previews/v3/${yyyy}/${hd}.json?v=${stamp}`,
+      `https://boatraceopenapi.github.io/previews/v2/${yyyy}/${hd}.json?v=${stamp}`
+    ];
+    const resultUrls = [
+      `https://boatraceopenapi.github.io/results/v3/${yyyy}/${hd}.json?v=${stamp}`,
+      `https://boatraceopenapi.github.io/results/v2/${yyyy}/${hd}.json?v=${stamp}`
+    ];
+    const hubUrls = [
+      `https://boatraceopenapi.github.io/api/v1/${yyyy}/${hd}.json?v=${stamp}`,
+      `https://boatraceopenapi.github.io/api-mirror/v1/${yyyy}/${hd}.json?v=${stamp}`
+    ];
+
+    async function firstUseful(urls, kind){
+      const errors = [];
+      for(const url of urls){
+        const js = await tryFetchJsonV22019_(url);
+        if(js && !js.__fetch_error){
+          try{ js.__source_url = url; js.__source_kind = kind; }catch(_){ }
+          return { js, errors };
+        }
+        errors.push(js);
+      }
+      return { js:null, errors };
+    }
+
+    const p = await firstUseful(programUrls, 'programs');
+    const pr = await firstUseful(previewUrls, 'previews');
+    const re = await firstUseful(resultUrls, 'results');
+
+    if(countProgramsInBundle_(p.js) > 0){
+      return {
+        programs: p.js,
+        previews: pr.js || { previews:[] },
+        results: re.js || { results:[] },
+        __source:'openapi_direct_fallback',
+        __fallback:true,
+        __worker_error: workerError ? String(workerError?.message || workerError) : null,
+        __fetch_errors: { programs:p.errors, previews:pr.errors, results:re.errors }
+      };
+    }
+
+    // programs単体でも取れない場合は、統合APIも試す。
+    const hub = await firstUseful(hubUrls, 'hub');
+    if(countProgramsInBundle_(hub.js) > 0){
+      try{ hub.js.__source = 'openapi_hub_fallback'; hub.js.__fallback = true; hub.js.__worker_error = workerError ? String(workerError?.message || workerError) : null; }catch(_){ }
+      return hub.js;
+    }
+
+    throw new Error(`todayデータ取得失敗: worker=${workerError ? String(workerError?.message || workerError) : '-'} / fallback programs=0`);
+  }
+
   async function fetchTodayBundle(){
-    return await fetchJson(`${WORKER_BASE}/api/today?v=${Date.now()}`);
+    const workerUrl = `${WORKER_BASE}/api/today?v=${Date.now()}`;
+    let workerErr = null;
+    try{
+      const js = await fetchJson(workerUrl);
+      try{ js.__source = 'worker_today'; js.__source_url = workerUrl; }catch(_){ }
+      if(countProgramsInBundle_(js) > 0) return js;
+      workerErr = new Error(`worker_today programs=0 / keys=${Object.keys(js || {}).slice(0,20).join(',')}`);
+    }catch(e){
+      workerErr = e;
+    }
+    return await fetchOpenApiTodayFallbackBundle_(null, workerErr);
   }
 
   async function fetchDirectResultsBundle_(dateYmd=null){
@@ -1009,10 +1192,11 @@
   function shouldAutoFetchBefore_(r){
     if(!r || !enabledStadiums.has(r.stadium)) return false;
     if($('autoBeforeScopeCandidatesOnly')?.checked){
-      // Cloudflare使用量削減：通常は条件①通過レース中心。
-      // v2.20.18: ただし、直前データ取得後に候補化し得る事前候補は先回り取得対象に入れる。
-      const pre = buildV22018PreCandidateFlags_(r);
-      if(!passFilter1Entry_(r).ok && !pre.v22018_pre_candidate) return false;
+      // Cloudflare使用量削減：beforeinfo自動補完は、実戦判定に必要な条件①通過レースを中心にする。
+      // v2.20.20: 直前データ次第で候補化し得る「事前候補」も先回り取得対象に含める。
+      // ただし軽量判定のみを使い、更新・取得本線を壊さない。
+      const pre = v22020PreCandidateInfo_(r);
+      if(!passFilter1Entry_(r).ok && !pre.candidate) return false;
     }
     return (!r.exhReady) || (!envReady_(r)) || (!stReady13_(r));
   }
@@ -2526,7 +2710,6 @@
     const v220 = buildV220VenueFlags_(r);
     const v22010 = buildV22010TestFlags_(r);
     const v22014Extra = buildV22014ExtraTestFlags_(r);
-    const v22018Pre = buildV22018PreCandidateFlags_(r);
     const showRule = !!vr.candidate;
     const showWatch = !!watch.candidate;
     const anySimVisible = showRule || showWatch;
@@ -2631,12 +2814,12 @@
 
       ...shallowCloneJson_(v220),
 
-      // v2.20.18: beforeinfo取得後に候補化し得るレースを先回り表示するための軽量フラグ
-      ...shallowCloneJson_(v22018Pre),
-
       // v2.20.13既存検証ログ＋v2.20.14追加比較TEST（正式BUY収支には混ぜない）
       ...shallowCloneJson_(v22010),
-      ...shallowCloneJson_(v22014Extra)
+      ...shallowCloneJson_(v22014Extra),
+
+      // v2.20.20: 直前データ待ちの事前候補。BUY指示ではなく見落とし防止。
+      ...shallowCloneJson_(buildV22020PreCandidateFlags_(r))
     };
   }
 
@@ -2829,71 +3012,6 @@
     const el = $(id);
     if(!el) return fallback;
     return !!el.checked;
-  }
-
-
-  // v2.20.18: beforeinfo取得前の「事前候補」。
-  // 重要：更新処理の本線を壊さないため、programsだけで判定できる軽量条件に限定する。
-  // ここでは展示/ST/水面の中身を見ず、「取得後に候補化する可能性がある対象」を候補欄へ先出しする。
-  function beforeMissingPartsV22018_(r){
-    const missing = [];
-    if(!r?.exhReady) missing.push('展示');
-    if(v220NeedStReady_() && !stReady13_(r)) missing.push('ST');
-    if(!envReady_(r)) missing.push('水面');
-    return missing;
-  }
-
-  function buildV22018PreCandidateFlags_(r){
-    const enabled = checkedV220_('v22018PreCandidateOn', true);
-    const missing = beforeMissingPartsV22018_(r);
-    const stadium = Number(r?.stadium);
-    const v220Meta = v220RuleMeta_(stadium);
-    const v22010Meta = v22010TestMeta_(stadium);
-    const entry = passFilter1Entry_(r);
-    const targetV220 = v220Meta?.role !== 'none';
-    const targetV22010 = v22010Meta?.id && v22010Meta.id !== 'none';
-    const targetExtra = stadium === 9 || stadium === 18; // 津LOW雨比較 / 徳山入口緩和
-
-    const potential = !!(
-      (targetV220 && entry.ok) ||
-      targetV22010 ||
-      targetExtra
-    );
-
-    const candidate = !!(
-      enabled &&
-      r &&
-      !r.result_top3 &&
-      missing.length > 0 &&
-      potential
-    );
-
-    let label = '事前候補';
-    let reason = '';
-    if(candidate){
-      if(targetV220 && entry.ok){
-        label = `事前候補:${v220Meta.ruleShort || 'v2.20'}`;
-        reason = `${v220Meta.ruleName || 'v2.20対象'} / before取得後に正式・検証候補化の可能性`;
-      }else if(targetV22010){
-        label = `事前候補:${v22010Meta.ruleShort || 'v2.20.13検証'}`;
-        reason = `${v22010Meta.ruleName || 'v2.20.13検証対象'} / before取得後に検証候補化の可能性`;
-      }else if(targetExtra){
-        label = stadium === 9 ? '事前候補:津LOW雨比較' : '事前候補:徳山入口緩和';
-        reason = stadium === 9 ? '津LOW雨比較 / before取得後に検証候補化の可能性' : '徳山入口緩和 / before取得後に検証候補化の可能性';
-      }
-    }
-
-    return {
-      v22018_pre_candidate: candidate,
-      v22018_pre_label: candidate ? label : null,
-      v22018_pre_reason: candidate ? reason : null,
-      v22018_pre_missing: missing.join('/') || null,
-      v22018_pre_entry_ok: !!entry.ok,
-      v22018_pre_entry_blockers: entry.reasons.join(' / ') || null,
-      v22018_pre_target_v220: !!targetV220,
-      v22018_pre_target_v22010: !!targetV22010,
-      v22018_pre_target_extra: !!targetExtra
-    };
   }
 
   function isRainLikeV220_(r){
@@ -3206,6 +3324,91 @@
     return true;
   }
 
+
+  // v2.20.20: 取得フォールバックを壊さず、表示・before補助・JSONだけに使う軽量追加。
+  function checkedV22020_(id, fallback=true){
+    const el = $(id);
+    if(!el) return fallback;
+    return !!el.checked;
+  }
+
+  function v22020PreCandidateInfo_(r){
+    const out = { candidate:false, label:null, missing:[], paths:[], blockers:[] };
+    if(!checkedV22020_('v22020PreCandidateOn', true)) { out.blockers.push('事前候補OFF'); return out; }
+    if(!r || !enabledStadiums.has(Number(r.stadium))) { out.blockers.push('対象場OFF'); return out; }
+    if(r.result_top3) { out.blockers.push('結果取得済み'); return out; }
+
+    const closeMs = parseCloseMs_(r?.race_closed_at);
+    // 締切後は「見落とし防止」ではなく結果待ちになるため、長く残し続けない。
+    if(Number.isFinite(closeMs) && Date.now() > closeMs + RESULT_CLOSE_GRACE_MS){
+      out.blockers.push('締切後');
+      return out;
+    }
+
+    const missing = [];
+    if(r?.exhReady !== true) missing.push('展示');
+    if(!stReady13_(r)) missing.push('ST');
+    if(!envReady_(r)) missing.push('水面');
+    if(missing.length === 0){ out.blockers.push('直前データ取得済み'); return out; }
+
+    const f1 = passFilter1Entry_(r);
+    if(!f1.ok){ out.blockers.push(...f1.reasons); return out; }
+
+    const stadium = Number(r?.stadium);
+    const meta = v220RuleMeta_(stadium);
+    const testMeta = v22010TestMeta_(stadium);
+    const paths = [];
+    if(meta.role === 'official' && checkedV220_('v220OfficialBuyOn', true)) paths.push(`正式:${meta.ruleShort}`);
+    if(meta.role === 'research' && checkedV220_('v220ResearchVenueOn', true)) paths.push(`検証:${meta.ruleShort}`);
+    if(testMeta.id !== 'none' && checkedV220_('v22010TestLogOn', true)) paths.push(`TEST:${testMeta.ruleShort}`);
+    if(stadium === 9 || stadium === 18) paths.push(stadium === 9 ? '追加TEST:津LOW雨比較' : '追加TEST:徳山入口緩和');
+    if(paths.length === 0){ out.blockers.push('候補化パスなし'); return out; }
+
+    out.candidate = true;
+    out.missing = missing;
+    out.paths = paths;
+    out.label = `${paths.slice(0,2).join(' / ')} / 待ち:${missing.join(',')}`;
+    return out;
+  }
+
+  function buildV22020PreCandidateFlags_(r){
+    const info = v22020PreCandidateInfo_(r);
+    return {
+      v22020_pre_candidate: !!info.candidate,
+      v22020_pre_label: info.label,
+      v22020_pre_missing: info.missing.join(',') || null,
+      v22020_pre_paths: info.paths.join(' / ') || null,
+      v22020_pre_blockers: info.blockers.join(' / ') || null
+    };
+  }
+
+  function v22020QualityGuardBlockers_(r, meta, ctx={}){
+    const blockers = [];
+    if(!checkedV22020_('v22020QualityGuardOn', true)) return blockers;
+    const id = meta?.id || 'none';
+    const one = ctx.one || oneWinScoreV216_(r);
+    const l2 = ctx.l2 || lane2SurvivalScoreV215_(r);
+    const no34 = ctx.no34 ?? (!l2.lane3Threat && !l2.lane4Threat);
+    const noOuter = ctx.noOuter ?? !l2.outerThreat;
+
+    // 7/10の福岡PAIR_BALANCE崩れ対策。構造条件は残し、Active化だけ内部品質で止める。
+    // 大データ50%の仮説自体は残すため、削除ではなく品質NOとしてログ化する。
+    if(id === 'fukuoka_pair_balance'){
+      if((one?.score ?? 0) < 60) blockers.push(`福岡品質:1勝score<60(${one?.score ?? '-'})`);
+      if((l2?.score ?? 0) < 50) blockers.push(`福岡品質:2残存score<50(${l2?.score ?? '-'})`);
+      if(one?.hardThreat) blockers.push('福岡品質:1号艇hard脅威');
+      if(!no34) blockers.push('福岡品質:3-4脅威あり');
+      if(!noOuter) blockers.push('福岡品質:外枠脅威あり');
+    }
+
+    // 若松は「2が強いが1が飛ぶ」型が多い。VALUE専用は維持し、1勝利側が弱すぎるものだけ止める。
+    if(id === 'wakamatsu_r2_value_safe'){
+      if((one?.score ?? 0) < 40) blockers.push(`若松品質:1勝score<40(${one?.score ?? '-'})`);
+      if(one?.hardThreat) blockers.push('若松品質:1号艇hard脅威');
+    }
+    return blockers;
+  }
+
   function buildV22010TestFlags_(r){
     const stadium = Number(r?.stadium);
     const venue = VENUES[stadium] || r?.venue || '';
@@ -3327,25 +3530,11 @@
 
     const hasOdd = Number.isFinite(odd) && odd > 0;
     const rawOddsOk = structureCandidate && hasOdd && v22010ExpectedOddsBandOk_(meta, band, odd);
-
-    const qualityBlockers = [];
-    if(rawOddsOk && checkedV220_('v22018QualityGuardOn', true)){
-      if(meta.id === 'fukuoka_pair_balance'){
-        addBlockerV220_(qualityBlockers, one.score >= 60, `福岡PAIR_BAL品質:1勝score<60(${one.score})`);
-        addBlockerV220_(qualityBlockers, l2.score >= 50, `福岡PAIR_BAL品質:2残存score<50(${l2.score})`);
-        addBlockerV220_(qualityBlockers, !one.hardThreat, '福岡PAIR_BAL品質:1号艇hard脅威あり');
-        addBlockerV220_(qualityBlockers, no34, '福岡PAIR_BAL品質:3-4脅威あり');
-        addBlockerV220_(qualityBlockers, noOuter, '福岡PAIR_BAL品質:外枠脅威あり');
-      }else if(meta.id === 'wakamatsu_r2_value_safe'){
-        addBlockerV220_(qualityBlockers, one.score >= 40, `若松R2_VALUE品質:1勝score<40(${one.score})`);
-        addBlockerV220_(qualityBlockers, !one.hardThreat, '若松R2_VALUE品質:1号艇hard脅威あり');
-      }
-    }
-
+    const qualityBlockers = rawOddsOk ? v22020QualityGuardBlockers_(r, meta, { one, l2, no34, noOuter, rank1, rank2, d2, noStOut }) : [];
     const qualityNo = rawOddsOk && qualityBlockers.length > 0;
     const oddsOk = rawOddsOk && !qualityNo;
     const waitOdds = structureCandidate && !hasOdd;
-    const oddsNo = structureCandidate && hasOdd && !oddsOk;
+    const oddsNo = structureCandidate && hasOdd && !rawOddsOk;
     const hitBase = resultClass.cls === '12_hit';
     const stake = oddsOk ? 100 : 0;
     const payout = (oddsOk && hitBase && hasOdd) ? Math.round(odd * 100) : 0;
@@ -3365,9 +3554,11 @@
       v22010_test_candidate: structureCandidate,
       v22010_test_wait_odds: waitOdds,
       v22010_test_odds_no: oddsNo,
-      v22010_test_quality_no: qualityNo,
-      v22018_test_quality_no: qualityNo,
       v22010_test_active: oddsOk,
+      v22010_test_raw_odds_ok: rawOddsOk,
+      v22020_test_quality_no: qualityNo,
+      v22020_test_quality_blockers: qualityBlockers.join(' / ') || null,
+      v22020_quality_guard_on: checkedV22020_('v22020QualityGuardOn', true),
       v22010_test_hit: oddsOk && hitBase,
       v22010_test_stake: stake,
       v22010_test_payout: payout,
@@ -3376,9 +3567,8 @@
       v22010_test_odds_band: band.band,
       v22010_test_market_support_level: band.market,
       v22010_test_structure_blockers: structureBlockers.join(' / ') || null,
-      v22010_test_odds_blockers: [...oddsBlockers, ...qualityBlockers].join(' / ') || null,
+      v22010_test_odds_blockers: oddsBlockers.join(' / ') || null,
       v22010_test_quality_blockers: qualityBlockers.join(' / ') || null,
-      v22018_test_quality_blockers: qualityBlockers.join(' / ') || null,
       v22010_test_blockers: [...miscBlockers, ...structureBlockers, ...oddsBlockers, ...qualityBlockers].join(' / ') || null,
       v22010_test_result_class: resultClass.cls,
       v22010_test_result_label: resultClass.label,
@@ -3413,7 +3603,7 @@
       v22010_biwako_pair_test: false,
       v22010_tokoname_low_recheck_test: false,
       v22010_tokoname_value_test: false,
-      v22010_detail: { stadium, venue, rank1, rank2, d2, noStOut, calm, noRain, no34, noOuter, oneScore:one.score, lane2Score:l2.score, f1Ok:f1.ok, f1Reasons:f1.reasons, historicalTuned:true, largeDataRetuned:true, testVersion:'v2.20.18' }
+      v22010_detail: { stadium, venue, rank1, rank2, d2, noStOut, calm, noRain, no34, noOuter, oneScore:one.score, lane2Score:l2.score, f1Ok:f1.ok, f1Reasons:f1.reasons, historicalTuned:true, largeDataRetuned:true, testVersion:'v2.20.20' }
     };
   }
 
@@ -4190,8 +4380,8 @@
     let v220Official=0, v220OfficialHit=0, v220OfficialStake=0, v220OfficialPayout=0, v220OfficialProfit=0;
     let v220Research=0, v220ResearchHit=0, v220ResearchStake=0, v220ResearchPayout=0, v220ResearchProfit=0;
     let v220MainStruct=0, v220ResearchStruct=0;
-    let v22010Struct=0, v22010Wait=0, v22010OddsNo=0, v22010QualityNo=0, v22010Active=0, v22010Hit=0, v22010Stake=0, v22010Payout=0, v22010Profit=0;
-    let v22018PreCandidates=0;
+    let v22010Struct=0, v22010Wait=0, v22010OddsNo=0, v22010Active=0, v22010Hit=0, v22010Stake=0, v22010Payout=0, v22010Profit=0;
+    let v22020Pre=0, v22020QualityNo=0;
 
     for(const r of racesForExport){
       if(passFilter1(r).ok) f1pass++;
@@ -4267,8 +4457,8 @@
       if(r.v22010_test_candidate) v22010Struct++;
       if(r.v22010_test_wait_odds) v22010Wait++;
       if(r.v22010_test_odds_no) v22010OddsNo++;
-      if(r.v22010_test_quality_no) v22010QualityNo++;
-      if(r.v22018_pre_candidate) v22018PreCandidates++;
+      if(r.v22020_pre_candidate) v22020Pre++;
+      if(r.v22020_test_quality_no) v22020QualityNo++;
       if(r.v22010_test_active) v22010Active++;
       if(r.v22010_test_hit) v22010Hit++;
       v22010Stake += Number(r.v22010_test_stake || 0);
@@ -4345,6 +4535,8 @@
       v22010_test_candidates: v22010Struct,
       v22010_test_wait_odds: v22010Wait,
       v22010_test_odds_no: v22010OddsNo,
+      v22020_pre_candidates: v22020Pre,
+      v22020_quality_no: v22020QualityNo,
       v22010_test_active: v22010Active,
       v22010_test_hit: v22010Hit,
       v22010_test_stake: v22010Stake,
@@ -4382,8 +4574,8 @@
     let v220Official=0,v220OfficialHit=0,v220OfficialStake=0,v220OfficialPayout=0,v220OfficialProfit=0;
     let v220Research=0,v220ResearchHit=0,v220ResearchStake=0,v220ResearchPayout=0,v220ResearchProfit=0;
     let v220MainStruct=0,v220ResearchStruct=0;
-    let v22010Struct=0,v22010Wait=0,v22010OddsNo=0,v22010QualityNo=0,v22010Active=0,v22010Hit=0,v22010Stake=0,v22010Payout=0,v22010Profit=0;
-    let v22018PreCandidates=0;
+    let v22010Struct=0,v22010Wait=0,v22010OddsNo=0,v22010Active=0,v22010Hit=0,v22010Stake=0,v22010Payout=0,v22010Profit=0;
+    let v22020Pre=0,v22020QualityNo=0;
 
     for(const r of races){
       const ev = evaluate(r);
@@ -4458,8 +4650,8 @@
       if(v218.v22010_test_candidate) v22010Struct++;
       if(v218.v22010_test_wait_odds) v22010Wait++;
       if(v218.v22010_test_odds_no) v22010OddsNo++;
-      if(v218.v22010_test_quality_no) v22010QualityNo++;
-      if(v218.v22018_pre_candidate) v22018PreCandidates++;
+      if(v218.v22020_pre_candidate) v22020Pre++;
+      if(v218.v22020_test_quality_no) v22020QualityNo++;
       if(v218.v22010_test_active) v22010Active++;
       if(v218.v22010_test_hit) v22010Hit++;
       v22010Stake += Number(v218.v22010_test_stake || 0);
@@ -4476,7 +4668,7 @@
     const v220ResearchRoi = v220ResearchStake > 0 ? ((v220ResearchPayout / v220ResearchStake) * 100).toFixed(1) : '-';
     const v22010Roi = v22010Stake > 0 ? ((v22010Payout / v22010Stake) * 100).toFixed(1) : '-';
     $("summary").textContent =
-      `取得${total}R / 条件①通過${f1pass}R / v2.20正式候補${v220MainStruct} / BUY${buy} / NO${no}（risk:${riskNo} odds:${oddsNo}） / WAIT${wait} / 条件外${filtered} / v2.20正式BUY${v220Official}（的中${v220OfficialHit} 収支${v220OfficialProfit}円 ROI${v220OfficialRoi}%） / v2.20検証${v220Research}（構造${v220ResearchStruct} 的中${v220ResearchHit} 収支${v220ResearchProfit}円 ROI${v220ResearchRoi}%） / v2.20.18事前候補${v22018PreCandidates} / v2.20.13検証${v22010Active}（構造${v22010Struct} WAIT${v22010Wait} NO${v22010OddsNo} 品質NO${v22010QualityNo} 的中${v22010Hit} 収支${v22010Profit}円 ROI${v22010Roi}%） / 旧SIM_RULE${simRule}（的中${simRuleHit}） / LOW${low}（的中${lowHit} 収支${lowProfit}円 ROI${lowRoi}%） / VALUE${value}（的中${valueHit} 収支${valueProfit}円 ROI${valueRoi}%） / HIGH${high}（的中${highHit} 収支${highProfit}円 ROI${highRoi}%） / DANGER${danger}（的中${dangerHit} 収支${dangerProfit}円 ROI${dangerRoi}%） / SIM_STRICT${simStrict}（的中${simStrictHit} 収支${simStrictProfit}円 ROI${strictRoi}% / WAIT${simStrictWait} ODDS_NO${simStrictOddsNo} / 1ズレ${simStrictOneWinNot12} 1飛び${simStrictOneLost}） / WATCH${watch}（的中${watchHit}） / 二段階候補${twoStageCandidate} / 1勝候補${oneWinCandidate} / 1score強${oneScoreStrong} / 1-2的中${hit12} / 1勝ち2ズレ${oneWinNot12}（1-3:${lane3Slip} 1-4:${lane4Slip}） / 2単odds${oddsReady} / before${beforeReady} / result${resReady}`;
+      `取得${total}R / 条件①通過${f1pass}R / v2.20正式候補${v220MainStruct} / BUY${buy} / NO${no}（risk:${riskNo} odds:${oddsNo}） / WAIT${wait} / 条件外${filtered} / v2.20正式BUY${v220Official}（的中${v220OfficialHit} 収支${v220OfficialProfit}円 ROI${v220OfficialRoi}%） / v2.20検証${v220Research}（構造${v220ResearchStruct} 的中${v220ResearchHit} 収支${v220ResearchProfit}円 ROI${v220ResearchRoi}%） / v2.20.13検証${v22010Active}（構造${v22010Struct} WAIT${v22010Wait} NO${v22010OddsNo} 品質NO${v22020QualityNo} 的中${v22010Hit} 収支${v22010Profit}円 ROI${v22010Roi}%） / 事前候補${v22020Pre} / 旧SIM_RULE${simRule}（的中${simRuleHit}） / LOW${low}（的中${lowHit} 収支${lowProfit}円 ROI${lowRoi}%） / VALUE${value}（的中${valueHit} 収支${valueProfit}円 ROI${valueRoi}%） / HIGH${high}（的中${highHit} 収支${highProfit}円 ROI${highRoi}%） / DANGER${danger}（的中${dangerHit} 収支${dangerProfit}円 ROI${dangerRoi}%） / SIM_STRICT${simStrict}（的中${simStrictHit} 収支${simStrictProfit}円 ROI${strictRoi}% / WAIT${simStrictWait} ODDS_NO${simStrictOddsNo} / 1ズレ${simStrictOneWinNot12} 1飛び${simStrictOneLost}） / WATCH${watch}（的中${watchHit}） / 二段階候補${twoStageCandidate} / 1勝候補${oneWinCandidate} / 1score強${oneScoreStrong} / 1-2的中${hit12} / 1勝ち2ズレ${oneWinNot12}（1-3:${lane3Slip} 1-4:${lane4Slip}） / 2単odds${oddsReady} / before${beforeReady} / result${resReady}`;
 
     renderNoDiagnostics_(races);
   }
@@ -4503,8 +4695,8 @@
     "race-official-oddsno",
     "race-research-active",
     "race-research-wait",
-    "race-main-blocked",
-    "race-pre-candidate"
+    "race-pre-candidate",
+    "race-main-blocked"
   ];
 
   function applyRaceVisualClass_(card, r, ev=null, flags=null){
@@ -4536,6 +4728,10 @@
       card.classList.add("race-research-active");
       return;
     }
+    if(v.v22020_test_quality_no){
+      card.classList.add("race-official-oddsno");
+      return;
+    }
     if(v.v22010_test_wait_odds){
       card.classList.add("race-research-wait");
       return;
@@ -4544,7 +4740,7 @@
       card.classList.add("race-official-oddsno");
       return;
     }
-    if(v.v22018_pre_candidate){
+    if(v.v22020_pre_candidate){
       card.classList.add("race-pre-candidate");
       return;
     }
@@ -4576,10 +4772,10 @@
         buyLine.innerHTML = `v2.20検証：<b>2連単 1-2</b> <span class="tag mono">${v217.v220_rule_short}</span><span class="tag mono">${v217.v220_group}</span>${Number.isFinite(v217.v220_odd) ? ` / odds=${v217.v220_odd}` : ` / odds未入力`}`;
       }else if(v217.v220_official_candidate || v217.v220_research_candidate){
         buyLine.innerHTML = `v2.20候補：<b>2連単 1-2</b> <span class="tag mono">${v217.v220_rule_short}</span>${Number.isFinite(v217.v220_odd) ? ` / odds=${v217.v220_odd}` : ` / odds未入力`}`;
-      }else if(v217.v22010_test_candidate || v217.v22010_test_active || v217.v22010_test_odds_no){
-        buyLine.innerHTML = `v2.20.13検証ログ：<b>2連単 1-2</b> <span class="tag mono">${v217.v22010_test_rule_short}</span><span class="tag mono">${v217.v22010_test_group}</span>${Number.isFinite(v217.v22010_test_odd) ? ` / odds=${v217.v22010_test_odd}` : ` / odds未入力`}`;
-      }else if(v217.v22018_pre_candidate){
-        buyLine.innerHTML = `v2.20.18事前候補：<b>before取得待ち</b> <span class="tag mono">${v217.v22018_pre_label}</span><span class="tag mono">不足:${v217.v22018_pre_missing}</span>`;
+      }else if(v217.v22010_test_candidate || v217.v22010_test_active || v217.v22010_test_odds_no || v217.v22020_test_quality_no){
+        buyLine.innerHTML = `v2.20.13検証ログ：<b>2連単 1-2</b> <span class="tag mono">${v217.v22010_test_rule_short}</span><span class="tag mono">${v217.v22010_test_group}</span>${Number.isFinite(v217.v22010_test_odd) ? ` / odds=${v217.v22010_test_odd}` : ` / odds未入力`}${v217.v22020_test_quality_no ? ` / 品質NO:${v217.v22020_test_quality_blockers || '-'}` : ``}`;
+      }else if(v217.v22020_pre_candidate){
+        buyLine.innerHTML = `v2.20.20事前候補：<b>直前データ待ち</b> <span class="tag mono">${v217.v22020_pre_label || '-'}</span>`;
       }else if((v217.v218_sim_rule_candidate || v217.v218_watch_candidate) && $('v217VenueRuleAsSimBuyOn')?.checked){
         buyLine.innerHTML = `旧SIM検証：<b>2連単 1-2</b> <span class="tag mono">${v217.v217_sim_state}</span><span class="tag mono">${v217.v219_sim_eval_group}</span>${v217.v218_watch_candidate ? `<span class="tag mono">${v217.v218_watch_short}</span>` : ``}${Number.isFinite(v217.v217_sim_odd) ? ` / odds=${v217.v217_sim_odd}` : ` / odds未入力`}`;
       }else{
@@ -4649,10 +4845,10 @@
       ? `<span class="tag mono">v2.20:${v217Flags.v220_rule_short}</span><span class="tag mono">${v217Flags.v220_role}</span><span class="tag mono">${v217Flags.v220_group}</span>`
       : ``;
     const v22010Badge = v217Flags.v22010_test_visible
-      ? `<span class="tag mono">v2.20.13:${v217Flags.v22010_test_rule_short}</span><span class="tag mono">${v217Flags.v22010_test_group}</span>`
+      ? `<span class="tag mono">v2.20.13:${v217Flags.v22010_test_rule_short}</span><span class="tag mono">${v217Flags.v22010_test_group}</span>${v217Flags.v22020_test_quality_no ? `<span class="tag mono">品質NO</span>` : ``}`
       : ``;
-    const v22018PreBadge = v217Flags.v22018_pre_candidate
-      ? `<span class="tag mono">${v217Flags.v22018_pre_label}</span><span class="tag mono">不足:${v217Flags.v22018_pre_missing}</span>`
+    const v22020PreBadge = v217Flags.v22020_pre_candidate
+      ? `<span class="tag mono">事前候補:${v217Flags.v22020_pre_missing || '-'}</span>`
       : ``;
     const v217Badge = (v217Flags.v218_sim_rule_candidate || v217Flags.v218_watch_candidate)
       ? `<span class="tag mono">v2.19:${v217Flags.v218_sim_rule_candidate ? v217Flags.v217_rule_short : v217Flags.v218_watch_short}</span><span class="tag mono">${v217Flags.v217_sim_state}</span><span class="tag mono">${v217Flags.v219_sim_eval_group}</span>`
@@ -4664,10 +4860,10 @@
       ? `<div class="resultLine small">v2.20: <b>${v217Flags.v220_rule_short}</b> / role=${v217Flags.v220_role} / group=${v217Flags.v220_group} / 構造=${v217Flags.v220_structure_candidate?"Y":"N"} / 正式BUY=${v217Flags.v220_official_buy?"Y":"N"} / 検証=${v217Flags.v220_research_active?"Y":"N"} / odds=${Number.isFinite(v217Flags.v220_odd) ? v217Flags.v220_odd : "未入力"} / odds帯=${v217Flags.v220_odds_band} / 結果=${v217Flags.v220_result_label} / 収支=${v217Flags.v220_official_buy ? v217Flags.v220_official_profit : v217Flags.v220_research_profit}円 / 阻害=${v217Flags.v220_blockers || "-"}</div>`
       : ``;
     const v22010Line = v217Flags.v22010_test_visible
-      ? `<div class="resultLine small">v2.20.13検証: <b>${v217Flags.v22010_test_rule_short}</b> / group=${v217Flags.v22010_test_group} / 構造=${v217Flags.v22010_test_candidate?"Y":"N"} / WAIT=${v217Flags.v22010_test_wait_odds?"Y":"N"} / ODDS_NO=${v217Flags.v22010_test_odds_no?"Y":"N"} / 品質NO=${v217Flags.v22010_test_quality_no?"Y":"N"} / ACTIVE=${v217Flags.v22010_test_active?"Y":"N"} / odds=${Number.isFinite(v217Flags.v22010_test_odd) ? v217Flags.v22010_test_odd : "未入力"} / odds帯=${v217Flags.v22010_test_odds_band} / 結果=${v217Flags.v22010_test_result_label} / 仮想収支=${v217Flags.v22010_test_profit}円 / 阻害=${v217Flags.v22010_test_blockers || "-"}</div>`
+      ? `<div class="resultLine small">v2.20.13検証: <b>${v217Flags.v22010_test_rule_short}</b> / group=${v217Flags.v22010_test_group} / 構造=${v217Flags.v22010_test_candidate?"Y":"N"} / WAIT=${v217Flags.v22010_test_wait_odds?"Y":"N"} / ODDS_NO=${v217Flags.v22010_test_odds_no?"Y":"N"} / 品質NO=${v217Flags.v22020_test_quality_no?"Y":"N"} / ACTIVE=${v217Flags.v22010_test_active?"Y":"N"} / odds=${Number.isFinite(v217Flags.v22010_test_odd) ? v217Flags.v22010_test_odd : "未入力"} / odds帯=${v217Flags.v22010_test_odds_band} / 結果=${v217Flags.v22010_test_result_label} / 仮想収支=${v217Flags.v22010_test_profit}円 / 阻害=${v217Flags.v22010_test_blockers || "-"}</div>`
       : ``;
-    const v22018PreLine = v217Flags.v22018_pre_candidate
-      ? `<div class="resultLine small">v2.20.18事前候補: <b>${v217Flags.v22018_pre_label}</b> / 不足=${v217Flags.v22018_pre_missing || "-"} / ${v217Flags.v22018_pre_reason || "before取得待ち"}</div>`
+    const v22020PreLine = v217Flags.v22020_pre_candidate
+      ? `<div class="resultLine small">v2.20.20事前候補: <b>${v217Flags.v22020_pre_label || '-'}</b> / missing=${v217Flags.v22020_pre_missing || '-'} / paths=${v217Flags.v22020_pre_paths || '-'}</div>`
       : ``;
     const v217Line = (v217Flags.v218_sim_rule_candidate || v217Flags.v218_watch_candidate)
       ? `<div class="resultLine small">v2.19 SIM: <b>${v217Flags.v218_sim_rule_candidate ? v217Flags.v217_rule_short : v217Flags.v218_watch_short}</b> / RULE=${v217Flags.v218_sim_rule_candidate ? "Y" : "N"} / STRICT=${v217Flags.v218_sim_strict_state} / WATCH=${v217Flags.v218_watch_candidate ? "Y" : "N"} / odds=${Number.isFinite(v217Flags.v217_sim_odd) ? v217Flags.v217_sim_odd : "未入力"} / odds帯=${v217Flags.v219_odds_band} / market=${v217Flags.v219_market_support_short} / eval=${v217Flags.v219_sim_eval_group} / 仮想収支=${v217Flags.v219_sim_eval_profit}円 / 結果=${v217Flags.v217_result_label} / STRICT阻害=${v217Flags.v218_sim_strict_blockers || "-"}</div>`
@@ -4685,7 +4881,7 @@
           ${v215Badge}
           ${v220Badge}
           ${v22010Badge}
-          ${v22018PreBadge}
+          ${v22020PreBadge}
           ${v217Badge}
           <span class="tag mono">rank:${venueSubRankOf(r.stadium)}</span>
           ${isHighRiskVenue_(r.stadium) ? `<span class="tag mono">警戒</span>` : ``}
@@ -4705,7 +4901,7 @@
           ${v215Line}
           ${v220Line}
           ${v22010Line}
-          ${v22018PreLine}
+          ${v22020PreLine}
           ${v217Line}
           <div class="resultLine small">
             結果補正: <input data-result-top3 type="text" inputmode="numeric" placeholder="例: 5-1-2" value="${manualTop3 || ""}" style="width:120px; padding:6px; font-size:12px; display:inline-block;">
@@ -4860,7 +5056,8 @@
       return true;
     }
 
-    if(v.v22018_pre_candidate){
+    // v2.20.20: before取得後に候補化し得るレースは、締切前に見落とさないよう候補欄へ出す。
+    if(v.v22020_pre_candidate){
       return true;
     }
 
@@ -5090,13 +5287,17 @@
 
   function buildRacesFromBundle(bundle){
     RACER_CATALOG_RUNTIME.clear();
-    const programs = bundle.programs?.programs || [];
-    const previews = bundle.previews?.previews || [];
+    const programs = getProgramsArrayFromAnyBundle_(bundle);
+    const previews = getPreviewsArrayFromAnyBundle_(bundle);
     const results = getResultsArrayFromAnyBundle_(bundle);
 
     const prevMap = new Map();
     for(const p of previews){
-      prevMap.set(`${p.race_date}-${p.race_stadium_number}-${p.race_number}`, p);
+      const st = Number(p.race_stadium_number ?? p.stadium ?? p.stadium_number ?? p.jcd);
+      const rn = Number(p.race_number ?? p.rno ?? p.race ?? p.race_no);
+      const d0 = p.race_date ?? p.date ?? p.hd ?? p.raceDate;
+      const d = String(d0 || '').includes('-') ? String(d0).slice(0,10) : `${String(d0 || '').slice(0,4)}-${String(d0 || '').slice(4,6)}-${String(d0 || '').slice(6,8)}`;
+      if(Number.isFinite(st) && Number.isFinite(rn) && d.length >= 10) prevMap.set(`${d}-${st}-${rn}`, p);
     }
     const resMap = new Map();
     for(const rr of results){
@@ -5106,11 +5307,18 @@
 
     const races=[];
     for(const pr of programs){
-      const stadium = pr.race_stadium_number;
+      const stadium = Number(pr.race_stadium_number ?? pr.stadium ?? pr.stadium_number ?? pr.jcd);
+      const raceNo = Number(pr.race_number ?? pr.rno ?? pr.race ?? pr.race_no);
+      const raceDateRaw = pr.race_date ?? pr.date ?? pr.hd ?? pr.raceDate;
+      const raceDate = String(raceDateRaw || '').includes('-')
+        ? String(raceDateRaw).slice(0,10)
+        : `${String(raceDateRaw || '').slice(0,4)}-${String(raceDateRaw || '').slice(4,6)}-${String(raceDateRaw || '').slice(6,8)}`;
       if(!enabledStadiums.has(stadium)) continue;
+      if(!Number.isFinite(stadium) || !Number.isFinite(raceNo) || !raceDate || raceDate.length < 10) continue;
 
-      const key = `${pr.race_date}-${stadium}-${pr.race_number}`;
-      const b1 = (pr.boats || []).find(b=>b.racer_boat_number===1);
+      const key = `${raceDate}-${stadium}-${raceNo}`;
+      const boatsArr = Array.isArray(pr.boats) ? pr.boats : Object.values(pr.boats || {});
+      const b1 = boatsArr.find(b => Number(b?.racer_boat_number ?? b?.boat_number ?? b?.lane) === 1);
       if(!b1) continue;
       const racerIds = registerRaceRacersV22014_(pr);
 
@@ -5118,8 +5326,10 @@
       const exh={};
       if(pv && pv.boats){
         for(let lane=1; lane<=6; lane++){
-          const obj = pv.boats[String(lane)] || pv.boats[lane] || null;
-          const t = obj?.racer_exhibition_time ?? obj?.exhibition_time ?? null;
+          const obj = Array.isArray(pv.boats)
+            ? pv.boats.find(b => Number(b?.racer_boat_number ?? b?.boat_number ?? b?.lane) === lane)
+            : (pv.boats[String(lane)] || pv.boats[lane] || null);
+          const t = obj?.racer_exhibition_time ?? obj?.exhibition_time ?? obj?.exhibitionTime ?? null;
           if(t!=null) exh[String(lane)] = Number(t);
         }
       }
@@ -5134,8 +5344,8 @@
         key,
         stadium,
         venue: VENUES[stadium],
-        race: pr.race_number,
-        date: pr.race_date,
+        race: raceNo,
+        date: raceDate,
         race_closed_at: pr.race_closed_at ?? null,
 
         // v2.20.14 compact racer linkage: 1〜6号艇順の登録番号。氏名等はsnapshot上部のracer_catalogへ重複排除。
@@ -5517,10 +5727,13 @@
       renderSummary(LAST_RACES);
       renderList(LAST_RACES);
 
-      setStatus(`OK / ${nowHms_()} / 結果補完:${resultRetryChanged} / 結果未取得:${countMissingResultsAfterGrace_()}`);
+      const src = bundle?.__source || bundle?.programs?.__source_kind || bundle?.programs?.__source || 'worker';
+      const fallback = bundle?.__fallback ? ' / fallback' : '';
+      setStatus(`OK${fallback} / ${src} / ${nowHms_()} / 取得:${LAST_RACES.length} / 結果補完:${resultRetryChanged} / 結果未取得:${countMissingResultsAfterGrace_()}`);
       maybeScheduleAutoRefresh();
     } catch(e){
-      setStatus("失敗");
+      console.error('refreshFull failed', e);
+      setStatus(`失敗: ${e?.message || e}`);
       setAutoStatus("-");
     }
   }
@@ -5595,7 +5808,7 @@
       summary: summaryForExport,
       low_no_diagnostic_summary: buildLowNoSummaryV22014_(racesForExport),
       v22014_extra_test_summary: buildV22014ExtraSummary_(racesForExport),
-      v22018_meta: { base_restored_from:"v2.20.14", pre_candidate:true, quality_guard:true },
+      v22019_fetch_meta: { fallback_enabled:true, parser:"robust_programs_previews_v1" },
       racer_data_meta: { schema:"racer_compact_v1", source:"programs_bundle", extra_api_calls:0, race_fields:["racer_ids","racer_run_no"], catalog_fields:{n:"name",c:"class",b:"branch"} },
       racer_catalog: racerCatalogForExportV22014_(),
       races: racesForExport,
