@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.20.21（取得フォールバック維持 / 事前候補 / 品質NO / SAFE）</title>
+  <title>競艇 v2.20.20（取得フォールバック維持 / 事前候補 / 品質NO / SAFE）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -94,7 +94,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.20.21（取得フォールバック維持 / 事前候補 / 品質NO / SAFE）</h1>
+  <h1>競艇 v2.20.20（取得フォールバック維持 / 事前候補 / 品質NO / SAFE）</h1>
   <div class="sub">
     ✅ <b>正式BUY</b>は、v2.20のメイン6会場LOW_SAFEだけに整理。旧BUYロジックは正式判定から外しています。<br/>
     ✅ <b>検証会場</b>は青表示でログ化し、正式収支には混ぜません。<br/>
@@ -104,7 +104,7 @@
     ✅ <b>選手情報</b>はprograms内の既存情報だけを軽量収集。各レースは登録番号6人＋当日何走目、氏名/級別/支部は共通辞書に1回だけ保存（追加API通信なし）。<br/>
     ✅ <b>LOW_NO診断</b>は2.2〜2.6倍帯のNOを、オッズのみ/入口能力値/雨/ST/1勝/2残存/3-4脅威など理由別にJSON集計します。<br/>
     ✅ <b>v2.20.19</b>の取得フォールバックを維持し、/api/todayが空/失敗してもOpenAPI直取得で復旧します。<br/>
-    ✅ <b>v2.20.21</b>では、直前データ待ちの事前候補表示と、福岡PAIR_BALANCE・若松R2_VALUE_SAFEの品質NOを追加します。取得・描画本線には混ぜません。<br/>
+    ✅ <b>v2.20.20</b>では、直前データ待ちの事前候補表示と、福岡PAIR_BALANCE・若松R2_VALUE_SAFEの品質NOを追加します。取得・描画本線には混ぜません。<br/>
   </div>
 
   <div class="card settingsCard">
@@ -158,11 +158,11 @@
     <div class="grid g2" style="margin-top:10px;">
       <label class="cb" style="margin:0;">
         <input type="checkbox" id="v22020PreCandidateOn" checked />
-        v2.20.21 事前候補を表示（直前データ待ち）
+        v2.20.20 事前候補を表示（直前データ待ち）
       </label>
       <label class="cb" style="margin:0;">
         <input type="checkbox" id="v22020QualityGuardOn" checked />
-        v2.20.21 福岡/若松の品質NOを有効化
+        v2.20.20 福岡/若松の品質NOを有効化
       </label>
     </div>
     <div class="muted small" style="margin-top:8px;">
@@ -642,7 +642,6 @@
 </div>
 
 <script>
-
 (() => {
   const WORKER_BASE = "https://kyotei-worker.tanabedaichi0831.workers.dev";
 
@@ -870,142 +869,6 @@
     return String(ymd || '').replace(/-/g, '');
   }
 
-
-  // v2.20.21: Workerがprogramsだけ返して、締切時刻/結果が薄い時の補完用ユーティリティ。
-  // 取得元ごとのキー名差を吸収し、programs/previews/resultsを同じ race key に寄せる。
-  function pickFieldDeepV22021_(obj, keys, depth=0){
-    if(!obj || typeof obj !== 'object' || depth > 2) return null;
-    for(const k of keys){
-      const v = obj[k];
-      if(v !== undefined && v !== null && String(v).trim?.() !== '') return v;
-    }
-    const nestedKeys = ['race','race_info','raceInfo','info','meta','program','preview','result','data'];
-    for(const nk of nestedKeys){
-      const v = obj[nk];
-      if(v && typeof v === 'object' && !Array.isArray(v)){
-        const got = pickFieldDeepV22021_(v, keys, depth + 1);
-        if(got !== null && got !== undefined && String(got).trim?.() !== '') return got;
-      }
-    }
-    return null;
-  }
-
-  function normalizeYmdV22021_(v, fallback=null){
-    if(v === undefined || v === null || v === '') return fallback;
-    const s = String(v).trim();
-    if(!s) return fallback;
-    const m1 = s.match(/(20\d{2})[-\/年]?(\d{1,2})[-\/月]?(\d{1,2})/);
-    if(m1){
-      return `${m1[1]}-${String(Number(m1[2])).padStart(2,'0')}-${String(Number(m1[3])).padStart(2,'0')}`;
-    }
-    const digits = s.replace(/\D/g,'');
-    if(digits.length >= 8) return `${digits.slice(0,4)}-${digits.slice(4,6)}-${digits.slice(6,8)}`;
-    return fallback;
-  }
-
-  function raceKeyFromAnyRecordV22021_(obj, fallbackDate=null){
-    if(!obj || typeof obj !== 'object') return null;
-    const dateRaw = pickFieldDeepV22021_(obj, ['race_date','date','hd','raceDate','race_day','day','ymd','race_ymd','holding_date','target_date']);
-    const stadiumRaw = pickFieldDeepV22021_(obj, ['race_stadium_number','stadium','stadium_number','jcd','jo_code','venue_id','venueCode','race_stadium_id','place','place_code']);
-    const raceRaw = pickFieldDeepV22021_(obj, ['race_number','rno','race','race_no','raceNo','round','round_number','race_num']);
-    const ymd = normalizeYmdV22021_(dateRaw, fallbackDate);
-    const st = Number(stadiumRaw);
-    const rn = Number(raceRaw);
-    if(!ymd || !Number.isFinite(st) || !Number.isFinite(rn)) return null;
-    return `${ymd}-${st}-${rn}`;
-  }
-
-  function normalizeCloseAtV22021_(v, raceDate){
-    if(v === undefined || v === null || v === '') return null;
-    const s = String(v).trim();
-    if(!s) return null;
-    if(/20\d{2}[-\/]\d{1,2}[-\/]\d{1,2}/.test(s)){
-      const normalized = s.replace(/\//g,'-').replace('T',' ').replace(/(\+09:00|Z)$/,'');
-      const ms = Date.parse(normalized.replace(' ', 'T'));
-      if(Number.isFinite(ms)) return normalized.length === 16 ? `${normalized}:00` : normalized.slice(0,19);
-    }
-    const base = normalizeYmdV22021_(raceDate, null);
-    if(!base) return null;
-    const hm = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
-    if(hm){
-      return `${base} ${String(Number(hm[1])).padStart(2,'0')}:${hm[2]}:${hm[3] || '00'}`;
-    }
-    const digits = s.replace(/\D/g,'');
-    if(digits.length === 3 || digits.length === 4){
-      const hh = String(Number(digits.slice(0, -2))).padStart(2,'0');
-      const mm = digits.slice(-2);
-      if(Number(hh) < 24 && Number(mm) < 60) return `${base} ${hh}:${mm}:00`;
-    }
-    if(digits.length >= 12){
-      return `${digits.slice(0,4)}-${digits.slice(4,6)}-${digits.slice(6,8)} ${digits.slice(8,10)}:${digits.slice(10,12)}:${digits.slice(12,14) || '00'}`;
-    }
-    return null;
-  }
-
-  function extractRaceClosedAtV22021_(raceDate, ...records){
-    const keys = [
-      'race_closed_at','raceCloseAt','race_closing_at','raceClosingAt','race_close_at','raceCloseTime',
-      'race_close_time','race_closed_time','close_at','closed_at','closeAt','deadline','deadline_at',
-      'bet_deadline','betting_deadline','betting_deadline_at','vote_deadline','vote_deadline_at',
-      'start_at','startAt','race_start_at','raceStartAt','race_start_time','raceStartTime',
-      'race_time','raceTime','start_time','startTime','scheduled_at','race_scheduled_at'
-    ];
-    for(const rec of records){
-      if(!rec || typeof rec !== 'object') continue;
-      const raw = pickFieldDeepV22021_(rec, keys);
-      const close = normalizeCloseAtV22021_(raw, raceDate);
-      if(close) return close;
-    }
-    return null;
-  }
-
-  function inferBundleDateYmdV22021_(bundle){
-    const programs = getProgramsArrayFromAnyBundle_(bundle);
-    for(const p of programs){
-      const y = normalizeYmdV22021_(pickFieldDeepV22021_(p, ['race_date','date','hd','raceDate','ymd']), null);
-      if(y) return y;
-    }
-    return null;
-  }
-
-  function combineUniqueRecordsByRaceKeyV22021_(arrays, fallbackDate=null){
-    const out = [];
-    const seen = new Set();
-    for(const arr of arrays){
-      for(const rec of (Array.isArray(arr) ? arr : [])){
-        const key = raceKeyFromAnyRecordV22021_(rec, fallbackDate) || JSON.stringify(rec).slice(0,200);
-        if(seen.has(key)) continue;
-        seen.add(key);
-        out.push(rec);
-      }
-    }
-    return out;
-  }
-
-  function mergeTodayBundleWithFallbackV22021_(workerBundle, fallbackBundle, workerUrl){
-    const fallbackPrograms = getProgramsArrayFromAnyBundle_(fallbackBundle);
-    const workerPrograms = getProgramsArrayFromAnyBundle_(workerBundle);
-    const fallbackPreviews = getPreviewsArrayFromAnyBundle_(fallbackBundle);
-    const workerPreviews = getPreviewsArrayFromAnyBundle_(workerBundle);
-    const fallbackResults = getResultsArrayFromAnyBundle_(fallbackBundle);
-    const workerResults = getResultsArrayFromAnyBundle_(workerBundle);
-    const inferredDate = inferBundleDateYmdV22021_(workerBundle) || inferBundleDateYmdV22021_(fallbackBundle) || jstTodayYmd_();
-    return {
-      programs: workerBundle,
-      previews: { previews: combineUniqueRecordsByRaceKeyV22021_([workerPreviews, fallbackPreviews], inferredDate) },
-      results: { results: combineUniqueRecordsByRaceKeyV22021_([workerResults, fallbackResults], inferredDate) },
-      programs_enrich: { programs: fallbackPrograms.length ? fallbackPrograms : workerPrograms },
-      __source:'worker_today+openapi_enrich',
-      __source_url: workerUrl,
-      __fallback_enrich: true,
-      __worker_program_count: workerPrograms.length,
-      __fallback_program_count: fallbackPrograms.length,
-      __worker_result_count: workerResults.length,
-      __fallback_result_count: fallbackResults.length,
-      __inferred_date: inferredDate
-    };
-  }
-
   function filterProgramRecords_(arr){
     if(!Array.isArray(arr)) return [];
     return arr.filter(looksLikeProgramRecord_);
@@ -1103,6 +966,22 @@
   }
 
   async function fetchOpenApiTodayFallbackBundle_(dateYmd=null, workerError=null){
+    // v2.20.22: 出走表・直前・結果が1つに入る統合API v1を最優先フォールバックにする。
+    // 旧programs/previews/results分割APIは、v1が取れない時だけ使う。
+    try{
+      const hubLegacy = await fetchUnifiedApiV1LegacyBundleV22022_(dateYmd || null);
+      if(hubLegacy && countProgramsInBundle_(hubLegacy) > 0){
+        try{
+          hubLegacy.__source = 'api_v1_fallback';
+          hubLegacy.__fallback = true;
+          hubLegacy.__worker_error = workerError ? String(workerError?.message || workerError) : null;
+        }catch(_){ }
+        return hubLegacy;
+      }
+    }catch(hubErr){
+      // 下の旧分割APIに落とす
+    }
+
     const ymd = dateYmd || jstTodayYmd_();
     const hd = hdFromYmd_(ymd);
     const yyyy = hd.slice(0,4);
@@ -1110,19 +989,21 @@
 
     const programUrls = [
       `https://boatraceopenapi.github.io/programs/v3/${yyyy}/${hd}.json?v=${stamp}`,
-      `https://boatraceopenapi.github.io/programs/v2/${yyyy}/${hd}.json?v=${stamp}`
+      `https://boatraceopenapi.github.io/programs/v3/today.json?v=${stamp}`,
+      `https://boatraceopenapi.github.io/programs/v2/${yyyy}/${hd}.json?v=${stamp}`,
+      `https://boatraceopenapi.github.io/programs/v2/today.json?v=${stamp}`
     ];
     const previewUrls = [
       `https://boatraceopenapi.github.io/previews/v3/${yyyy}/${hd}.json?v=${stamp}`,
-      `https://boatraceopenapi.github.io/previews/v2/${yyyy}/${hd}.json?v=${stamp}`
+      `https://boatraceopenapi.github.io/previews/v3/today.json?v=${stamp}`,
+      `https://boatraceopenapi.github.io/previews/v2/${yyyy}/${hd}.json?v=${stamp}`,
+      `https://boatraceopenapi.github.io/previews/v2/today.json?v=${stamp}`
     ];
     const resultUrls = [
       `https://boatraceopenapi.github.io/results/v3/${yyyy}/${hd}.json?v=${stamp}`,
-      `https://boatraceopenapi.github.io/results/v2/${yyyy}/${hd}.json?v=${stamp}`
-    ];
-    const hubUrls = [
-      `https://boatraceopenapi.github.io/api/v1/${yyyy}/${hd}.json?v=${stamp}`,
-      `https://boatraceopenapi.github.io/api-mirror/v1/${yyyy}/${hd}.json?v=${stamp}`
+      `https://boatraceopenapi.github.io/results/v3/today.json?v=${stamp}`,
+      `https://boatraceopenapi.github.io/results/v2/${yyyy}/${hd}.json?v=${stamp}`,
+      `https://boatraceopenapi.github.io/results/v2/today.json?v=${stamp}`
     ];
 
     async function firstUseful(urls, kind){
@@ -1154,41 +1035,338 @@
       };
     }
 
-    // programs単体でも取れない場合は、統合APIも試す。
-    const hub = await firstUseful(hubUrls, 'hub');
-    if(countProgramsInBundle_(hub.js) > 0){
-      try{ hub.js.__source = 'openapi_hub_fallback'; hub.js.__fallback = true; hub.js.__worker_error = workerError ? String(workerError?.message || workerError) : null; }catch(_){ }
-      return hub.js;
-    }
-
     throw new Error(`todayデータ取得失敗: worker=${workerError ? String(workerError?.message || workerError) : '-'} / fallback programs=0`);
   }
 
+  
+  // ===== v2.20.22 restored helpers/fetchTodayBundle =====
+
+  // ===== v2.20.22: 統合API v1 -> 既存レガシーbundle変換 =====
+  // boatraceopenapi/api v1 は programs.stadiums.{場}.races.{R} の中に
+  // 出走表・preview・result をまとめて持つ。既存ロジックは programs/previews/results の3配列を読むため、ここで安全に変換する。
+  function isUnifiedApiV1BundleV22022_(js){
+    return !!(js && typeof js === 'object' && js.programs && js.programs.stadiums && typeof js.programs.stadiums === 'object');
+  }
+
+  function ymdFromAnyV22022_(v, fallback=null){
+    if(v == null || v === '') return fallback;
+    const s = String(v).trim();
+    if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+    if(/^\d{8}$/.test(s)) return `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`;
+    return fallback;
+  }
+
+  function inferDateYmdFromBundleV22022_(bundle){
+    try{
+      const ps = getProgramsArrayFromAnyBundle_(bundle);
+      for(const p of ps){
+        const d = ymdFromAnyV22022_(p?.race_date ?? p?.date ?? p?.hd ?? p?.raceDate, null);
+        if(d) return d;
+      }
+    }catch(_){ }
+    try{
+      if(isUnifiedApiV1BundleV22022_(bundle)){
+        for(const st of Object.values(bundle.programs.stadiums || {})){
+          for(const race of Object.values(st?.races || {})){
+            const d = ymdFromAnyV22022_(race?.date, null);
+            if(d) return d;
+          }
+        }
+      }
+    }catch(_){ }
+    return null;
+  }
+
+  function legacyRaceKeyV22022_(x, fallbackDate=null, fallbackStadium=null, fallbackRace=null){
+    if(!x || typeof x !== 'object') return null;
+    const d = ymdFromAnyV22022_(x.race_date ?? x.date ?? x.hd ?? x.raceDate, fallbackDate);
+    const st = Number(x.race_stadium_number ?? x.stadium_number ?? x.stadium ?? x.jcd ?? fallbackStadium);
+    const rn = Number(x.race_number ?? x.rno ?? x.race ?? x.race_no ?? fallbackRace);
+    if(!d || !Number.isFinite(st) || !Number.isFinite(rn)) return null;
+    return `${d}-${st}-${rn}`;
+  }
+
+  function boatsObjectToLegacyArrayV22022_(racersObj){
+    const out = [];
+    if(!racersObj || typeof racersObj !== 'object') return out;
+    for(const [laneKey, rc] of Object.entries(racersObj)){
+      if(!rc || typeof rc !== 'object') continue;
+      const lane = Number(rc.entry_number ?? rc.racer_boat_number ?? rc.boat_number ?? rc.lane ?? laneKey);
+      if(!Number.isFinite(lane) || lane < 1 || lane > 6) continue;
+      out.push({
+        ...rc,
+        racer_boat_number: lane,
+        boat_number: lane,
+        lane,
+        racer_number: rc.number ?? rc.racer_number ?? rc.registration_number ?? null,
+        racer_registration_number: rc.number ?? rc.racer_number ?? rc.registration_number ?? null,
+        racer_name: rc.name ?? rc.racer_name ?? null,
+        racer_rank: rc.rank ?? rc.rank_number ?? rc.class ?? null,
+        racer_branch: rc.branch ?? rc.branch_name ?? rc.branch_number ?? null,
+        racer_national_top_2_percent: rc.national_top_2_percent ?? rc.racer_national_top_2_percent ?? 0,
+        racer_local_top_2_percent: rc.local_top_2_percent ?? rc.racer_local_top_2_percent ?? 0,
+        racer_assigned_motor_top_2_percent: rc.motor_top_2_percent ?? rc.racer_assigned_motor_top_2_percent ?? 0,
+        racer_exhibition_time: rc.exhibition_time ?? rc.racer_exhibition_time ?? null,
+        racer_start_timing: rc.start_timing ?? rc.racer_start_timing ?? null
+      });
+    }
+    out.sort((a,b)=>Number(a.racer_boat_number)-Number(b.racer_boat_number));
+    return out;
+  }
+
+  function resultTop3FromUnifiedResultV22022_(result){
+    if(!result || typeof result !== 'object') return null;
+    const fromExisting = extractTop3(result);
+    if(fromExisting) return fromExisting;
+    const racers = result.racers || result.boats || null;
+    if(racers && typeof racers === 'object'){
+      const arr = Object.entries(racers).map(([laneKey, rc])=>{
+        const lane = Number(rc?.entry_number ?? rc?.racer_boat_number ?? rc?.boat_number ?? rc?.lane ?? laneKey);
+        const place = Number(rc?.place_number ?? rc?.place ?? rc?.rank ?? rc?.arrival_order ?? rc?.finish_order);
+        return { lane, place };
+      }).filter(x => Number.isFinite(x.lane) && Number.isFinite(x.place) && x.place >= 1 && x.place <= 6)
+        .sort((a,b)=>a.place-b.place);
+      if(arr.length >= 3) return normalizeTop3Strict_(arr[0].lane, arr[1].lane, arr[2].lane);
+    }
+    const tri = result.payouts?.trifecta?.[0]?.combination || result.payouts?.trio?.[0]?.combination;
+    return pickTop3FromString_(tri);
+  }
+
+  function convertUnifiedApiV1ToLegacyBundleV22022_(js, sourceUrl=null){
+    const programs = [];
+    const previews = [];
+    const results = [];
+    if(!isUnifiedApiV1BundleV22022_(js)) return { programs:{programs:[]}, previews:{previews:[]}, results:{results:[]}, __source:'api_v1_empty' };
+
+    const stadiums = js.programs.stadiums || {};
+    for(const [stKey, stObj] of Object.entries(stadiums)){
+      const racesObj = stObj?.races || {};
+      for(const [rKey, race] of Object.entries(racesObj)){
+        if(!race || typeof race !== 'object') continue;
+        const date = ymdFromAnyV22022_(race.date ?? race.race_date ?? js.date, jstTodayYmd_());
+        const stadium = Number(race.stadium_number ?? race.race_stadium_number ?? stKey);
+        const raceNo = Number(race.race_number ?? rKey);
+        if(!date || !Number.isFinite(stadium) || !Number.isFinite(raceNo)) continue;
+
+        const programBoats = boatsObjectToLegacyArrayV22022_(race.racers || race.boats || {});
+        programs.push({
+          ...race,
+          race_date: date,
+          race_stadium_number: stadium,
+          race_number: raceNo,
+          race_closed_at: race.closed_at ?? race.race_closed_at ?? null,
+          closed_at: race.closed_at ?? race.race_closed_at ?? null,
+          boats: programBoats
+        });
+
+        if(race.preview && typeof race.preview === 'object'){
+          const previewBoats = boatsObjectToLegacyArrayV22022_(race.preview.racers || race.preview.boats || {});
+          previews.push({
+            ...race.preview,
+            race_date: date,
+            race_stadium_number: stadium,
+            race_number: raceNo,
+            windMs: race.preview.wind_speed ?? race.preview.windMs ?? null,
+            waveCm: race.preview.wave_height ?? race.preview.waveCm ?? null,
+            airTempC: race.preview.air_temperature ?? race.preview.airTempC ?? null,
+            waterTempC: race.preview.water_temperature ?? race.preview.waterTempC ?? null,
+            weather_number: race.preview.weather_number ?? null,
+            boats: previewBoats
+          });
+        }
+
+        if(race.result && typeof race.result === 'object'){
+          const top3 = resultTop3FromUnifiedResultV22022_(race.result);
+          results.push({
+            ...race.result,
+            race_date: date,
+            race_stadium_number: stadium,
+            race_number: raceNo,
+            result_top3: top3,
+            resultTop3: top3,
+            normalized_result: { result_top3: top3 },
+            result: race.result
+          });
+        }
+      }
+    }
+
+    return {
+      programs: { programs, __source_url: sourceUrl, __source_kind:'api_v1_programs' },
+      previews: { previews, __source_url: sourceUrl, __source_kind:'api_v1_previews' },
+      results: { results, __source_url: sourceUrl, __source_kind:'api_v1_results' },
+      __source: 'api_v1_legacy_converted',
+      __source_url: sourceUrl,
+      __api_v1_converted: true
+    };
+  }
+
+  async function fetchUnifiedApiV1LegacyBundleV22022_(dateYmd=null){
+    const ymd = dateYmd || jstTodayYmd_();
+    const hd = hdFromYmd_(ymd);
+    const yyyy = hd.slice(0,4);
+    const stamp = Date.now();
+    const urls = [
+      `https://boatraceopenapi.github.io/api/v1/today.json?v=${stamp}`,
+      `https://boatraceopenapi.github.io/api/v1/${yyyy}/${hd}.json?v=${stamp}`,
+      `https://boatraceopenapi.github.io/api-mirror/v1/${yyyy}/${hd}.json?v=${stamp}`
+    ];
+    const errors = [];
+    for(const url of urls){
+      const js = await tryFetchJsonV22019_(url);
+      if(js && !js.__fetch_error && isUnifiedApiV1BundleV22022_(js)){
+        const converted = convertUnifiedApiV1ToLegacyBundleV22022_(js, url);
+        if(countProgramsInBundle_(converted) > 0) return converted;
+      }
+      errors.push(js);
+    }
+    throw new Error(`api/v1取得失敗: ${errors.map(e=>e?.__error || e?.__url || 'unknown').slice(0,3).join(' / ')}`);
+  }
+
+  function mergeArraysByRaceKeyV22022_(primaryArr, secondaryArr){
+    const out = [];
+    const seen = new Set();
+    for(const item of primaryArr || []){
+      const k = legacyRaceKeyV22022_(item);
+      if(k) seen.add(k);
+      out.push(item);
+    }
+    for(const item of secondaryArr || []){
+      const k = legacyRaceKeyV22022_(item);
+      if(k && seen.has(k)) continue;
+      if(k) seen.add(k);
+      out.push(item);
+    }
+    return out;
+  }
+
+  function mergeLegacyTodayBundlesV22022_(primary, secondary, meta={}){
+    const pPrograms = getProgramsArrayFromAnyBundle_(primary).map(x=>({ ...x }));
+    const sPrograms = getProgramsArrayFromAnyBundle_(secondary);
+    const sProgramMap = new Map();
+    for(const sp of sPrograms){
+      const k = legacyRaceKeyV22022_(sp);
+      if(k) sProgramMap.set(k, sp);
+    }
+
+    for(const pp of pPrograms){
+      const k = legacyRaceKeyV22022_(pp);
+      const sp = k ? sProgramMap.get(k) : null;
+      if(!sp) continue;
+      if(!pp.race_closed_at && !pp.closed_at){
+        pp.race_closed_at = sp.race_closed_at ?? sp.closed_at ?? null;
+        pp.closed_at = pp.race_closed_at;
+      }
+    }
+
+    const pPreviews = getPreviewsArrayFromAnyBundle_(primary);
+    const sPreviews = getPreviewsArrayFromAnyBundle_(secondary);
+    const pResults = getResultsArrayFromAnyBundle_(primary);
+    const sResults = getResultsArrayFromAnyBundle_(secondary);
+
+    return {
+      ...primary,
+      programs: { programs: pPrograms.length ? pPrograms : sPrograms },
+      previews: { previews: mergeArraysByRaceKeyV22022_(pPreviews, sPreviews) },
+      results: { results: mergeArraysByRaceKeyV22022_(pResults, sResults) },
+      __source: meta.source || 'merged_today_bundle',
+      __worker_url: meta.workerUrl || primary?.__source_url || null,
+      __api_v1_enrich: true,
+      __api_v1_programs: sPrograms.length,
+      __api_v1_previews: sPreviews.length,
+      __api_v1_results: sResults.length
+    };
+  }
+
+  function extractRaceClosedAtV22022_(programRow){
+    return programRow?.race_closed_at ?? programRow?.closed_at ?? programRow?.race_close_time ?? programRow?.close_at ?? programRow?.deadline ?? null;
+  }
+
+  function applyPreviewRecordToRaceV22022_(r, pv){
+    if(!r || !pv) return false;
+    let changed = false;
+    const boats = pv.boats || pv.racers || null;
+    if(boats && typeof boats === 'object'){
+      if(!r.exh || typeof r.exh !== 'object') r.exh = {};
+      if(!r.st || typeof r.st !== 'object') r.st = {};
+      for(let lane=1; lane<=6; lane++){
+        const obj = Array.isArray(boats)
+          ? boats.find(b => Number(b?.racer_boat_number ?? b?.entry_number ?? b?.boat_number ?? b?.lane) === lane)
+          : (boats[String(lane)] || boats[lane] || null);
+        if(!obj) continue;
+        const t = obj.racer_exhibition_time ?? obj.exhibition_time ?? obj.exhibitionTime ?? null;
+        if(t != null && Number.isFinite(Number(t)) && Number(t) > 0){ r.exh[String(lane)] = Number(t); changed = true; }
+        const st = obj.racer_start_timing ?? obj.start_timing ?? obj.st ?? obj.startTiming ?? null;
+        if(st != null && String(st).trim() !== ''){ r.st[String(lane)] = String(st).trim(); changed = true; }
+      }
+      r.exhReady = exhReady(r.exh);
+    }
+    r.env = r.env || {};
+    const wind = pv.windMs ?? pv.wind_speed ?? pv.windSpeed ?? null;
+    const wave = pv.waveCm ?? pv.wave_height ?? pv.waveHeight ?? null;
+    const air = pv.airTempC ?? pv.air_temperature ?? pv.airTemperature ?? null;
+    const water = pv.waterTempC ?? pv.water_temperature ?? pv.waterTemperature ?? null;
+    if(wind != null){ r.env.windMs = wind; changed = true; }
+    if(wave != null){ r.env.waveCm = wave; changed = true; }
+    if(air != null){ r.env.airTempC = air; changed = true; }
+    if(water != null){ r.env.waterTempC = water; changed = true; }
+    if(!r.env.weatherText && pv.weatherText) r.env.weatherText = pv.weatherText;
+    if(changed){
+      r._beforeAt = r._beforeAt || 'api_v1';
+      r._beforeOk13 = r._beforeOk13 || exhReady(r.exh);
+    }
+    return changed;
+  }
+
+
   async function fetchTodayBundle(){
     const workerUrl = `${WORKER_BASE}/api/today?v=${Date.now()}`;
+    let workerJs = null;
     let workerErr = null;
+
     try{
-      const js = await fetchJson(workerUrl);
-      try{ js.__source = 'worker_today'; js.__source_url = workerUrl; }catch(_){ }
-      if(countProgramsInBundle_(js) > 0){
-        // v2.20.21: Workerがprogramsだけ返すケースでは、レース表示はできても締切/結果が薄くなる。
-        // programsはWorkerを主に使いつつ、OpenAPIのprograms/previews/resultsを補助データとして結合する。
-        try{
-          const ymd = inferBundleDateYmdV22021_(js) || jstTodayYmd_();
-          const fallback = await fetchOpenApiTodayFallbackBundle_(ymd, null);
-          if(fallback && countProgramsInBundle_(fallback) > 0){
-            return mergeTodayBundleWithFallbackV22021_(js, fallback, workerUrl);
-          }
-        }catch(enrichErr){
-          try{ js.__enrich_error = String(enrichErr?.message || enrichErr); }catch(_){ }
-        }
-        return js;
-      }
-      workerErr = new Error(`worker_today programs=0 / keys=${Object.keys(js || {}).slice(0,20).join(',')}`);
+      workerJs = await fetchJson(workerUrl);
+      try{ workerJs.__source = 'worker_today'; workerJs.__source_url = workerUrl; }catch(_){ }
     }catch(e){
       workerErr = e;
     }
-    return await fetchOpenApiTodayFallbackBundle_(null, workerErr);
+
+    // v2.20.22:
+    // まずWorkerを主データとして使う。Workerにprogramsがあればレース一覧はWorker優先。
+    // ただし、締切時刻/直前情報/結果が薄い場合に備え、統合API v1を補助データとして結合する。
+    if(workerJs && countProgramsInBundle_(workerJs) > 0){
+      try{
+        const ymd = inferDateYmdFromBundleV22022_(workerJs) || jstTodayYmd_();
+        const hub = await fetchUnifiedApiV1LegacyBundleV22022_(ymd);
+        if(hub && countProgramsInBundle_(hub) > 0){
+          return mergeLegacyTodayBundlesV22022_(workerJs, hub, {
+            source:'worker_today+api_v1_enrich',
+            workerUrl
+          });
+        }
+      }catch(enrichErr){
+        try{ workerJs.__api_v1_enrich_error = String(enrichErr?.message || enrichErr); }catch(_){ }
+      }
+      return workerJs;
+    }
+
+    // Worker自体が空/失敗の場合は、統合API v1を第一フォールバックにする。
+    try{
+      const hub = await fetchUnifiedApiV1LegacyBundleV22022_(null);
+      if(hub && countProgramsInBundle_(hub) > 0){
+        try{
+          hub.__source = 'api_v1_fallback';
+          hub.__fallback = true;
+          hub.__worker_error = workerErr ? String(workerErr?.message || workerErr) : (workerJs ? `worker programs=0 / keys=${Object.keys(workerJs || {}).slice(0,20).join(',')}` : null);
+        }catch(_){ }
+        return hub;
+      }
+    }catch(hubErr){
+      workerErr = workerErr || hubErr;
+    }
+
+    // 最後に旧programs/previews/results分割APIへフォールバック。
+    return await fetchOpenApiTodayFallbackBundle_(null, workerErr || new Error('worker_today programs=0'));
   }
 
   async function fetchDirectResultsBundle_(dateYmd=null){
@@ -1313,7 +1491,24 @@
   }
 
   function resultRaceKey_(rr){
-    return raceKeyFromAnyRecordV22021_(rr, null);
+    if(!rr || typeof rr !== "object") return null;
+
+    const date =
+      rr.race_date ?? rr.date ?? rr.hd ?? rr.raceDate ?? rr.race_day ?? rr.day ?? null;
+    const stadium =
+      rr.race_stadium_number ?? rr.stadium ?? rr.stadium_number ?? rr.jcd ?? rr.jo_code ?? rr.venue_id ?? rr.venueCode ?? rr.race_stadium_id ?? null;
+    const race =
+      rr.race_number ?? rr.rno ?? rr.race ?? rr.race_no ?? rr.raceNo ?? rr.round ?? null;
+
+    if(date == null || stadium == null || race == null) return null;
+
+    const ymd = String(date).includes("-")
+      ? String(date).slice(0,10)
+      : `${String(date).slice(0,4)}-${String(date).slice(4,6)}-${String(date).slice(6,8)}`;
+    const st = Number(stadium);
+    const rn = Number(race);
+    if(!ymd || !Number.isFinite(st) || !Number.isFinite(rn)) return null;
+    return `${ymd}-${st}-${rn}`;
   }
 
   function isRacePastResultWindow_(r){
@@ -1326,7 +1521,7 @@
     if(!r || !enabledStadiums.has(r.stadium)) return false;
     if($('autoBeforeScopeCandidatesOnly')?.checked){
       // Cloudflare使用量削減：beforeinfo自動補完は、実戦判定に必要な条件①通過レースを中心にする。
-      // v2.20.21: 直前データ次第で候補化し得る「事前候補」も先回り取得対象に含める。
+      // v2.20.20: 直前データ次第で候補化し得る「事前候補」も先回り取得対象に含める。
       // ただし軽量判定のみを使い、更新・取得本線を壊さない。
       const pre = v22020PreCandidateInfo_(r);
       if(!passFilter1Entry_(r).ok && !pre.candidate) return false;
@@ -2951,7 +3146,7 @@
       ...shallowCloneJson_(v22010),
       ...shallowCloneJson_(v22014Extra),
 
-      // v2.20.21: 直前データ待ちの事前候補。BUY指示ではなく見落とし防止。
+      // v2.20.20: 直前データ待ちの事前候補。BUY指示ではなく見落とし防止。
       ...shallowCloneJson_(buildV22020PreCandidateFlags_(r))
     };
   }
@@ -3458,7 +3653,7 @@
   }
 
 
-  // v2.20.21: 取得フォールバックを壊さず、表示・before補助・JSONだけに使う軽量追加。
+  // v2.20.20: 取得フォールバックを壊さず、表示・before補助・JSONだけに使う軽量追加。
   function checkedV22020_(id, fallback=true){
     const el = $(id);
     if(!el) return fallback;
@@ -3736,7 +3931,7 @@
       v22010_biwako_pair_test: false,
       v22010_tokoname_low_recheck_test: false,
       v22010_tokoname_value_test: false,
-      v22010_detail: { stadium, venue, rank1, rank2, d2, noStOut, calm, noRain, no34, noOuter, oneScore:one.score, lane2Score:l2.score, f1Ok:f1.ok, f1Reasons:f1.reasons, historicalTuned:true, largeDataRetuned:true, testVersion:'v2.20.21' }
+      v22010_detail: { stadium, venue, rank1, rank2, d2, noStOut, calm, noRain, no34, noOuter, oneScore:one.score, lane2Score:l2.score, f1Ok:f1.ok, f1Reasons:f1.reasons, historicalTuned:true, largeDataRetuned:true, testVersion:'v2.20.20' }
     };
   }
 
@@ -4908,7 +5103,7 @@
       }else if(v217.v22010_test_candidate || v217.v22010_test_active || v217.v22010_test_odds_no || v217.v22020_test_quality_no){
         buyLine.innerHTML = `v2.20.13検証ログ：<b>2連単 1-2</b> <span class="tag mono">${v217.v22010_test_rule_short}</span><span class="tag mono">${v217.v22010_test_group}</span>${Number.isFinite(v217.v22010_test_odd) ? ` / odds=${v217.v22010_test_odd}` : ` / odds未入力`}${v217.v22020_test_quality_no ? ` / 品質NO:${v217.v22020_test_quality_blockers || '-'}` : ``}`;
       }else if(v217.v22020_pre_candidate){
-        buyLine.innerHTML = `v2.20.21事前候補：<b>直前データ待ち</b> <span class="tag mono">${v217.v22020_pre_label || '-'}</span>`;
+        buyLine.innerHTML = `v2.20.20事前候補：<b>直前データ待ち</b> <span class="tag mono">${v217.v22020_pre_label || '-'}</span>`;
       }else if((v217.v218_sim_rule_candidate || v217.v218_watch_candidate) && $('v217VenueRuleAsSimBuyOn')?.checked){
         buyLine.innerHTML = `旧SIM検証：<b>2連単 1-2</b> <span class="tag mono">${v217.v217_sim_state}</span><span class="tag mono">${v217.v219_sim_eval_group}</span>${v217.v218_watch_candidate ? `<span class="tag mono">${v217.v218_watch_short}</span>` : ``}${Number.isFinite(v217.v217_sim_odd) ? ` / odds=${v217.v217_sim_odd}` : ` / odds未入力`}`;
       }else{
@@ -4996,7 +5191,7 @@
       ? `<div class="resultLine small">v2.20.13検証: <b>${v217Flags.v22010_test_rule_short}</b> / group=${v217Flags.v22010_test_group} / 構造=${v217Flags.v22010_test_candidate?"Y":"N"} / WAIT=${v217Flags.v22010_test_wait_odds?"Y":"N"} / ODDS_NO=${v217Flags.v22010_test_odds_no?"Y":"N"} / 品質NO=${v217Flags.v22020_test_quality_no?"Y":"N"} / ACTIVE=${v217Flags.v22010_test_active?"Y":"N"} / odds=${Number.isFinite(v217Flags.v22010_test_odd) ? v217Flags.v22010_test_odd : "未入力"} / odds帯=${v217Flags.v22010_test_odds_band} / 結果=${v217Flags.v22010_test_result_label} / 仮想収支=${v217Flags.v22010_test_profit}円 / 阻害=${v217Flags.v22010_test_blockers || "-"}</div>`
       : ``;
     const v22020PreLine = v217Flags.v22020_pre_candidate
-      ? `<div class="resultLine small">v2.20.21事前候補: <b>${v217Flags.v22020_pre_label || '-'}</b> / missing=${v217Flags.v22020_pre_missing || '-'} / paths=${v217Flags.v22020_pre_paths || '-'}</div>`
+      ? `<div class="resultLine small">v2.20.20事前候補: <b>${v217Flags.v22020_pre_label || '-'}</b> / missing=${v217Flags.v22020_pre_missing || '-'} / paths=${v217Flags.v22020_pre_paths || '-'}</div>`
       : ``;
     const v217Line = (v217Flags.v218_sim_rule_candidate || v217Flags.v218_watch_candidate)
       ? `<div class="resultLine small">v2.19 SIM: <b>${v217Flags.v218_sim_rule_candidate ? v217Flags.v217_rule_short : v217Flags.v218_watch_short}</b> / RULE=${v217Flags.v218_sim_rule_candidate ? "Y" : "N"} / STRICT=${v217Flags.v218_sim_strict_state} / WATCH=${v217Flags.v218_watch_candidate ? "Y" : "N"} / odds=${Number.isFinite(v217Flags.v217_sim_odd) ? v217Flags.v217_sim_odd : "未入力"} / odds帯=${v217Flags.v219_odds_band} / market=${v217Flags.v219_market_support_short} / eval=${v217Flags.v219_sim_eval_group} / 仮想収支=${v217Flags.v219_sim_eval_profit}円 / 結果=${v217Flags.v217_result_label} / STRICT阻害=${v217Flags.v218_sim_strict_blockers || "-"}</div>`
@@ -5189,7 +5384,7 @@
       return true;
     }
 
-    // v2.20.21: before取得後に候補化し得るレースは、締切前に見落とさないよう候補欄へ出す。
+    // v2.20.20: before取得後に候補化し得るレースは、締切前に見落とさないよう候補欄へ出す。
     if(v.v22020_pre_candidate){
       return true;
     }
@@ -5423,22 +5618,19 @@
     const programs = getProgramsArrayFromAnyBundle_(bundle);
     const previews = getPreviewsArrayFromAnyBundle_(bundle);
     const results = getResultsArrayFromAnyBundle_(bundle);
-    const enrichPrograms = getProgramsArrayFromAnyBundle_(bundle?.programs_enrich || null);
 
     const prevMap = new Map();
     for(const p of previews){
-      const k = raceKeyFromAnyRecordV22021_(p, bundle?.__inferred_date || null);
-      if(k) prevMap.set(k, p);
+      const st = Number(p.race_stadium_number ?? p.stadium ?? p.stadium_number ?? p.jcd);
+      const rn = Number(p.race_number ?? p.rno ?? p.race ?? p.race_no);
+      const d0 = p.race_date ?? p.date ?? p.hd ?? p.raceDate;
+      const d = String(d0 || '').includes('-') ? String(d0).slice(0,10) : `${String(d0 || '').slice(0,4)}-${String(d0 || '').slice(4,6)}-${String(d0 || '').slice(6,8)}`;
+      if(Number.isFinite(st) && Number.isFinite(rn) && d.length >= 10) prevMap.set(`${d}-${st}-${rn}`, p);
     }
     const resMap = new Map();
     for(const rr of results){
       const k = resultRaceKey_(rr);
       if(k) resMap.set(k, rr);
-    }
-    const programEnrichMap = new Map();
-    for(const ep of enrichPrograms){
-      const k = raceKeyFromAnyRecordV22021_(ep, bundle?.__inferred_date || null);
-      if(k) programEnrichMap.set(k, ep);
     }
 
     const races=[];
@@ -5446,7 +5638,9 @@
       const stadium = Number(pr.race_stadium_number ?? pr.stadium ?? pr.stadium_number ?? pr.jcd);
       const raceNo = Number(pr.race_number ?? pr.rno ?? pr.race ?? pr.race_no);
       const raceDateRaw = pr.race_date ?? pr.date ?? pr.hd ?? pr.raceDate;
-      const raceDate = normalizeYmdV22021_(raceDateRaw, bundle?.__inferred_date || jstTodayYmd_());
+      const raceDate = String(raceDateRaw || '').includes('-')
+        ? String(raceDateRaw).slice(0,10)
+        : `${String(raceDateRaw || '').slice(0,4)}-${String(raceDateRaw || '').slice(4,6)}-${String(raceDateRaw || '').slice(6,8)}`;
       if(!enabledStadiums.has(stadium)) continue;
       if(!Number.isFinite(stadium) || !Number.isFinite(raceNo) || !raceDate || raceDate.length < 10) continue;
 
@@ -5457,7 +5651,6 @@
       const racerIds = registerRaceRacersV22014_(pr);
 
       const pv = prevMap.get(key);
-      const prEnrich = programEnrichMap.get(key);
       const exh={};
       if(pv && pv.boats){
         for(let lane=1; lane<=6; lane++){
@@ -5481,7 +5674,7 @@
         venue: VENUES[stadium],
         race: raceNo,
         date: raceDate,
-        race_closed_at: extractRaceClosedAtV22021_(raceDate, pr, prEnrich, pv, rr),
+        race_closed_at: extractRaceClosedAtV22022_(pr),
 
         // v2.20.14 compact racer linkage: 1〜6号艇順の登録番号。氏名等はsnapshot上部のracer_catalogへ重複排除。
         racer_ids: racerIds,
@@ -5502,6 +5695,10 @@
         _beforeAt: null,
         _beforeOk13: false,
       };
+
+      // v2.20.22: 統合API v1由来のpreviewから、展示/ST/風波も初期反映する。
+      // 既存のbeforeinfo取得があれば、その後で上書きされる。
+      applyPreviewRecordToRaceV22022_(r, pv);
 
       if(BEFORE_AUTO.has(key)){
         applyBeforeToRace_(r, BEFORE_AUTO.get(key));
@@ -5864,9 +6061,10 @@
 
       const src = bundle?.__source || bundle?.programs?.__source_kind || bundle?.programs?.__source || 'worker';
       const fallback = bundle?.__fallback ? ' / fallback' : '';
-      const enrich = bundle?.__fallback_enrich ? ` / enrich P:${bundle.__fallback_program_count ?? 0} R:${bundle.__fallback_result_count ?? 0}` : '';
       const closeReady = LAST_RACES.filter(r => !!r.race_closed_at).length;
-      setStatus(`OK${fallback}${enrich} / ${src} / ${nowHms_()} / 取得:${LAST_RACES.length} / 締切:${closeReady} / 結果補完:${resultRetryChanged} / 結果未取得:${countMissingResultsAfterGrace_()}`);
+      const beforeReady = LAST_RACES.filter(r => beforeReadyActual_(r)).length;
+      const apiV1 = bundle?.__api_v1_enrich ? ` / api_v1 P:${bundle.__api_v1_programs ?? 0} Pr:${bundle.__api_v1_previews ?? 0} R:${bundle.__api_v1_results ?? 0}` : '';
+      setStatus(`OK${fallback}${apiV1} / ${src} / ${nowHms_()} / 取得:${LAST_RACES.length} / 締切:${closeReady} / 直前:${beforeReady} / 結果補完:${resultRetryChanged} / 結果未取得:${countMissingResultsAfterGrace_()}`);
       maybeScheduleAutoRefresh();
     } catch(e){
       console.error('refreshFull failed', e);
@@ -6012,7 +6210,6 @@
   setStatus("待機中：必要な時に『更新（programs更新）』を押してください");
   setAutoStatus("自動更新OFF");
 })();
-
 </script>
 </body>
 </html>
