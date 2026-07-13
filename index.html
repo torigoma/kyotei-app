@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.20.24（能力値欠損診断 / 更新ステータス修正 / SAFE）</title>
+  <title>競艇 v2.20.25（TEST事前候補 / before見落とし防止 / SAFE）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -86,6 +86,8 @@
     .race-research-wait { border-color:#60a5fa; background:linear-gradient(135deg, rgba(96,165,250,.09), rgba(17,26,38,1) 60%); }
     .race-pre-candidate { border-color:#a78bfa; box-shadow:0 0 0 1px rgba(167,139,250,.45), 0 10px 24px rgba(167,139,250,.12); background:linear-gradient(135deg, rgba(167,139,250,.13), rgba(17,26,38,1) 58%); }
     .race-pre-candidate::before { content:"事前候補：直前データ待ち"; display:inline-block; margin-bottom:8px; padding:4px 10px; border-radius:999px; color:#ddd6fe; border:1px solid rgba(167,139,250,.55); background:rgba(167,139,250,.10); font-size:12px; font-weight:900; }
+    .race-test-pre-candidate { border-color:#c084fc; box-shadow:0 0 0 1px rgba(192,132,252,.50), 0 10px 24px rgba(192,132,252,.14); background:linear-gradient(135deg, rgba(192,132,252,.16), rgba(17,26,38,1) 58%); }
+    .race-test-pre-candidate::before { content:"TEST事前候補：before待ち"; display:inline-block; margin-bottom:8px; padding:4px 10px; border-radius:999px; color:#f3e8ff; border:1px solid rgba(192,132,252,.58); background:rgba(192,132,252,.12); font-size:12px; font-weight:900; }
     .race-main-blocked { border-color:#4b5563; opacity:.88; }
     .badge.b-buy { background:rgba(34,197,94,.14); border-color:rgba(34,197,94,.55); color:#bbf7d0; }
     .badge.b-wait { background:rgba(245,158,11,.13); border-color:rgba(245,158,11,.55); color:#fde68a; }
@@ -94,7 +96,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.20.24（能力値欠損診断 / 更新ステータス修正 / SAFE）</h1>
+  <h1>競艇 v2.20.25（TEST事前候補 / before見落とし防止 / SAFE）</h1>
   <div class="sub">
     ✅ <b>正式BUY</b>は、v2.20のメイン6会場LOW_SAFEだけに整理。旧BUYロジックは正式判定から外しています。<br/>
     ✅ <b>検証会場</b>は青表示でログ化し、正式収支には混ぜません。<br/>
@@ -107,6 +109,7 @@
     ✅ <b>v2.20.20では、直前データ待ちの事前候補表示と、福岡PAIR_BALANCE・若松R2_VALUE_SAFEの品質NOを追加します。取得・描画本線には混ぜません。<br/>
     ✅ <b>v2.20.23</b>では、Worker programsを主データにした場合でもAPI v1 programsの選手登録番号・全国/当地/モーター2連率をlane別に補完し、能力値0落ちを防ぎます。<br/>
     ✅ <b>v2.20.24</b>では、能力値を全国/当地/モーター/選手IDに分けて診断し、0値を「不足」ではなく「取得欠損」として表示します。更新完了時の abilityReady 未定義エラーも修正します。<br/>
+    ✅ <b>v2.20.25</b>では、before取得前に下関OPT・福岡PAIR_BAL等の主要TEST候補が旧入口条件だけで候補欄から消える問題を修正します。正式BUY条件・結果取得・能力値取得は変更しません。<br/>
   </div>
 
   <div class="card settingsCard">
@@ -1695,8 +1698,8 @@
     if(!r || !enabledStadiums.has(r.stadium)) return false;
     if($('autoBeforeScopeCandidatesOnly')?.checked){
       // Cloudflare使用量削減：beforeinfo自動補完は、実戦判定に必要な条件①通過レースを中心にする。
-      // v2.20.20: 直前データ次第で候補化し得る「事前候補」も先回り取得対象に含める。
-      // ただし軽量判定のみを使い、更新・取得本線を壊さない。
+      // v2.20.25: 下関OPT/福岡PAIR_BAL等の主要TESTは、旧入口条件だけで落とさず事前候補として先回り取得対象に含める。
+      // 予想条件本体・結果/能力値取得・before取得関数は変更しない。
       const pre = v22020PreCandidateInfo_(r);
       if(!passFilter1Entry_(r).ok && !pre.candidate) return false;
     }
@@ -3846,8 +3849,38 @@
     return !!el.checked;
   }
 
+  // v2.20.25: 主要TESTの事前候補判定。
+  // ここは「表示/before自動取得の見落とし防止」専用で、正式BUY条件やTEST本体は一切変更しない。
+  function v22025MainTestPreTargetInfo_(r, f1=null){
+    const out = { candidate:false, label:null, paths:[], blockers:[], entryBlockers:null, testId:null, ruleShort:null, priority:'none' };
+    const stadium = Number(r?.stadium);
+    const meta = v220RuleMeta_(stadium);
+    const testMeta = v22010TestMeta_(stadium);
+
+    if(!checkedV220_('v22010TestLogOn', true)){ out.blockers.push('v2.20.13検証ログOFF'); return out; }
+    if(!testMeta || testMeta.id === 'none'){ out.blockers.push('v2.20.13検証対象外'); return out; }
+
+    // ユーザー要望：検証会場がbefore後に表示されるのは許容。まずBUY会場/主要会場の見落としを止める。
+    // v220RuleMetaでofficialの会場だけをTEST事前候補として前出しする。
+    // 現状対象：下関OPT / 福岡PAIR_BAL / 津PAIR_SAFE / 尼崎STRICT / 児島研究HOLD。
+    if(meta.role !== 'official'){
+      out.blockers.push('検証会場はbefore後表示で許容');
+      return out;
+    }
+
+    const f = f1 || passFilter1Entry_(r);
+    out.candidate = true;
+    out.testId = testMeta.id;
+    out.ruleShort = testMeta.ruleShort;
+    out.entryBlockers = f.ok ? null : (f.reasons.join(' / ') || '条件①外');
+    out.priority = 'official_test_pre';
+    out.paths = [`TEST事前:${testMeta.ruleShort}`];
+    out.label = `${testMeta.ruleShort} / before待ち${out.entryBlockers ? ` / 入口保留:${out.entryBlockers}` : ''}`;
+    return out;
+  }
+
   function v22020PreCandidateInfo_(r){
-    const out = { candidate:false, label:null, missing:[], paths:[], blockers:[] };
+    const out = { candidate:false, label:null, missing:[], paths:[], blockers:[], v22025TestPre:false, v22025TestPreLabel:null, v22025TestPrePaths:[], v22025EntryBlockers:null };
     if(!checkedV22020_('v22020PreCandidateOn', true)) { out.blockers.push('事前候補OFF'); return out; }
     if(!r || !enabledStadiums.has(Number(r.stadium))) { out.blockers.push('対象場OFF'); return out; }
     if(r.result_top3) { out.blockers.push('結果取得済み'); return out; }
@@ -3865,23 +3898,45 @@
     if(!envReady_(r)) missing.push('水面');
     if(missing.length === 0){ out.blockers.push('直前データ取得済み'); return out; }
 
-    const f1 = passFilter1Entry_(r);
-    if(!f1.ok){ out.blockers.push(...f1.reasons); return out; }
-
     const stadium = Number(r?.stadium);
     const meta = v220RuleMeta_(stadium);
     const testMeta = v22010TestMeta_(stadium);
+    const f1 = passFilter1Entry_(r);
     const paths = [];
-    if(meta.role === 'official' && checkedV220_('v220OfficialBuyOn', true)) paths.push(`正式:${meta.ruleShort}`);
-    if(meta.role === 'research' && checkedV220_('v220ResearchVenueOn', true)) paths.push(`検証:${meta.ruleShort}`);
-    if(testMeta.id !== 'none' && checkedV220_('v22010TestLogOn', true)) paths.push(`TEST:${testMeta.ruleShort}`);
-    if(stadium === 9 || stadium === 18) paths.push(stadium === 9 ? '追加TEST:津LOW雨比較' : '追加TEST:徳山入口緩和');
-    if(paths.length === 0){ out.blockers.push('候補化パスなし'); return out; }
+
+    // 既存のv2.20正式/検証パスは従来通り「条件①入口OK」の時だけ前出し。
+    // ここを緩めると正式BUY候補が増えすぎるため、v2.20.25では触らない。
+    if(f1.ok){
+      if(meta.role === 'official' && checkedV220_('v220OfficialBuyOn', true)) paths.push(`正式:${meta.ruleShort}`);
+      if(meta.role === 'research' && checkedV220_('v220ResearchVenueOn', true)) paths.push(`検証:${meta.ruleShort}`);
+      if(testMeta.id !== 'none' && checkedV220_('v22010TestLogOn', true)) paths.push(`TEST:${testMeta.ruleShort}`);
+      if(stadium === 9 || stadium === 18) paths.push(stadium === 9 ? '追加TEST:津LOW雨比較' : '追加TEST:徳山入口緩和');
+    }else{
+      out.blockers.push(...f1.reasons);
+    }
+
+    // v2.20.25: 下関9R/福岡11R型の見落とし対策。
+    // v2.20.10以降の主要TESTは、TEST本体が旧入口条件だけで決まっていないため、
+    // before前だけは「TEST事前候補」として表示・before自動取得対象に入れる。
+    const testPre = v22025MainTestPreTargetInfo_(r, f1);
+    if(testPre.candidate){
+      paths.push(...testPre.paths);
+      out.v22025TestPre = true;
+      out.v22025TestPreLabel = testPre.label;
+      out.v22025TestPrePaths = testPre.paths;
+      out.v22025EntryBlockers = testPre.entryBlockers;
+    }
+
+    if(paths.length === 0){
+      out.blockers.push(...testPre.blockers);
+      out.blockers.push('候補化パスなし');
+      return out;
+    }
 
     out.candidate = true;
     out.missing = missing;
-    out.paths = paths;
-    out.label = `${paths.slice(0,2).join(' / ')} / 待ち:${missing.join(',')}`;
+    out.paths = Array.from(new Set(paths));
+    out.label = out.v22025TestPreLabel || `${out.paths.slice(0,2).join(' / ')} / 待ち:${missing.join(',')}`;
     return out;
   }
 
@@ -3892,7 +3947,11 @@
       v22020_pre_label: info.label,
       v22020_pre_missing: info.missing.join(',') || null,
       v22020_pre_paths: info.paths.join(' / ') || null,
-      v22020_pre_blockers: info.blockers.join(' / ') || null
+      v22020_pre_blockers: info.blockers.join(' / ') || null,
+      v22025_test_pre_candidate: !!info.v22025TestPre,
+      v22025_test_pre_label: info.v22025TestPreLabel,
+      v22025_test_pre_paths: info.v22025TestPrePaths.join(' / ') || null,
+      v22025_test_pre_entry_blockers: info.v22025EntryBlockers
     };
   }
 
@@ -4895,7 +4954,7 @@
     let v220Research=0, v220ResearchHit=0, v220ResearchStake=0, v220ResearchPayout=0, v220ResearchProfit=0;
     let v220MainStruct=0, v220ResearchStruct=0;
     let v22010Struct=0, v22010Wait=0, v22010OddsNo=0, v22010Active=0, v22010Hit=0, v22010Stake=0, v22010Payout=0, v22010Profit=0;
-    let v22020Pre=0, v22020QualityNo=0;
+    let v22020Pre=0, v22025TestPre=0, v22020QualityNo=0;
     let v22023AbilityReady=0, v22023RacerIdReady=0;
     let v22023Nat2Ready=0, v22023Loc2Ready=0, v22023Motor2Ready=0;
 
@@ -4974,6 +5033,7 @@
       if(r.v22010_test_wait_odds) v22010Wait++;
       if(r.v22010_test_odds_no) v22010OddsNo++;
       if(r.v22020_pre_candidate) v22020Pre++;
+      if(r.v22025_test_pre_candidate) v22025TestPre++;
       if(r.v22020_test_quality_no) v22020QualityNo++;
       if(r.v22010_test_active) v22010Active++;
       if(r.v22010_test_hit) v22010Hit++;
@@ -5057,6 +5117,7 @@
       v22010_test_wait_odds: v22010Wait,
       v22010_test_odds_no: v22010OddsNo,
       v22020_pre_candidates: v22020Pre,
+      v22025_test_pre_candidates: v22025TestPre,
       v22020_quality_no: v22020QualityNo,
       v22023_nat2_ready: v22023Nat2Ready,
       v22023_loc2_ready: v22023Loc2Ready,
@@ -5106,7 +5167,7 @@
     let v220Research=0,v220ResearchHit=0,v220ResearchStake=0,v220ResearchPayout=0,v220ResearchProfit=0;
     let v220MainStruct=0,v220ResearchStruct=0;
     let v22010Struct=0,v22010Wait=0,v22010OddsNo=0,v22010Active=0,v22010Hit=0,v22010Stake=0,v22010Payout=0,v22010Profit=0;
-    let v22020Pre=0,v22020QualityNo=0;
+    let v22020Pre=0,v22025TestPre=0,v22020QualityNo=0;
     let v22023AbilityReady=0,v22023RacerIdReady=0;
     let v22023Nat2Ready=0,v22023Loc2Ready=0,v22023Motor2Ready=0;
 
@@ -5184,6 +5245,7 @@
       if(v218.v22010_test_wait_odds) v22010Wait++;
       if(v218.v22010_test_odds_no) v22010OddsNo++;
       if(v218.v22020_pre_candidate) v22020Pre++;
+      if(v218.v22025_test_pre_candidate) v22025TestPre++;
       if(v218.v22020_test_quality_no) v22020QualityNo++;
       if(v218.v22010_test_active) v22010Active++;
       if(v218.v22010_test_hit) v22010Hit++;
@@ -5206,7 +5268,7 @@
     const v220ResearchRoi = v220ResearchStake > 0 ? ((v220ResearchPayout / v220ResearchStake) * 100).toFixed(1) : '-';
     const v22010Roi = v22010Stake > 0 ? ((v22010Payout / v22010Stake) * 100).toFixed(1) : '-';
     $("summary").textContent =
-      `取得${total}R / 条件①通過${f1pass}R / v2.20正式候補${v220MainStruct} / BUY${buy} / NO${no}（risk:${riskNo} odds:${oddsNo}） / WAIT${wait} / 条件外${filtered} / v2.20正式BUY${v220Official}（的中${v220OfficialHit} 収支${v220OfficialProfit}円 ROI${v220OfficialRoi}%） / v2.20検証${v220Research}（構造${v220ResearchStruct} 的中${v220ResearchHit} 収支${v220ResearchProfit}円 ROI${v220ResearchRoi}%） / v2.20.13検証${v22010Active}（構造${v22010Struct} WAIT${v22010Wait} NO${v22010OddsNo} 品質NO${v22020QualityNo} 的中${v22010Hit} 収支${v22010Profit}円 ROI${v22010Roi}%） / 事前候補${v22020Pre} / 能力${v22023AbilityReady}/${total}（nat:${v22023Nat2Ready} loc:${v22023Loc2Ready} motor:${v22023Motor2Ready}） / 選手ID${v22023RacerIdReady}/${total} / 旧SIM_RULE${simRule}（的中${simRuleHit}） / LOW${low}（的中${lowHit} 収支${lowProfit}円 ROI${lowRoi}%） / VALUE${value}（的中${valueHit} 収支${valueProfit}円 ROI${valueRoi}%） / HIGH${high}（的中${highHit} 収支${highProfit}円 ROI${highRoi}%） / DANGER${danger}（的中${dangerHit} 収支${dangerProfit}円 ROI${dangerRoi}%） / SIM_STRICT${simStrict}（的中${simStrictHit} 収支${simStrictProfit}円 ROI${strictRoi}% / WAIT${simStrictWait} ODDS_NO${simStrictOddsNo} / 1ズレ${simStrictOneWinNot12} 1飛び${simStrictOneLost}） / WATCH${watch}（的中${watchHit}） / 二段階候補${twoStageCandidate} / 1勝候補${oneWinCandidate} / 1score強${oneScoreStrong} / 1-2的中${hit12} / 1勝ち2ズレ${oneWinNot12}（1-3:${lane3Slip} 1-4:${lane4Slip}） / 2単odds${oddsReady} / before${beforeReady} / result${resReady}`;
+      `取得${total}R / 条件①通過${f1pass}R / v2.20正式候補${v220MainStruct} / BUY${buy} / NO${no}（risk:${riskNo} odds:${oddsNo}） / WAIT${wait} / 条件外${filtered} / v2.20正式BUY${v220Official}（的中${v220OfficialHit} 収支${v220OfficialProfit}円 ROI${v220OfficialRoi}%） / v2.20検証${v220Research}（構造${v220ResearchStruct} 的中${v220ResearchHit} 収支${v220ResearchProfit}円 ROI${v220ResearchRoi}%） / v2.20.13検証${v22010Active}（構造${v22010Struct} WAIT${v22010Wait} NO${v22010OddsNo} 品質NO${v22020QualityNo} 的中${v22010Hit} 収支${v22010Profit}円 ROI${v22010Roi}%） / 事前候補${v22020Pre}（TEST事前${v22025TestPre}） / 能力${v22023AbilityReady}/${total}（nat:${v22023Nat2Ready} loc:${v22023Loc2Ready} motor:${v22023Motor2Ready}） / 選手ID${v22023RacerIdReady}/${total} / 旧SIM_RULE${simRule}（的中${simRuleHit}） / LOW${low}（的中${lowHit} 収支${lowProfit}円 ROI${lowRoi}%） / VALUE${value}（的中${valueHit} 収支${valueProfit}円 ROI${valueRoi}%） / HIGH${high}（的中${highHit} 収支${highProfit}円 ROI${highRoi}%） / DANGER${danger}（的中${dangerHit} 収支${dangerProfit}円 ROI${dangerRoi}%） / SIM_STRICT${simStrict}（的中${simStrictHit} 収支${simStrictProfit}円 ROI${strictRoi}% / WAIT${simStrictWait} ODDS_NO${simStrictOddsNo} / 1ズレ${simStrictOneWinNot12} 1飛び${simStrictOneLost}） / WATCH${watch}（的中${watchHit}） / 二段階候補${twoStageCandidate} / 1勝候補${oneWinCandidate} / 1score強${oneScoreStrong} / 1-2的中${hit12} / 1勝ち2ズレ${oneWinNot12}（1-3:${lane3Slip} 1-4:${lane4Slip}） / 2単odds${oddsReady} / before${beforeReady} / result${resReady}`;
 
     renderNoDiagnostics_(races);
   }
@@ -5234,6 +5296,7 @@
     "race-research-active",
     "race-research-wait",
     "race-pre-candidate",
+    "race-test-pre-candidate",
     "race-main-blocked"
   ];
 
@@ -5276,6 +5339,10 @@
     }
     if(v.v22010_test_odds_no){
       card.classList.add("race-official-oddsno");
+      return;
+    }
+    if(v.v22025_test_pre_candidate){
+      card.classList.add("race-test-pre-candidate");
       return;
     }
     if(v.v22020_pre_candidate){
@@ -5386,7 +5453,7 @@
       ? `<span class="tag mono">v2.20.13:${v217Flags.v22010_test_rule_short}</span><span class="tag mono">${v217Flags.v22010_test_group}</span>${v217Flags.v22020_test_quality_no ? `<span class="tag mono">品質NO</span>` : ``}`
       : ``;
     const v22020PreBadge = v217Flags.v22020_pre_candidate
-      ? `<span class="tag mono">事前候補:${v217Flags.v22020_pre_missing || '-'}</span>`
+      ? `<span class="tag mono">${v217Flags.v22025_test_pre_candidate ? 'TEST事前' : '事前候補'}:${v217Flags.v22020_pre_missing || '-'}</span>`
       : ``;
     const v217Badge = (v217Flags.v218_sim_rule_candidate || v217Flags.v218_watch_candidate)
       ? `<span class="tag mono">v2.19:${v217Flags.v218_sim_rule_candidate ? v217Flags.v217_rule_short : v217Flags.v218_watch_short}</span><span class="tag mono">${v217Flags.v217_sim_state}</span><span class="tag mono">${v217Flags.v219_sim_eval_group}</span>`
@@ -5401,7 +5468,7 @@
       ? `<div class="resultLine small">v2.20.13検証: <b>${v217Flags.v22010_test_rule_short}</b> / group=${v217Flags.v22010_test_group} / 構造=${v217Flags.v22010_test_candidate?"Y":"N"} / WAIT=${v217Flags.v22010_test_wait_odds?"Y":"N"} / ODDS_NO=${v217Flags.v22010_test_odds_no?"Y":"N"} / 品質NO=${v217Flags.v22020_test_quality_no?"Y":"N"} / ACTIVE=${v217Flags.v22010_test_active?"Y":"N"} / odds=${Number.isFinite(v217Flags.v22010_test_odd) ? v217Flags.v22010_test_odd : "未入力"} / odds帯=${v217Flags.v22010_test_odds_band} / 結果=${v217Flags.v22010_test_result_label} / 仮想収支=${v217Flags.v22010_test_profit}円 / 阻害=${v217Flags.v22010_test_blockers || "-"}</div>`
       : ``;
     const v22020PreLine = v217Flags.v22020_pre_candidate
-      ? `<div class="resultLine small">v2.20.20事前候補: <b>${v217Flags.v22020_pre_label || '-'}</b> / missing=${v217Flags.v22020_pre_missing || '-'} / paths=${v217Flags.v22020_pre_paths || '-'}</div>`
+      ? `<div class="resultLine small">${v217Flags.v22025_test_pre_candidate ? 'v2.20.25 TEST事前候補' : 'v2.20.20事前候補'}: <b>${v217Flags.v22020_pre_label || '-'}</b> / missing=${v217Flags.v22020_pre_missing || '-'} / paths=${v217Flags.v22020_pre_paths || '-'}${v217Flags.v22025_test_pre_entry_blockers ? ` / 入口保留=${v217Flags.v22025_test_pre_entry_blockers}` : ``}</div>`
       : ``;
     const v217Line = (v217Flags.v218_sim_rule_candidate || v217Flags.v218_watch_candidate)
       ? `<div class="resultLine small">v2.19 SIM: <b>${v217Flags.v218_sim_rule_candidate ? v217Flags.v217_rule_short : v217Flags.v218_watch_short}</b> / RULE=${v217Flags.v218_sim_rule_candidate ? "Y" : "N"} / STRICT=${v217Flags.v218_sim_strict_state} / WATCH=${v217Flags.v218_watch_candidate ? "Y" : "N"} / odds=${Number.isFinite(v217Flags.v217_sim_odd) ? v217Flags.v217_sim_odd : "未入力"} / odds帯=${v217Flags.v219_odds_band} / market=${v217Flags.v219_market_support_short} / eval=${v217Flags.v219_sim_eval_group} / 仮想収支=${v217Flags.v219_sim_eval_profit}円 / 結果=${v217Flags.v217_result_label} / STRICT阻害=${v217Flags.v218_sim_strict_blockers || "-"}</div>`
