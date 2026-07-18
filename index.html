@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.20.27（v2.20.26表示落ち修正 / TEST昇格維持 / SAFE）</title>
+  <title>競艇 v2.20.28（直前運用ナビ / AI評価書き出し / 進入保存 / SAFE）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -72,6 +72,14 @@
     .dotWait { background:#f59e0b; box-shadow:0 0 10px rgba(245,158,11,.7); }
     .dotResearch { background:#38bdf8; box-shadow:0 0 10px rgba(56,189,248,.65); }
     .dotNo { background:#ef4444; box-shadow:0 0 10px rgba(239,68,68,.6); }
+    .opsGrid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:10px; }
+    .opsTile { border:1px solid #2a3e5b; border-radius:12px; padding:10px; background:#0d141d; }
+    .opsTile .big { font-size:18px; font-weight:900; margin-top:4px; }
+    .opsRace { border:1px solid #223248; border-radius:12px; padding:10px; margin-top:8px; background:#0d141d; }
+    .opsUrgent { border-color:#f59e0b; box-shadow:0 0 0 1px rgba(245,158,11,.25); }
+    .aiFields { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:10px; }
+    .aiFields input,.aiFields select { padding:7px; font-size:12px; }
+    @media (max-width:760px){ .opsGrid,.aiFields { grid-template-columns:1fr; } }
     @media (max-width:760px){ .settingTiles { grid-template-columns:1fr; } }
 
     .raceCard { transition:border-color .15s ease, box-shadow .15s ease, background .15s ease, transform .15s ease; }
@@ -96,7 +104,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.20.27（v2.20.26表示落ち修正 / TEST昇格維持 / SAFE）</h1>
+  <h1>競艇 v2.20.28（直前運用ナビ / AI評価書き出し / 進入保存 / SAFE）</h1>
   <div class="sub">
     ✅ <b>正式BUY</b>は、v2.20のメイン6会場LOW_SAFEだけに整理。旧BUYロジックは正式判定から外しています。<br/>
     ✅ <b>検証会場</b>は青表示でログ化し、正式収支には混ぜません。<br/>
@@ -607,7 +615,8 @@
       <div class="rowL">
         <button class="btn" id="refreshBtn">更新（programs更新）</button>
 
-        <button class="btn2" id="exportBtn">.json書き出し</button>
+        <button class="btn2" id="exportBtn">1日統合データ書き出し</button>
+        <button class="btn2" id="exportAiBtn">AI直前評価用書き出し</button>
         <button class="btnDanger" id="analysisFullFetchBtn">分析用フル取得（全before/result）</button>
 
         <label class="cb" style="margin:0;">
@@ -624,6 +633,21 @@
     <div class="muted small" style="margin-top:10px;">
       Worker: <span class="mono" id="workerBase"></span>
     </div>
+  </div>
+
+
+  <div class="card" id="opsNavigatorCard">
+    <div class="row">
+      <div class="rowL"><div class="pill">本日の直前確認ナビ</div><span class="tag mono" id="opsNow">-</span></div>
+      <button class="btn2" id="opsRefreshBtn">表示更新</button>
+    </div>
+    <div class="opsGrid">
+      <div class="opsTile"><span class="muted small">次に確認するレース</span><div class="big" id="opsNextRace">-</div></div>
+      <div class="opsTile"><span class="muted small">直前情報取得推奨時刻</span><div class="big mono" id="opsRecommendedAt">-</div></div>
+      <div class="opsTile"><span class="muted small">締切まで</span><div class="big mono" id="opsRemaining">-</div></div>
+    </div>
+    <div class="muted small" style="margin-top:8px;">条件①通過候補・WAIT候補・検証候補を締切順に表示。原則、締切15分前にbefore取得とAI評価、5分前にオッズ再確認。</div>
+    <div id="opsUpcomingList"></div>
   </div>
 
 
@@ -807,6 +831,21 @@
     const c = loadOddsCache();
     c[key] = { ...(c[key]||{o2t12:""}), ...patch };
     saveOddsCache(c);
+  }
+
+
+  // v2.20.28: ChatGPT評価・人間の最終判断を後から検証できるようローカル保存。
+  const AI_REVIEW_KEY = "kyotei_ai_review_v1";
+  function loadAiReviewCache_(){ try { return JSON.parse(localStorage.getItem(AI_REVIEW_KEY) || "{}"); } catch { return {}; } }
+  function saveAiReviewCache_(c){ try { localStorage.setItem(AI_REVIEW_KEY, JSON.stringify(c)); } catch {} }
+  function getAiReview_(key){
+    const c = loadAiReviewCache_();
+    return c[key] || { chatgptDecision:"", confidence:"", fairOdds:"", estimatedProbability:"", purchased:"", purchaseOdds:"", humanDecision:"", note:"" };
+  }
+  function setAiReview_(key, patch){
+    const c = loadAiReviewCache_();
+    c[key] = { ...getAiReview_(key), ...patch, updated_at:new Date().toISOString() };
+    saveAiReviewCache_(c);
   }
 
   // 手動結果補正キャッシュ（結果取得漏れ・公式反映遅延の保険）
@@ -2059,6 +2098,18 @@
 
     r._beforeAt = beforeJs.scraped_at ? String(beforeJs.scraped_at).slice(11,19) : nowHms_();
     r.exhReady = exhReady(r.exh);
+    // v2.20.28: Workerで取得したスタート展示進入をレース本体へ保存。
+    r.startEntryOrder = Array.isArray(info.startEntryOrder) ? info.startEntryOrder.slice() : (r.startEntryOrder || null);
+    r.startCourseByBoat = info.startCourseByBoat ? shallowCloneJson_(info.startCourseByBoat) : (r.startCourseByBoat || null);
+    r.startBoatByCourse = info.startBoatByCourse ? shallowCloneJson_(info.startBoatByCourse) : (r.startBoatByCourse || null);
+    r.stTimesByCourse = info.stTimesByCourse ? shallowCloneJson_(info.stTimesByCourse) : (r.stTimesByCourse || null);
+    r.startEntries = Array.isArray(info.startEntries) ? shallowCloneJson_(info.startEntries) : (r.startEntries || null);
+    r.entryStable12 = info.entryStable12 ?? r.entryStable12 ?? null;
+    r.entryIsWakunari = info.entryIsWakunari ?? r.entryIsWakunari ?? null;
+    r.entryChanged = info.entryChanged ?? r.entryChanged ?? null;
+    r.entryParseStatus = info.entryParseStatus ?? r.entryParseStatus ?? null;
+    r.before_source_url = beforeJs.source_url ?? r.before_source_url ?? null;
+    r.before_scraped_at = beforeJs.scraped_at ?? r.before_scraped_at ?? null;
 
     // debug表示用
     r._beforeOk13 = beforeHasExh13_(beforeJs);
@@ -5078,6 +5129,9 @@
       is_b_minus: isBMinusVenue_(r.stadium),
       is_high_risk_venue: isHighRiskVenue_(r.stadium),
 
+      // ChatGPT評価・人間の最終判断（未入力でも空欄で保持）
+      ai_review: shallowCloneJson_(getAiReview_(r.key)),
+
       // 画面に出ている手入力オッズ・手動結果補正を必ず保存
       manualOdds: shallowCloneJson_(manualOdds),
       manual_odds: shallowCloneJson_(manualOdds),
@@ -5760,6 +5814,25 @@
       <div class="muted small" style="margin-top:8px;">
         env: 風=${r.env?.windMs ?? "-"} / 波=${r.env?.waveCm ?? "-"} / 気温=${r.env?.airTempC ?? "-"} / 水温=${r.env?.waterTempC ?? "-"}
       </div>
+      <div class="muted small" style="margin-top:6px;">
+        展示進入: <span class="mono">${Array.isArray(r.startEntryOrder) ? r.startEntryOrder.join("-") : "未取得"}</span>
+        / 枠なり=${r.entryIsWakunari == null ? "不明" : (r.entryIsWakunari ? "Y" : "N")}
+        / 1-2維持=${r.entryStable12 == null ? "不明" : (r.entryStable12 ? "Y" : "N")}
+        / parse=${r.entryParseStatus || "-"}
+      </div>
+      <details style="margin-top:8px;">
+        <summary class="muted small" style="cursor:pointer;">ChatGPT評価・購入記録</summary>
+        <div class="aiFields">
+          <select data-ai-decision><option value="">ChatGPT判定</option><option>BUY</option><option>オッズ次第</option><option>見送り</option><option>情報不足</option></select>
+          <input data-ai-confidence type="number" min="0" max="100" step="1" placeholder="信頼度%">
+          <input data-ai-prob type="number" min="0" max="100" step="0.1" placeholder="推定1-2確率%">
+          <input data-ai-fair-odds type="number" min="1" step="0.1" placeholder="適正オッズ">
+          <select data-human-decision><option value="">人間最終判断</option><option>購入</option><option>見送り</option><option>未判断</option></select>
+          <select data-purchased><option value="">購入有無</option><option value="yes">購入した</option><option value="no">購入しない</option></select>
+          <input data-purchase-odds type="number" min="1" step="0.1" placeholder="購入オッズ">
+          <input data-ai-note type="text" placeholder="AI判断メモ">
+        </div>
+      </details>
 
       ${oddsBlock}
     `;
@@ -5821,6 +5894,20 @@
         inp2t12.addEventListener("input", onInput);
         inp2t12.addEventListener("blur", onBlur);
       }
+    }
+
+    const ai = getAiReview_(r.key);
+    const aiBindings = [
+      ["[data-ai-decision]","chatgptDecision"],["[data-ai-confidence]","confidence"],
+      ["[data-ai-prob]","estimatedProbability"],["[data-ai-fair-odds]","fairOdds"],
+      ["[data-human-decision]","humanDecision"],["[data-purchased]","purchased"],
+      ["[data-purchase-odds]","purchaseOdds"],["[data-ai-note]","note"]
+    ];
+    for(const [sel,key] of aiBindings){
+      const el = card.querySelector(sel);
+      if(!el) continue;
+      el.value = ai[key] ?? "";
+      el.addEventListener("change", ()=>setAiReview_(r.key, { [key]:el.value }));
     }
 
     return card;
@@ -6058,6 +6145,7 @@
 
     // v2.20.13: 候補のみ表示とは別枠で、条件外を含む検証用オッズ入力待ちを常に更新する。
     renderResearchOddsPanelV2209_(races);
+    renderOpsNavigatorV22028_();
   }
 
   // ===== v2.20.14 compact racer data =====
@@ -6648,6 +6736,61 @@
     a.remove();
     setTimeout(()=>URL.revokeObjectURL(url), 1000);
   }
+  function formatRemainingV22028_(ms){
+    if(!Number.isFinite(ms)) return "-";
+    const sign = ms < 0 ? "締切後 " : "";
+    const x = Math.abs(ms);
+    const h = Math.floor(x / 3600000), m = Math.floor((x % 3600000)/60000), sec = Math.floor((x % 60000)/1000);
+    return `${sign}${h ? h+":" : ""}${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")}`;
+  }
+  function monitoringCandidatesV22028_(){
+    return LAST_RACES.filter(r=>{
+      const close=parseCloseMs_(r.race_closed_at);
+      if(!Number.isFinite(close) || close < Date.now()-5*60000) return false;
+      return shouldShowInCondition1List_(r) || v22020PreCandidateInfo_(r).candidate;
+    }).sort((a,b)=>parseCloseMs_(a.race_closed_at)-parseCloseMs_(b.race_closed_at));
+  }
+  function renderOpsNavigatorV22028_(){
+    if(!$('opsUpcomingList')) return;
+    const now=Date.now();
+    $('opsNow').textContent=new Date().toLocaleString('ja-JP');
+    const list=monitoringCandidatesV22028_();
+    const next=list[0] || null;
+    if(next){
+      const close=parseCloseMs_(next.race_closed_at), rec=close-15*60000;
+      $('opsNextRace').textContent=`${next.venue} ${next.race}R`;
+      $('opsRecommendedAt').textContent=new Date(rec).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'});
+      $('opsRemaining').textContent=formatRemainingV22028_(close-now);
+    }else{
+      $('opsNextRace').textContent='対象なし'; $('opsRecommendedAt').textContent='-'; $('opsRemaining').textContent='-';
+    }
+    $('opsUpcomingList').innerHTML=list.slice(0,12).map(r=>{
+      const close=parseCloseMs_(r.race_closed_at), rec=close-15*60000, remain=close-now;
+      const ev=evaluate(r), v=buildV217VenueRuleFlags_(r);
+      const kind=v.v220_official_candidate?'条件①/正式候補':(v.v220_research_candidate?'検証候補':(ev.state==='WAIT'?'WAIT候補':'事前候補'));
+      return `<div class="opsRace ${remain<=20*60000?'opsUrgent':''}"><b>${r.venue} ${r.race}R</b> <span class="tag">${kind}</span> <span class="tag mono">締切 ${new Date(close).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span> <span class="tag mono">before推奨 ${new Date(rec).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span><div class="muted small">残り ${formatRemainingV22028_(remain)} / 判定=${ev.state} / ${ev.msg || '-'}</div></div>`;
+    }).join('') || '<div class="muted small" style="margin-top:10px;">確認対象はありません。</div>';
+  }
+  function chooseAiExportRaceV22028_(){
+    const candidates=monitoringCandidatesV22028_();
+    if(!candidates.length) return null;
+    const now=Date.now();
+    return candidates.find(r=>Math.abs(parseCloseMs_(r.race_closed_at)-now-15*60000)<=20*60000) || candidates[0];
+  }
+  function exportAiEvaluationV22028_(){
+    const r=chooseAiExportRaceV22028_();
+    if(!r){ alert('AI評価用に書き出せる候補レースがありません。'); return; }
+    const er=buildExportRace_(r);
+    const close=parseCloseMs_(r.race_closed_at);
+    const payload={
+      schema:'kyotei_ai_preevaluation_v1', generated_at:new Date().toISOString(), timing:{race_closed_at:r.race_closed_at, recommended_before_at:Number.isFinite(close)?new Date(close-15*60000).toISOString():null, odds_recheck_at:Number.isFinite(close)?new Date(close-5*60000).toISOString():null},
+      evaluation_request:{fixed_bet:'2連単1-2', required_outputs:['1号艇の1着信頼度','2号艇の2着残存力','展示進入リスク','選手の当日状態','モーター・ボート状態','アプリが見落としている好材料','アプリが過小評価している危険材料','推定1-2確率','適正オッズ','最終評価'], final_labels:['BUY','オッズ次第','見送り','情報不足']},
+      race:er
+    };
+    const hd=ymdToHd(r.date), venue=String(r.venue||r.stadium).replace(/[\/:*?"<>|]/g,'_');
+    downloadJson_(payload, `AI評価用_${hd}_${venue}${String(r.race).padStart(2,'0')}R_締切15分前.json`);
+  }
+
   function exportSnapshot_(){
     // ★バグ修正:
     // 画面上で出ている state / plan / manual odds / auto odds / odd / manual result を
@@ -6671,7 +6814,8 @@
         before_auto: mapToObj_(BEFORE_AUTO),
         odds_auto: mapToObj_(ODDS_AUTO),
         manual_odds: loadOddsCache(),
-        manual_results: loadResultCache()
+        manual_results: loadResultCache(),
+        ai_reviews: loadAiReviewCache_()
       }
     };
     const fname = `kyotei_snapshot_${makeTimestamp_()}.json`;
@@ -6724,11 +6868,15 @@
 
   $("analysisFullFetchBtn").addEventListener("click", fullAnalysisFetch_);
   $("exportBtn").addEventListener("click", exportSnapshot_);
+  $("exportAiBtn").addEventListener("click", exportAiEvaluationV22028_);
+  $("opsRefreshBtn").addEventListener("click", renderOpsNavigatorV22028_);
+  setInterval(renderOpsNavigatorV22028_, 30000);
 
   // init
   renderVenueChecks();
   setStatus("待機中：必要な時に『更新（programs更新）』を押してください");
   setAutoStatus("自動更新OFF");
+  renderOpsNavigatorV22028_();
 })();
 </script>
 </body>
