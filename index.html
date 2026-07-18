@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.20.29（レース別AI書き出し / ChatGPTコピー / SAFE）</title>
+  <title>競艇 v2.20.30（AI監査記録強化 / レース別AI書き出し / SAFE）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -104,9 +104,9 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.20.29（レース別AI書き出し / ChatGPTコピー / SAFE）</h1>
+  <h1>競艇 v2.20.30（AI監査記録強化 / レース別AI書き出し / SAFE）</h1>
   <div class="sub">
-    ✅ <b>v2.20.29</b>では、各レースカードに「AI評価用書き出し」「ChatGPTへコピー」を追加。押したカードの1レースだけを対象にし、既存の取得・判定・保存処理は変更しません。<br/>
+    ✅ <b>v2.20.30</b>では、ChatGPT監査記録を標準化。監査モード・理由コード・期待値指数を保存し、重複していた購入オッズ欄を廃止します。既存の取得・判定・結果補完・オッズ入力処理は変更しません。<br/>
   </div>
 
   <div class="card settingsCard">
@@ -821,17 +821,66 @@
   }
 
 
-  // v2.20.28: ChatGPT評価・人間の最終判断を後から検証できるようローカル保存。
+  // v2.20.30: ChatGPT監査を後からsource別・理由別に検証できる形でローカル保存。
+  // 旧purchaseOddsは手入力1-2オッズと重複するため廃止。旧記録は読み込み時に安全に正規化する。
   const AI_REVIEW_KEY = "kyotei_ai_review_v1";
-  function loadAiReviewCache_(){ try { return JSON.parse(localStorage.getItem(AI_REVIEW_KEY) || "{}"); } catch { return {}; } }
-  function saveAiReviewCache_(c){ try { localStorage.setItem(AI_REVIEW_KEY, JSON.stringify(c)); } catch {} }
+  const AI_REVIEW_DEFAULT_ = {
+    auditMode:"",
+    chatgptDecision:"",
+    reasonCode:"",
+    confidence:"",
+    fairOdds:"",
+    estimatedProbability:"",
+    evIndex:"",
+    purchased:"",
+    humanDecision:"",
+    note:"",
+    updated_at:""
+  };
+  function normalizeAiReview_(raw){
+    const src = (raw && typeof raw === "object") ? raw : {};
+    const decisionMap = {
+      "オッズ次第":"WAIT",
+      "情報不足":"WAIT",
+      "見送り":"NO",
+      "購入":"BUY"
+    };
+    const out = {
+      ...AI_REVIEW_DEFAULT_,
+      ...src,
+      chatgptDecision: decisionMap[src.chatgptDecision] || src.chatgptDecision || ""
+    };
+    delete out.purchaseOdds;
+    return out;
+  }
+  function loadAiReviewCache_(){
+    try{
+      const raw = JSON.parse(localStorage.getItem(AI_REVIEW_KEY) || "{}");
+      const out = {};
+      for(const [key, value] of Object.entries(raw || {})) out[key] = normalizeAiReview_(value);
+      return out;
+    }catch{
+      return {};
+    }
+  }
+  function saveAiReviewCache_(c){
+    try{
+      const clean = {};
+      for(const [key, value] of Object.entries(c || {})) clean[key] = normalizeAiReview_(value);
+      localStorage.setItem(AI_REVIEW_KEY, JSON.stringify(clean));
+    }catch{}
+  }
   function getAiReview_(key){
     const c = loadAiReviewCache_();
-    return c[key] || { chatgptDecision:"", confidence:"", fairOdds:"", estimatedProbability:"", purchased:"", purchaseOdds:"", humanDecision:"", note:"" };
+    return normalizeAiReview_(c[key]);
   }
   function setAiReview_(key, patch){
     const c = loadAiReviewCache_();
-    c[key] = { ...getAiReview_(key), ...patch, updated_at:new Date().toISOString() };
+    c[key] = normalizeAiReview_({
+      ...getAiReview_(key),
+      ...patch,
+      updated_at:new Date().toISOString()
+    });
     saveAiReviewCache_(c);
   }
 
@@ -5810,17 +5859,45 @@
         / parse=${r.entryParseStatus || "-"}
       </div>
       <details style="margin-top:8px;">
-        <summary class="muted small" style="cursor:pointer;">ChatGPT評価・購入記録</summary>
+        <summary class="muted small" style="cursor:pointer;">ChatGPT監査・購入記録</summary>
         <div class="aiFields">
-          <select data-ai-decision><option value="">ChatGPT判定</option><option>BUY</option><option>オッズ次第</option><option>見送り</option><option>情報不足</option></select>
+          <select data-audit-mode>
+            <option value="">監査モード</option>
+            <option value="PRE">PRE：レース前</option>
+            <option value="POST">POST：レース後・検証</option>
+          </select>
+          <select data-ai-decision>
+            <option value="">ChatGPT判定</option>
+            <option value="BUY">BUY</option>
+            <option value="WAIT">WAIT</option>
+            <option value="NO">NO</option>
+            <option value="EXCLUDE">EXCLUDE</option>
+          </select>
+          <select data-ai-reason>
+            <option value="">主理由コード</option>
+            <option value="ABILITY_NO">ABILITY_NO：能力入口不足</option>
+            <option value="VALUE_NO">VALUE_NO：期待値不足</option>
+            <option value="ONE_WIN_RISK">ONE_WIN_RISK：1号艇勝利リスク</option>
+            <option value="LANE2_RISK">LANE2_RISK：2号艇残存リスク</option>
+            <option value="ST_RISK">ST_RISK：STリスク</option>
+            <option value="ENTRY_RISK">ENTRY_RISK：進入リスク</option>
+            <option value="WATER_RISK">WATER_RISK：水面リスク</option>
+            <option value="WAIT_ODDS">WAIT_ODDS：オッズ待ち</option>
+            <option value="WAIT_INFO">WAIT_INFO：情報待ち</option>
+            <option value="CONFLICT">CONFLICT：条件評価衝突</option>
+            <option value="COMPOSITE_RISK">COMPOSITE_RISK：複合リスク</option>
+            <option value="DATA_EXCLUDE">DATA_EXCLUDE：データ不良</option>
+            <option value="OTHER">OTHER：その他</option>
+          </select>
           <input data-ai-confidence type="number" min="0" max="100" step="1" placeholder="信頼度%">
           <input data-ai-prob type="number" min="0" max="100" step="0.1" placeholder="推定1-2確率%">
-          <input data-ai-fair-odds type="number" min="1" step="0.1" placeholder="適正オッズ">
+          <input data-ai-fair-odds type="number" min="1" step="0.01" placeholder="適正オッズ">
+          <input data-ai-ev-index type="number" min="0" step="0.001" placeholder="期待値指数" readonly title="推定1-2確率×現在の入力オッズで自動計算">
           <select data-human-decision><option value="">人間最終判断</option><option>購入</option><option>見送り</option><option>未判断</option></select>
           <select data-purchased><option value="">購入有無</option><option value="yes">購入した</option><option value="no">購入しない</option></select>
-          <input data-purchase-odds type="number" min="1" step="0.1" placeholder="購入オッズ">
-          <input data-ai-note type="text" placeholder="AI判断メモ">
+          <input data-ai-note type="text" placeholder="AI判断メモ・補足理由">
         </div>
+        <div class="muted small" style="margin-top:6px;">※期待値指数は「推定1-2確率 × 現在入力されている1-2オッズ」で自動計算。購入オッズは手入力オッズと共通のため別保存しません。</div>
       </details>
 
       ${oddsBlock}
@@ -5890,6 +5967,15 @@
         const onInput = () => {
           setManualOdds(r.key, { o2t12: inp2t12.value });
           updateCardUI_(card, r);
+          const probEl = card.querySelector("[data-ai-prob]");
+          const evEl = card.querySelector("[data-ai-ev-index]");
+          const probPct = Number(probEl?.value);
+          const odd = getOddFor(r, "2T", "1-2");
+          const ev = Number.isFinite(probPct) && probPct >= 0 && Number.isFinite(odd) && odd > 0
+            ? (probPct / 100) * odd
+            : null;
+          if(evEl) evEl.value = Number.isFinite(ev) ? ev.toFixed(3) : "";
+          setAiReview_(r.key, { evIndex:Number.isFinite(ev) ? Number(ev.toFixed(3)) : "" });
           renderSummary(LAST_RACES);
         };
 
@@ -5909,17 +5995,40 @@
 
     const ai = getAiReview_(r.key);
     const aiBindings = [
-      ["[data-ai-decision]","chatgptDecision"],["[data-ai-confidence]","confidence"],
-      ["[data-ai-prob]","estimatedProbability"],["[data-ai-fair-odds]","fairOdds"],
-      ["[data-human-decision]","humanDecision"],["[data-purchased]","purchased"],
-      ["[data-purchase-odds]","purchaseOdds"],["[data-ai-note]","note"]
+      ["[data-audit-mode]","auditMode"],
+      ["[data-ai-decision]","chatgptDecision"],
+      ["[data-ai-reason]","reasonCode"],
+      ["[data-ai-confidence]","confidence"],
+      ["[data-ai-prob]","estimatedProbability"],
+      ["[data-ai-fair-odds]","fairOdds"],
+      ["[data-human-decision]","humanDecision"],
+      ["[data-purchased]","purchased"],
+      ["[data-ai-note]","note"]
     ];
+
+    const refreshAiEvIndex_ = ()=>{
+      const probEl = card.querySelector("[data-ai-prob]");
+      const evEl = card.querySelector("[data-ai-ev-index]");
+      if(!evEl) return;
+      const probPct = Number(probEl?.value);
+      const odd = getOddFor(r, "2T", "1-2");
+      const ev = Number.isFinite(probPct) && probPct >= 0 && Number.isFinite(odd) && odd > 0
+        ? (probPct / 100) * odd
+        : null;
+      evEl.value = Number.isFinite(ev) ? ev.toFixed(3) : "";
+      setAiReview_(r.key, { evIndex:Number.isFinite(ev) ? Number(ev.toFixed(3)) : "" });
+    };
+
     for(const [sel,key] of aiBindings){
       const el = card.querySelector(sel);
       if(!el) continue;
       el.value = ai[key] ?? "";
-      el.addEventListener("change", ()=>setAiReview_(r.key, { [key]:el.value }));
+      el.addEventListener("change", ()=>{
+        setAiReview_(r.key, { [key]:el.value });
+        if(key === "estimatedProbability") refreshAiEvIndex_();
+      });
     }
+    refreshAiEvIndex_();
 
     return card;
   }
