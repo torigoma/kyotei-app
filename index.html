@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.20.30（AI監査記録強化 / レース別AI書き出し / SAFE）</title>
+  <title>競艇 v2.20.31（AI監査記録強化 / レース別AI書き出し / SAFE）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -104,9 +104,9 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.20.30（AI監査記録強化 / レース別AI書き出し / SAFE）</h1>
+  <h1>競艇 v2.20.31（AI監査記録強化 / レース別AI書き出し / SAFE）</h1>
   <div class="sub">
-    ✅ <b>v2.20.30</b>では、ChatGPT監査記録を標準化。監査モード・理由コード・期待値指数を保存し、重複していた購入オッズ欄を廃止します。既存の取得・判定・結果補完・オッズ入力処理は変更しません。<br/>
+    ✅ <b>v2.20.31</b>では、ChatGPT監査記録を標準化。監査モード・理由コード・期待値指数を保存し、重複していた購入オッズ欄を廃止します。既存の取得・判定・結果補完・オッズ入力処理は変更しません。<br/>
   </div>
 
   <div class="card settingsCard">
@@ -845,11 +845,17 @@
       "見送り":"NO",
       "購入":"BUY"
     };
+    const normalizedDecision = decisionMap[src.chatgptDecision] || String(src.chatgptDecision || "").trim();
     const out = {
       ...AI_REVIEW_DEFAULT_,
       ...src,
-      chatgptDecision: decisionMap[src.chatgptDecision] || src.chatgptDecision || ""
+      chatgptDecision: normalizedDecision
     };
+    // v2.20.31: 旧監査は事前/事後を推測せず、未分類の旧記録として明示する。
+    if(normalizedDecision && !String(out.auditMode || "").trim()) out.auditMode = "UNKNOWN_LEGACY";
+    if(normalizedDecision && !String(out.reasonCode || "").trim()) out.reasonCode = "LEGACY_UNCLASSIFIED";
+    // 空文字やnullを0へ変換しない。未入力は必ず空欄のまま保持。
+    if(out.evIndex == null || String(out.evIndex).trim() === "") out.evIndex = "";
     delete out.purchaseOdds;
     return out;
   }
@@ -5887,6 +5893,7 @@
             <option value="CONFLICT">CONFLICT：条件評価衝突</option>
             <option value="COMPOSITE_RISK">COMPOSITE_RISK：複合リスク</option>
             <option value="DATA_EXCLUDE">DATA_EXCLUDE：データ不良</option>
+            <option value="LEGACY_UNCLASSIFIED">LEGACY_UNCLASSIFIED：旧記録・理由未分類</option>
             <option value="OTHER">OTHER：その他</option>
           </select>
           <input data-ai-confidence type="number" min="0" max="100" step="1" placeholder="信頼度%">
@@ -5969,9 +5976,10 @@
           updateCardUI_(card, r);
           const probEl = card.querySelector("[data-ai-prob]");
           const evEl = card.querySelector("[data-ai-ev-index]");
-          const probPct = Number(probEl?.value);
+          const probRaw = String(probEl?.value ?? "").trim();
+          const probPct = probRaw === "" ? null : Number(probRaw);
           const odd = getOddFor(r, "2T", "1-2");
-          const ev = Number.isFinite(probPct) && probPct >= 0 && Number.isFinite(odd) && odd > 0
+          const ev = Number.isFinite(probPct) && probPct > 0 && Number.isFinite(odd) && odd > 0
             ? (probPct / 100) * odd
             : null;
           if(evEl) evEl.value = Number.isFinite(ev) ? ev.toFixed(3) : "";
@@ -6010,13 +6018,15 @@
       const probEl = card.querySelector("[data-ai-prob]");
       const evEl = card.querySelector("[data-ai-ev-index]");
       if(!evEl) return;
-      const probPct = Number(probEl?.value);
+      const probRaw = String(probEl?.value ?? "").trim();
+      const probPct = probRaw === "" ? null : Number(probRaw);
       const odd = getOddFor(r, "2T", "1-2");
-      const ev = Number.isFinite(probPct) && probPct >= 0 && Number.isFinite(odd) && odd > 0
+      const ev = Number.isFinite(probPct) && probPct > 0 && Number.isFinite(odd) && odd > 0
         ? (probPct / 100) * odd
         : null;
       evEl.value = Number.isFinite(ev) ? ev.toFixed(3) : "";
-      setAiReview_(r.key, { evIndex:Number.isFinite(ev) ? Number(ev.toFixed(3)) : "" });
+      // 描画だけでは保存しない。ユーザー入力変更時のみ呼び出し元で保存する。
+      return Number.isFinite(ev) ? Number(ev.toFixed(3)) : "";
     };
 
     for(const [sel,key] of aiBindings){
@@ -6024,8 +6034,12 @@
       if(!el) continue;
       el.value = ai[key] ?? "";
       el.addEventListener("change", ()=>{
-        setAiReview_(r.key, { [key]:el.value });
-        if(key === "estimatedProbability") refreshAiEvIndex_();
+        if(key === "estimatedProbability"){
+          const evIndex = refreshAiEvIndex_();
+          setAiReview_(r.key, { [key]:el.value, evIndex });
+        }else{
+          setAiReview_(r.key, { [key]:el.value });
+        }
       });
     }
     refreshAiEvIndex_();
