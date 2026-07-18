@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.20.26（TEST正式BUY昇格 / EXPANSION採用 / LOW-VALUE許可）</title>
+  <title>競艇 v2.20.27（v2.20.26表示落ち修正 / TEST昇格維持 / SAFE）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -96,7 +96,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.20.26（TEST正式BUY昇格 / EXPANSION採用 / LOW-VALUE許可）</h1>
+  <h1>競艇 v2.20.27（v2.20.26表示落ち修正 / TEST昇格維持 / SAFE）</h1>
   <div class="sub">
     ✅ <b>正式BUY</b>は、v2.20のメイン6会場LOW_SAFEだけに整理。旧BUYロジックは正式判定から外しています。<br/>
     ✅ <b>検証会場</b>は青表示でログ化し、正式収支には混ぜません。<br/>
@@ -111,6 +111,7 @@
     ✅ <b>v2.20.24</b>では、能力値を全国/当地/モーター/選手IDに分けて診断し、0値を「不足」ではなく「取得欠損」として表示します。更新完了時の abilityReady 未定義エラーも修正します。<br/>
     ✅ <b>v2.20.25</b>では、before取得前に下関OPT・福岡PAIR_BAL等の主要TEST候補が旧入口条件だけで候補欄から消える問題を修正します。正式BUY条件・結果取得・能力値取得は変更しません。<br/>
     ✅ <b>v2.20.26</b>では、買う/買わないは人間が最終制御する前提に切り替え、test_active・検証Active・追加EXPANSION TESTを正式BUY表示へ昇格します。児島CORE_STRICT_EXPANSION、福岡PAIR_BALANCE_QUALITYを追加し、利益確認会場ではLOW/VALUE帯を許可します。<br/>
+    ✅ <b>v2.20.27</b>では、v2.20.26で追加した表示用バッジ未定義により、取得後のレース一覧描画が止まる問題を修正。取得系・Worker・before/result・オッズ保存系は変更しません。<br/>
   </div>
 
   <div class="card settingsCard">
@@ -5662,6 +5663,9 @@
       : ``;
     const v22010Badge = v217Flags.v22010_test_visible
       ? `<span class="tag mono">v2.20.13:${v217Flags.v22010_test_rule_short}</span><span class="tag mono">${v217Flags.v22010_test_group}</span>${v217Flags.v22020_test_quality_no ? `<span class="tag mono">品質NO</span>` : ``}`
+      : ``;
+    const v22026Badge = (v217Flags.v22026_expansion_visible || v217Flags.v22026_promoted_official_buy)
+      ? `<span class="tag mono">v2.20.26:${v217Flags.v22026_expansion_rule_short || v217Flags.v22026_promoted_official_rule_short || '-'}</span>${v217Flags.v22026_promoted_official_buy ? `<span class="tag mono">昇格BUY</span>` : ``}`
       : ``;
     const v22020PreBadge = v217Flags.v22020_pre_candidate
       ? `<span class="tag mono">${v217Flags.v22025_test_pre_candidate ? 'TEST事前' : '事前候補'}:${v217Flags.v22020_pre_missing || '-'}</span>`
