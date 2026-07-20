@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.20.31（AI監査記録強化 / レース別AI書き出し / SAFE）</title>
+  <title>競艇 v2.20.32（当日日付固定 / 前日データ拒否 / SAFE）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -104,9 +104,9 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.20.31（AI監査記録強化 / レース別AI書き出し / SAFE）</h1>
+  <h1>競艇 v2.20.32（当日日付固定 / 前日データ拒否 / SAFE）</h1>
   <div class="sub">
-    ✅ <b>v2.20.31</b>では、ChatGPT監査記録を標準化。監査モード・理由コード・期待値指数を保存し、重複していた購入オッズ欄を廃止します。既存の取得・判定・結果補完・オッズ入力処理は変更しません。<br/>
+    ✅ <b>v2.20.32</b>では、JST当日を明示して取得し、前日データを当日データとして採用しない安全ガードを追加しました。予想条件・監査記録・結果補完・オッズ入力・JSON保存の構造は変更していません。<br/>
   </div>
 
   <div class="card settingsCard">
@@ -939,7 +939,10 @@
 
   async function fetchJson(url){
     const res = await fetch(url, { cache:"no-store" });
-    if(!res.ok) throw new Error(`fetch failed ${res.status}: ${url}`);
+    if(!res.ok){
+      const body = await res.text().catch(()=>"");
+      throw new Error(`fetch failed ${res.status}: ${url}${body ? ` / ${body.slice(0,240)}` : ""}`);
+    }
     return await res.json();
   }
 
@@ -1049,16 +1052,74 @@
     try{ return getProgramsArrayFromAnyBundle_(bundle).length; }catch(_){ return 0; }
   }
 
+
+  // v2.20.32: 取得元が返したレース日と、JSTの要求日が一致しているかを必ず確認する。
+  function recordDateYmdV22032_(row){
+    return ymdFromAnyV22022_(row?.race_date ?? row?.date ?? row?.hd ?? row?.raceDate, null);
+  }
+
+  function recordsForDateAuditV22032_(bundle, kind='programs'){
+    try{
+      if(kind === 'programs') return getProgramsArrayFromAnyBundle_(bundle);
+      if(kind === 'previews') return getPreviewsArrayFromAnyBundle_(bundle);
+      if(kind === 'results') return getResultsArrayFromAnyBundle_(bundle);
+    }catch(_){ }
+    return [];
+  }
+
+  function auditRecordsDateV22032_(bundle, expectedYmd, kind='programs'){
+    const rows = recordsForDateAuditV22032_(bundle, kind);
+    const dates = new Set();
+    let matching = 0;
+    let mismatching = 0;
+    let missing = 0;
+    for(const row of rows){
+      const d = recordDateYmdV22032_(row);
+      if(!d){ missing++; continue; }
+      dates.add(d);
+      if(d === expectedYmd) matching++; else mismatching++;
+    }
+    return {
+      ok: rows.length > 0 && matching === rows.length,
+      kind,
+      expectedYmd,
+      total: rows.length,
+      matching,
+      mismatching,
+      missing,
+      dates: Array.from(dates).sort()
+    };
+  }
+
+  function assertTodayBundleDateV22032_(bundle, expectedYmd, label='取得データ'){
+    const audit = auditRecordsDateV22032_(bundle, expectedYmd, 'programs');
+    if(!audit.ok){
+      const got = audit.dates.length ? audit.dates.join(',') : '日付不明';
+      throw new Error(`${label}の日付不一致：要求=${expectedYmd} / 取得=${got} / 件数=${audit.total}`);
+    }
+    try{
+      bundle.__requested_date = expectedYmd;
+      bundle.__data_dates = audit.dates;
+      bundle.__date_audit = audit;
+    }catch(_){ }
+    return audit;
+  }
+
   async function tryFetchJsonV22019_(url){
     try{ return await fetchJson(url); }catch(e){ return { __fetch_error:true, __url:url, __error:String(e?.message || e) }; }
   }
 
   async function fetchOpenApiTodayFallbackBundle_(dateYmd=null, workerError=null){
-    // v2.20.22: 出走表・直前・結果が1つに入る統合API v1を最優先フォールバックにする。
+    // v2.20.32: フォールバックでもJST要求日を固定し、前日today.jsonを採用しない。
+    const ymd = dateYmd || jstTodayYmd_();
+    const hd = hdFromYmd_(ymd);
+
+    // 出走表・直前・結果が1つに入る統合API v1を最優先フォールバックにする。
     // 旧programs/previews/results分割APIは、v1が取れない時だけ使う。
     try{
-      const hubLegacy = await fetchUnifiedApiV1LegacyBundleV22022_(dateYmd || null);
+      const hubLegacy = await fetchUnifiedApiV1LegacyBundleV22022_(ymd);
       if(hubLegacy && countProgramsInBundle_(hubLegacy) > 0){
+        assertTodayBundleDateV22032_(hubLegacy, ymd, 'api_v1フォールバック');
         try{
           hubLegacy.__source = 'api_v1_fallback';
           hubLegacy.__fallback = true;
@@ -1069,28 +1130,25 @@
     }catch(hubErr){
       // 下の旧分割APIに落とす
     }
-
-    const ymd = dateYmd || jstTodayYmd_();
-    const hd = hdFromYmd_(ymd);
     const yyyy = hd.slice(0,4);
     const stamp = Date.now();
 
     const programUrls = [
       `https://boatraceopenapi.github.io/programs/v3/${yyyy}/${hd}.json?v=${stamp}`,
-      `https://boatraceopenapi.github.io/programs/v3/today.json?v=${stamp}`,
       `https://boatraceopenapi.github.io/programs/v2/${yyyy}/${hd}.json?v=${stamp}`,
+      `https://boatraceopenapi.github.io/programs/v3/today.json?v=${stamp}`,
       `https://boatraceopenapi.github.io/programs/v2/today.json?v=${stamp}`
     ];
     const previewUrls = [
       `https://boatraceopenapi.github.io/previews/v3/${yyyy}/${hd}.json?v=${stamp}`,
-      `https://boatraceopenapi.github.io/previews/v3/today.json?v=${stamp}`,
       `https://boatraceopenapi.github.io/previews/v2/${yyyy}/${hd}.json?v=${stamp}`,
+      `https://boatraceopenapi.github.io/previews/v3/today.json?v=${stamp}`,
       `https://boatraceopenapi.github.io/previews/v2/today.json?v=${stamp}`
     ];
     const resultUrls = [
       `https://boatraceopenapi.github.io/results/v3/${yyyy}/${hd}.json?v=${stamp}`,
-      `https://boatraceopenapi.github.io/results/v3/today.json?v=${stamp}`,
       `https://boatraceopenapi.github.io/results/v2/${yyyy}/${hd}.json?v=${stamp}`,
+      `https://boatraceopenapi.github.io/results/v3/today.json?v=${stamp}`,
       `https://boatraceopenapi.github.io/results/v2/today.json?v=${stamp}`
     ];
 
@@ -1099,8 +1157,17 @@
       for(const url of urls){
         const js = await tryFetchJsonV22019_(url);
         if(js && !js.__fetch_error){
-          try{ js.__source_url = url; js.__source_kind = kind; }catch(_){ }
-          return { js, errors };
+          const audit = auditRecordsDateV22032_(js, ymd, kind);
+          if(audit.ok){
+            try{
+              js.__source_url = url;
+              js.__source_kind = kind;
+              js.__date_audit = audit;
+            }catch(_){ }
+            return { js, errors };
+          }
+          errors.push({ __url:url, __error:`${kind} date mismatch/empty`, __date_audit:audit });
+          continue;
         }
         errors.push(js);
       }
@@ -1112,15 +1179,18 @@
     const re = await firstUseful(resultUrls, 'results');
 
     if(countProgramsInBundle_(p.js) > 0){
-      return {
+      const out = {
         programs: p.js,
         previews: pr.js || { previews:[] },
         results: re.js || { results:[] },
         __source:'openapi_direct_fallback',
         __fallback:true,
+        __requested_date: ymd,
         __worker_error: workerError ? String(workerError?.message || workerError) : null,
         __fetch_errors: { programs:p.errors, previews:pr.errors, results:re.errors }
       };
+      assertTodayBundleDateV22032_(out, ymd, '分割APIフォールバック');
+      return out;
     }
 
     throw new Error(`todayデータ取得失敗: worker=${workerError ? String(workerError?.message || workerError) : '-'} / fallback programs=0`);
@@ -1451,17 +1521,27 @@
     const hd = hdFromYmd_(ymd);
     const yyyy = hd.slice(0,4);
     const stamp = Date.now();
+    // v2.20.32: 日付指定を最優先。today.jsonは最後の保険だが、日付一致時だけ採用する。
     const urls = [
-      `https://boatraceopenapi.github.io/api/v1/today.json?v=${stamp}`,
       `https://boatraceopenapi.github.io/api/v1/${yyyy}/${hd}.json?v=${stamp}`,
-      `https://boatraceopenapi.github.io/api-mirror/v1/${yyyy}/${hd}.json?v=${stamp}`
+      `https://boatraceopenapi.github.io/api-mirror/v1/${yyyy}/${hd}.json?v=${stamp}`,
+      `https://boatraceopenapi.github.io/api/v1/today.json?v=${stamp}`
     ];
     const errors = [];
     for(const url of urls){
       const js = await tryFetchJsonV22019_(url);
       if(js && !js.__fetch_error && isUnifiedApiV1BundleV22022_(js)){
         const converted = convertUnifiedApiV1ToLegacyBundleV22022_(js, url);
-        if(countProgramsInBundle_(converted) > 0) return converted;
+        const audit = auditRecordsDateV22032_(converted, ymd, 'programs');
+        if(audit.ok){
+          try{
+            converted.__requested_date = ymd;
+            converted.__date_audit = audit;
+          }catch(_){ }
+          return converted;
+        }
+        errors.push({ __url:url, __error:'api/v1 date mismatch/empty', __date_audit:audit });
+        continue;
       }
       errors.push(js);
     }
@@ -1580,29 +1660,37 @@
 
 
   async function fetchTodayBundle(){
-    const workerUrl = `${WORKER_BASE}/api/today?v=${Date.now()}`;
+    const expectedYmd = jstTodayYmd_();
+    const targetHd = hdFromYmd_(expectedYmd);
+    // v2.20.32: WorkerにもJST当日を明示し、programs/previewsキャッシュも強制回避する。
+    const workerUrl = `${WORKER_BASE}/api/today?hd=${targetHd}&noCache=1&v=${Date.now()}`;
     let workerJs = null;
     let workerErr = null;
 
     try{
       workerJs = await fetchJson(workerUrl);
-      try{ workerJs.__source = 'worker_today'; workerJs.__source_url = workerUrl; }catch(_){ }
+      assertTodayBundleDateV22032_(workerJs, expectedYmd, 'Worker');
+      try{
+        workerJs.__source = 'worker_date_fixed';
+        workerJs.__source_url = workerUrl;
+        workerJs.__requested_date = expectedYmd;
+      }catch(_){ }
     }catch(e){
       workerErr = e;
+      workerJs = null;
     }
 
-    // v2.20.22:
-    // まずWorkerを主データとして使う。Workerにprogramsがあればレース一覧はWorker優先。
-    // ただし、締切時刻/直前情報/結果が薄い場合に備え、統合API v1を補助データとして結合する。
+    // Workerを主データとして使い、同じ要求日のAPI v1だけを補助結合する。
     if(workerJs && countProgramsInBundle_(workerJs) > 0){
       try{
-        const ymd = inferDateYmdFromBundleV22022_(workerJs) || jstTodayYmd_();
-        const hub = await fetchUnifiedApiV1LegacyBundleV22022_(ymd);
+        const hub = await fetchUnifiedApiV1LegacyBundleV22022_(expectedYmd);
         if(hub && countProgramsInBundle_(hub) > 0){
-          return mergeLegacyTodayBundlesV22022_(workerJs, hub, {
-            source:'worker_today+api_v1_enrich',
+          const merged = mergeLegacyTodayBundlesV22022_(workerJs, hub, {
+            source:'worker_date_fixed+api_v1_enrich',
             workerUrl
           });
+          assertTodayBundleDateV22032_(merged, expectedYmd, 'Worker+api_v1結合');
+          return merged;
         }
       }catch(enrichErr){
         try{ workerJs.__api_v1_enrich_error = String(enrichErr?.message || enrichErr); }catch(_){ }
@@ -1610,14 +1698,15 @@
       return workerJs;
     }
 
-    // Worker自体が空/失敗の場合は、統合API v1を第一フォールバックにする。
+    // Workerが空・失敗・日付不一致なら、要求日固定の統合API v1へフォールバック。
     try{
-      const hub = await fetchUnifiedApiV1LegacyBundleV22022_(null);
+      const hub = await fetchUnifiedApiV1LegacyBundleV22022_(expectedYmd);
       if(hub && countProgramsInBundle_(hub) > 0){
+        assertTodayBundleDateV22032_(hub, expectedYmd, 'api_v1');
         try{
-          hub.__source = 'api_v1_fallback';
+          hub.__source = 'api_v1_date_fixed_fallback';
           hub.__fallback = true;
-          hub.__worker_error = workerErr ? String(workerErr?.message || workerErr) : (workerJs ? `worker programs=0 / keys=${Object.keys(workerJs || {}).slice(0,20).join(',')}` : null);
+          hub.__worker_error = workerErr ? String(workerErr?.message || workerErr) : null;
         }catch(_){ }
         return hub;
       }
@@ -1625,32 +1714,34 @@
       workerErr = workerErr || hubErr;
     }
 
-    // 最後に旧programs/previews/results分割APIへフォールバック。
-    return await fetchOpenApiTodayFallbackBundle_(null, workerErr || new Error('worker_today programs=0'));
+    // 最後に要求日固定の旧programs/previews/results分割APIへフォールバック。
+    return await fetchOpenApiTodayFallbackBundle_(expectedYmd, workerErr || new Error('当日Worker programs=0'));
   }
 
   async function fetchDirectResultsBundle_(dateYmd=null){
-    const d = dateYmd || LAST_RACES.find(r => r?.date)?.date || new Date().toISOString().slice(0,10);
+    const d = dateYmd || LAST_RACES.find(r => r?.date)?.date || jstTodayYmd_();
     const hd = ymdToHd(d);
     const yyyy = hd.slice(0,4);
 
-    // v2だけだと結果が欠ける/遅れることがあるため、v3→v2の順で試す。
-    // today と日付指定の両方を試し、Worker側キャッシュが古い時の保険にする。
+    // v2.20.32: 日付指定結果を先に試し、today.jsonは日付一致時だけ採用する。
     const urls = [
-      `https://boatraceopenapi.github.io/results/v3/today.json?v=${Date.now()}`,
       `https://boatraceopenapi.github.io/results/v3/${yyyy}/${hd}.json?v=${Date.now()}`,
-      `https://boatraceopenapi.github.io/results/v2/today.json?v=${Date.now()}`,
-      `https://boatraceopenapi.github.io/results/v2/${yyyy}/${hd}.json?v=${Date.now()}`
+      `https://boatraceopenapi.github.io/results/v2/${yyyy}/${hd}.json?v=${Date.now()}`,
+      `https://boatraceopenapi.github.io/results/v3/today.json?v=${Date.now()}`,
+      `https://boatraceopenapi.github.io/results/v2/today.json?v=${Date.now()}`
     ];
 
     let lastErr = null;
     for(const url of urls){
       try{
         const js = await fetchJson(url);
-        if(js){
-          try{ js.__source_url = url; }catch(_){}
-          return js;
+        const audit = auditRecordsDateV22032_(js, d, 'results');
+        if(!audit.ok){
+          lastErr = new Error(`results日付不一致/空: 要求=${d} 取得=${audit.dates.join(',') || '不明'} url=${url}`);
+          continue;
         }
+        try{ js.__source_url = url; js.__date_audit = audit; }catch(_){}
+        return js;
       }catch(e){
         lastErr = e;
       }
@@ -1661,23 +1752,23 @@
 
 
   async function fetchAllDirectResultsBundles_(dateYmd=null){
-    const d = dateYmd || LAST_RACES.find(r => r?.date)?.date || new Date().toISOString().slice(0,10);
+    const d = dateYmd || LAST_RACES.find(r => r?.date)?.date || jstTodayYmd_();
     const hd = ymdToHd(d);
     const yyyy = hd.slice(0,4);
     const urls = [
-      `https://boatraceopenapi.github.io/results/v3/today.json?v=${Date.now()}`,
       `https://boatraceopenapi.github.io/results/v3/${yyyy}/${hd}.json?v=${Date.now()}`,
-      `https://boatraceopenapi.github.io/results/v2/today.json?v=${Date.now()}`,
-      `https://boatraceopenapi.github.io/results/v2/${yyyy}/${hd}.json?v=${Date.now()}`
+      `https://boatraceopenapi.github.io/results/v2/${yyyy}/${hd}.json?v=${Date.now()}`,
+      `https://boatraceopenapi.github.io/results/v3/today.json?v=${Date.now()}`,
+      `https://boatraceopenapi.github.io/results/v2/today.json?v=${Date.now()}`
     ];
     const out = [];
     for(const url of urls){
       try{
         const js = await fetchJson(url);
-        if(js){
-          try{ js.__source_url = url; }catch(_){}
-          out.push(js);
-        }
+        const audit = auditRecordsDateV22032_(js, d, 'results');
+        if(!audit.ok) continue;
+        try{ js.__source_url = url; js.__date_audit = audit; }catch(_){}
+        out.push(js);
       }catch(e){}
     }
     return out;
@@ -6784,10 +6875,22 @@
   }
 
   async function refreshFull(){
+    const expectedYmd = jstTodayYmd_();
     try{
-      setStatus("更新中…");
+      setStatus(`更新中… 要求日:${expectedYmd}`);
       const bundle = await fetchTodayBundle();
-      LAST_RACES = buildRacesFromBundle(bundle);
+      const dateAudit = assertTodayBundleDateV22032_(bundle, expectedYmd, '最終bundle');
+      const nextRaces = buildRacesFromBundle(bundle);
+      if(!nextRaces.length) throw new Error(`要求日 ${expectedYmd} のレースが0件です`);
+
+      const wrongDates = Array.from(new Set(nextRaces.map(r=>r?.date).filter(d=>d && d !== expectedYmd)));
+      const missingDate = nextRaces.filter(r=>!r?.date).length;
+      if(wrongDates.length || missingDate){
+        throw new Error(`構築後の日付不一致：要求=${expectedYmd} / 異常=${wrongDates.join(',') || '-'} / 日付欠損=${missingDate}`);
+      }
+
+      // 検証がすべて通ってから入れ替える。取得途中の空データや前日データで画面を壊さない。
+      LAST_RACES = nextRaces;
       for(const r of LAST_RACES) applyManualResultToRace_(r);
 
       renderSummary(LAST_RACES);
@@ -6806,12 +6909,23 @@
       const beforeReady = LAST_RACES.filter(r => beforeReadyActual_(r)).length;
       const ready = v22023ReadinessSummary_(LAST_RACES);
       const apiV1 = bundle?.__api_v1_enrich ? ` / api_v1 P:${bundle.__api_v1_programs ?? 0} Pr:${bundle.__api_v1_previews ?? 0} R:${bundle.__api_v1_results ?? 0}` : '';
-      setStatus(`OK${fallback}${apiV1} / ${src} / ${nowHms_()} / 取得:${LAST_RACES.length} / 締切:${closeReady} / 直前:${beforeReady} / 能力:${ready.abilityReady}/${ready.total}（nat:${ready.nat2Ready} loc:${ready.loc2Ready} motor:${ready.motor2Ready}） / 選手ID:${ready.racerIdReady}/${ready.total} / 結果補完:${resultRetryChanged} / 結果未取得:${countMissingResultsAfterGrace_()}`);
+      setStatus(`OK / 要求日:${expectedYmd} / 取得日:${dateAudit.dates.join(',')}${fallback}${apiV1} / ${src} / ${nowHms_()} / 取得:${LAST_RACES.length} / 締切:${closeReady} / 直前:${beforeReady} / 能力:${ready.abilityReady}/${ready.total}（nat:${ready.nat2Ready} loc:${ready.loc2Ready} motor:${ready.motor2Ready}） / 選手ID:${ready.racerIdReady}/${ready.total} / 結果補完:${resultRetryChanged} / 結果未取得:${countMissingResultsAfterGrace_()}`);
       maybeScheduleAutoRefresh();
     } catch(e){
       console.error('refreshFull failed', e);
-      setStatus(`失敗: ${e?.message || e}`);
-      setAutoStatus("-");
+      clearAutoTimer();
+
+      // 前日の一覧が残っている場合は、誤操作防止のため表示対象から外す。
+      const existingDates = Array.from(new Set(LAST_RACES.map(r=>r?.date).filter(Boolean)));
+      const hasStaleDisplayedData = existingDates.some(d=>d !== expectedYmd);
+      if(hasStaleDisplayedData){
+        LAST_RACES = [];
+        renderSummary(LAST_RACES);
+        renderList(LAST_RACES);
+      }
+
+      setStatus(`当日データ未取得（前日データは拒否） / 要求日:${expectedYmd} / ${e?.message || e}`);
+      setAutoStatus("自動取得停止：当日データ待ち");
     }
   }
 
