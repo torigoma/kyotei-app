@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.20.33（AI監査候補 / 正式判定不変 / SAFE）</title>
+  <title>競艇 v2.20.34（AI監査候補 / 正式判定不変 / SAFE）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -114,9 +114,10 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.20.33（AI監査候補 / 正式判定不変 / SAFE）</h1>
+  <h1>競艇 v2.20.34（AI監査候補 / 正式判定不変 / SAFE）</h1>
   <div class="sub">
-    ✅ <b>v2.20.33</b>では、正式BUY・NO・WAIT・TESTを一切変更せず、独立した「AI監査候補」レイヤーを追加しました。<br/>
+    ✅ <b>v2.20.34</b>では、正式BUY・NO・WAIT・TESTを一切変更せず、独立した「AI監査候補」レイヤーを維持しています。<br/>
+    📋 AI評価用JSONと「ChatGPTへコピー」に版管理された共通監査プロンプトを自動付与し、結果由来フィールドをAI提出データから除外しました。<br/>
     紫＝優先監査、青紫＝通常監査、灰＝SHADOW、黄＝情報待ち。AI監査候補はBUYではなく、自動購入も行いません。v2.20.32の日付安全ガードも維持しています。<br/>
   </div>
 
@@ -622,6 +623,7 @@
 
         <button class="btn2" id="exportBtn">1日統合データ書き出し</button>
         <button class="btn2" id="exportAiBtn">AI直前評価用書き出し</button>
+        <button class="btn2" id="copyAiPromptBtn">📋 AI監査プロンプトだけコピー</button>
         <button class="btnDanger" id="analysisFullFetchBtn">分析用フル取得（全before/result）</button>
 
         <label class="cb" style="margin:0;">
@@ -4781,10 +4783,10 @@
   }
 
 
-  // ===== v2.20.33 AI監査候補（正式判定とは完全独立） =====
+  // ===== v2.20.34 AI監査候補（正式判定とは完全独立） =====
   // 正式BUY/NO/WAIT/TEST/Research/Expansionは一切変更しない。
   // このレイヤーは、ChatGPTへ渡す候補・SHADOW・不足情報を共通関数で一元管理する。
-  const AI_AUDIT_LAYER_VERSION_ = 'v2.20.33';
+  const AI_AUDIT_LAYER_VERSION_ = 'v2.20.34';
 
   function aiAuditSplitBlockers_(text){
     if(text == null || String(text).trim() === '') return [];
@@ -5521,7 +5523,7 @@
       // ChatGPT評価・人間の最終判断（未入力でも空欄で保持）
       ai_review: shallowCloneJson_(getAiReview_(r.key)),
 
-      // v2.20.33 AI監査候補（正式判定とは独立。既存state/plan/official/testを書き換えない）
+      // v2.20.34 AI監査候補（正式判定とは独立。既存state/plan/official/testを書き換えない）
       ...shallowCloneJson_(aiAuditFlags),
 
       // 画面に出ている手入力オッズ・手動結果補正を必ず保存
@@ -7344,13 +7346,135 @@
       || candidates.find(r=>Math.abs(parseCloseMs_(r.race_closed_at)-now-15*60000)<=20*60000)
       || candidates[0];
   }
-  function buildAiEvaluationPayloadV22029_(r){
-    const er=buildExportRace_(r);
+  // ===== v2.20.34 AI監査プロンプト統合 =====
+  // JSON書き出しとChatGPTコピーの両方が、必ず同じ版の監査指示を使用する。
+  // 結果由来フィールドはAI評価用データから除外し、事後情報リークを防ぐ。
+  const AI_AUDIT_PROMPT_VERSION_ = 'kyotei_2t12_independent_audit_v1.0';
+
+  function buildAiAuditPromptV22034_(){
+    return [
+      '【競艇・2連単1-2 独立最終監査】',
+      '',
+      'あなたは、競艇の統計分析・期待値分析・直前情報監査を担当する独立したクオンツアナリストです。',
+      'アプリ判定を追認せず、この1レースについて2連単「1-2」を100円購入する価値があるかを独立判断してください。',
+      '目的は的中数ではなく、長期的な総利益と回収率の最大化です。購入件数のノルマはありません。',
+      '',
+      '【厳守事項】',
+      '1. JSON内に結果、的中、払戻、利益、終了後の分類を示す項目が残っていても、予想や結論には絶対に使用しないでください。',
+      '2. アプリのBUY・NO・WAIT、判定source、AI監査tierは入口情報にすぎません。元データから再判定してください。',
+      '3. 「1号艇が勝つ確率」と「1号艇が勝った条件下で2号艇が2着に残る確率」を分けて評価してください。',
+      '4. 展示、ST、進入、風、波、選手能力、モーター、実オッズが矛盾する場合は直前情報を優先し、不確実性を明記してください。',
+      '5. STが艇番順かコース順かをstartEntries、startCourseByBoat、stTimesByCourseで確認してください。解釈不能なら推測しないでください。',
+      '6. 欠損値を0や安全として扱わず、必要情報が不足する場合はWAITまたはNOにしてください。',
+      '7. 1-2以外の買い目を提案しないでください。',
+      '',
+      '【必須評価】',
+      '・1号艇の1着信頼度：能力、当地、モーター、展示順位、展示差、ST差、進入、水面、飛びの典型形',
+      '・2号艇の2着残存力：展示、ST、3・4号艇および外枠脅威、差し残し、2号艇頭のリスク',
+      '・進入とスタート展示：枠なり、1・2コース維持、前付け、深イン、ST紐づけ',
+      '・オッズ期待値：推定1-2確率、適正オッズ、期待値指数、最低購入オッズ',
+      '',
+      '適正オッズ＝1÷推定1-2確率',
+      '期待値指数＝推定1-2確率×現在オッズ',
+      '期待値指数1.00未満は原則NO、実戦BUYは推定誤差を考慮して原則1.05以上としてください。',
+      '境界的、情報不足、オッズ待ちなら無理にBUYにせずWAITとしてください。',
+      '',
+      '【判定ラベル】',
+      'BUY：現在オッズに対して十分な安全余裕がある',
+      'WAIT：構造は検討可能だが、オッズ・進入・ST・データのいずれかが不足または境界的',
+      'NO：1号艇勝利、2号艇残存、または期待値に明確な問題がある',
+      '',
+      '【出力形式】',
+      '### 最終判定',
+      'BUY / WAIT / NO',
+      '',
+      '### 信頼度',
+      '0〜100',
+      '',
+      '### 推定値',
+      '* 1号艇1着確率：',
+      '* 2号艇が2着に残る条件付き確率：',
+      '* 1-2的中確率：',
+      '* 適正オッズ：',
+      '* 現在オッズ：',
+      '* 期待値指数：',
+      '',
+      '### 判定理由',
+      '重要な理由を3つ以内。',
+      '',
+      '### 主な危険要因',
+      '* 1号艇が飛ぶ要因',
+      '* 2号艇が2着から外れる要因',
+      '* 進入・ST・水面の不確実性',
+      '',
+      '### アプリ判定との比較',
+      '* アプリ判定：',
+      '* AI判定：',
+      '* 一致／不一致：',
+      '* 不一致理由：',
+      '',
+      '### 購入条件',
+      'BUYなら最低購入オッズと中止条件、WAITならBUY・NOへの変更条件、NOなら再評価可能条件を記載。',
+      '',
+      '### データ不足',
+      '不足情報を列挙。不足がなければ「なし」。',
+      '',
+      '最後に必ず1行で再掲してください。',
+      '結論：BUY / WAIT / NO｜信頼度○○｜適正オッズ○○倍｜最低購入オッズ○○倍'
+    ].join('\n');
+  }
+
+  function isAiOutcomeLeakKeyV22034_(key){
+    const k=String(key || '').toLowerCase();
+    const exact=new Set([
+      'result_top1','result_top2','result_top3','resulttop3','result_top3_raw','normalized_result',
+      'result_first','result_second','result_third','is_12_hit','is_finished',
+      'manualresulttop3','manual_result_top3','_manualresulttop3',
+      'one_win','one_win_not_12','one_lost','lane2_head',
+      'lane3_slip','lane4_slip','outer_slip'
+    ]);
+    if(exact.has(k)) return true;
+    if(k.startsWith('_result')) return true;
+    if(k.startsWith('result_')) return true;
+    if(k.endsWith('_result_class') || k.endsWith('_result_label')) return true;
+    if(k.endsWith('_hit') || k.endsWith('_payout') || k.endsWith('_profit') || k.endsWith('_stake')) return true;
+    if(k.endsWith('_is_12_hit') || k.endsWith('_one_lost') || k.endsWith('_one_win_not_12')) return true;
+    if(k.endsWith('_opportunity_miss') || k.endsWith('_avoid_success')) return true;
+    return false;
+  }
+
+  function sanitizeAiEvaluationValueV22034_(value, stats){
+    if(Array.isArray(value)) return value.map(v=>sanitizeAiEvaluationValueV22034_(v, stats));
+    if(value && typeof value === 'object'){
+      const out={};
+      for(const [key,val] of Object.entries(value)){
+        if(isAiOutcomeLeakKeyV22034_(key)){
+          stats.removed += 1;
+          continue;
+        }
+        out[key]=sanitizeAiEvaluationValueV22034_(val, stats);
+      }
+      return out;
+    }
+    return value;
+  }
+
+  function buildAiEvaluationPayloadV22029_(r, options={}){
+    const includePromptText = options.includePromptText !== false;
+    const stats={removed:0};
+    const er=sanitizeAiEvaluationValueV22034_(buildExportRace_(r), stats);
     const close=parseCloseMs_(r.race_closed_at);
+    const promptText=buildAiAuditPromptV22034_();
     return {
-      schema:'kyotei_ai_preevaluation_v1',
+      schema:'kyotei_ai_preevaluation_v2',
       generated_at:new Date().toISOString(),
       selection_mode:'race_card_explicit',
+      prompt_meta:{
+        prompt_version:AI_AUDIT_PROMPT_VERSION_,
+        prompt_embedded:includePromptText,
+        result_fields_removed:true,
+        removed_field_count:stats.removed
+      },
       timing:{
         race_closed_at:r.race_closed_at,
         recommended_before_at:Number.isFinite(close)?new Date(close-15*60000).toISOString():null,
@@ -7358,9 +7482,11 @@
       },
       evaluation_request:{
         fixed_bet:'2連単1-2',
-        instruction:'以下の1レースだけを、保存済みの正式条件と直前情報に基づいて評価してください。結果データが存在しても予想には使用しないでください。',
-        required_outputs:['1号艇の1着信頼度','2号艇の2着残存力','展示進入リスク','選手の当日状態','モーター・ボート状態','アプリが見落としている好材料','アプリが過小評価している危険材料','推定1-2確率','適正オッズ','最終評価'],
-        final_labels:['BUY','オッズ次第','見送り','情報不足']
+        prompt_version:AI_AUDIT_PROMPT_VERSION_,
+        prompt_text:includePromptText ? promptText : undefined,
+        instruction:'上記の版管理された独立監査プロンプトに従い、結果情報を使用せず、この1レースだけを評価してください。',
+        required_outputs:['最終判定','信頼度','1号艇1着確率','2号艇条件付き2着確率','1-2的中確率','適正オッズ','現在オッズ','期待値指数','判定理由','危険要因','購入条件','データ不足'],
+        final_labels:['BUY','WAIT','NO']
       },
       race:er
     };
@@ -7378,36 +7504,29 @@
   }
 
   function buildAiClipboardTextV22029_(r){
-    const payload=buildAiEvaluationPayloadV22029_(r);
+    const prompt=buildAiAuditPromptV22034_();
+    // クリップボードではプロンプトを平文で先頭に置き、JSON内の重複本文だけ省略して軽量化する。
+    const payload=buildAiEvaluationPayloadV22029_(r,{includePromptText:false});
     const er=payload.race || {};
     const ev=er.evaluation || {};
-    const odds=er.odds || er.manual_odds || {};
     const entry=Array.isArray(er.startEntryOrder) ? er.startEntryOrder.join('-') : '未取得';
     return [
-      '【競艇・直前AI評価依頼】',
+      prompt,
+      '',
+      '--- 以下が今回の対象レースです ---',
       `対象: ${r.date} ${r.venue} ${r.race}R`,
       '買い目: 2連単 1-2',
       `締切: ${r.race_closed_at || '-'}`,
       `アプリ判定: ${ev.state || er.state || evaluate(r).state || '-'}`,
       `判定理由: ${ev.message || ev.msg || er.message || evaluate(r).msg || '-'}`,
+      `AI監査tier: ${er.ai_audit_tier || '-'}`,
+      `AI監査READY: ${er.ai_audit_ready ? 'はい' : 'いいえ'}`,
       `2連単1-2オッズ: ${getOddFor(r,'2T','1-2') ?? '未入力'}`,
       `展示進入: ${entry}`,
       `枠なり: ${r.entryIsWakunari == null ? '不明' : (r.entryIsWakunari ? 'はい' : 'いいえ')}`,
       `1-2維持: ${r.entryStable12 == null ? '不明' : (r.entryStable12 ? 'はい' : 'いいえ')}`,
       '',
-      '次の順で必ず評価してください。',
-      '1. 1号艇の1着信頼度',
-      '2. 2号艇の2着残存力',
-      '3. 展示進入リスク',
-      '4. 選手の当日状態',
-      '5. モーター・ボート状態',
-      '6. アプリが見落としている好材料',
-      '7. アプリが過小評価している危険材料',
-      '8. 推定1-2確率',
-      '9. 適正オッズ',
-      '10. 最終評価（BUY / オッズ次第 / 見送り / 情報不足）',
-      '',
-      '以下が対象レースの完全データです。',
+      '以下は結果由来フィールドを除去した予想時点データです。',
       '```json',
       JSON.stringify(payload, null, 2),
       '```'
@@ -7434,6 +7553,10 @@
   async function copyAiEvaluationForRaceV22029_(r){
     if(!r) throw new Error('対象レースが見つかりません');
     await copyTextSafeV22029_(buildAiClipboardTextV22029_(r));
+  }
+
+  async function copyAiAuditPromptOnlyV22034_(){
+    await copyTextSafeV22029_(buildAiAuditPromptV22034_());
   }
 
   function exportAiEvaluationV22028_(){
@@ -7520,6 +7643,19 @@
   $("analysisFullFetchBtn").addEventListener("click", fullAnalysisFetch_);
   $("exportBtn").addEventListener("click", exportSnapshot_);
   $("exportAiBtn").addEventListener("click", exportAiEvaluationV22028_);
+  $("copyAiPromptBtn").addEventListener("click", async ()=>{
+    const btn=$("copyAiPromptBtn");
+    const original=btn.textContent;
+    try{
+      await copyAiAuditPromptOnlyV22034_();
+      btn.textContent="✅ プロンプトコピー済み";
+    }catch(e){
+      alert(`プロンプトのコピーに失敗しました: ${e?.message || e}`);
+      btn.textContent="⚠ コピー失敗";
+    }finally{
+      setTimeout(()=>{ btn.textContent=original; }, 1600);
+    }
+  });
   $("opsRefreshBtn").addEventListener("click", renderOpsNavigatorV22028_);
   setInterval(renderOpsNavigatorV22028_, 30000);
 
