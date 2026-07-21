@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.20.32（当日日付固定 / 前日データ拒否 / SAFE）</title>
+  <title>競艇 v2.20.33（AI監査候補 / 正式判定不変 / SAFE）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -100,13 +100,24 @@
     .badge.b-buy { background:rgba(34,197,94,.14); border-color:rgba(34,197,94,.55); color:#bbf7d0; }
     .badge.b-wait { background:rgba(245,158,11,.13); border-color:rgba(245,158,11,.55); color:#fde68a; }
     .badge.b-no { background:rgba(239,68,68,.12); border-color:rgba(239,68,68,.45); color:#fecaca; }
+
+    .race-ai-priority { border-color:#a855f7; box-shadow:0 0 0 1px rgba(168,85,247,.48), 0 10px 26px rgba(168,85,247,.14); background:linear-gradient(135deg, rgba(168,85,247,.15), rgba(17,26,38,1) 58%); }
+    .race-ai-priority::before { content:"AI優先監査候補（BUYではありません）"; display:inline-block; margin-bottom:8px; padding:4px 10px; border-radius:999px; color:#f3e8ff; border:1px solid rgba(168,85,247,.58); background:rgba(168,85,247,.12); font-size:12px; font-weight:900; }
+    .race-ai-standard { border-color:#7c3aed; box-shadow:0 0 0 1px rgba(124,58,237,.38); background:linear-gradient(135deg, rgba(99,102,241,.12), rgba(17,26,38,1) 60%); }
+    .race-ai-standard::before { content:"AI通常監査候補（BUYではありません）"; display:inline-block; margin-bottom:8px; padding:4px 10px; border-radius:999px; color:#ddd6fe; border:1px solid rgba(124,58,237,.48); background:rgba(99,102,241,.10); font-size:12px; font-weight:900; }
+    .race-ai-shadow { border-color:#64748b; box-shadow:0 0 0 1px rgba(100,116,139,.28); background:linear-gradient(135deg, rgba(100,116,139,.10), rgba(17,26,38,1) 62%); }
+    .race-ai-shadow::before { content:"AI SHADOW（研究ログ）"; display:inline-block; margin-bottom:8px; padding:4px 10px; border-radius:999px; color:#cbd5e1; border:1px solid rgba(100,116,139,.45); background:rgba(100,116,139,.10); font-size:12px; font-weight:900; }
+    .race-ai-info-wait { border-color:#eab308; box-shadow:0 0 0 1px rgba(234,179,8,.35); background:linear-gradient(135deg, rgba(234,179,8,.10), rgba(17,26,38,1) 62%); }
+    .aiAuditLine { margin-top:7px; padding:8px 10px; border-radius:10px; border:1px solid #3b2a58; background:rgba(76,29,149,.10); color:#ddd6fe; }
+    .aiAuditLine.shadow { border-color:#334155; background:rgba(71,85,105,.10); color:#cbd5e1; }
   </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.20.32（当日日付固定 / 前日データ拒否 / SAFE）</h1>
+  <h1>競艇 v2.20.33（AI監査候補 / 正式判定不変 / SAFE）</h1>
   <div class="sub">
-    ✅ <b>v2.20.32</b>では、JST当日を明示して取得し、前日データを当日データとして採用しない安全ガードを追加しました。予想条件・監査記録・結果補完・オッズ入力・JSON保存の構造は変更していません。<br/>
+    ✅ <b>v2.20.33</b>では、正式BUY・NO・WAIT・TESTを一切変更せず、独立した「AI監査候補」レイヤーを追加しました。<br/>
+    紫＝優先監査、青紫＝通常監査、灰＝SHADOW、黄＝情報待ち。AI監査候補はBUYではなく、自動購入も行いません。v2.20.32の日付安全ガードも維持しています。<br/>
   </div>
 
   <div class="card settingsCard">
@@ -118,11 +129,15 @@
         <div class="settingTile"><b>検証会場</b><span class="muted small">徳山 / 若松 / 大村 / 唐津 / 常滑 / 宮島など。収支ログのみ。</span></div>
         <div class="settingTile"><b>旧研究ログ</b><span class="muted small">v2.15〜v2.19のscore/SIMは分析用として残すが、正式BUYには混ぜない。</span></div>
       </div>
+      <div class="settingTile" style="margin-top:10px;border-color:#5b21b6;"><b>AI監査候補（独立レイヤー）</b><span class="muted small">正式判定に近いNO、オッズ帯だけで落ちたNO、既存TEST近傍をChatGPT提出対象として記録。正式BUY・NO・WAIT・TESTの値は変更しません。</span></div>
       <div class="statusLegend">
         <span class="legendChip"><span class="dot dotBuy"></span>緑：正式BUY</span>
         <span class="legendChip"><span class="dot dotWait"></span>黄：正式候補・オッズ入力待ち</span>
         <span class="legendChip"><span class="dot dotResearch"></span>青：検証候補</span>
         <span class="legendChip"><span class="dot dotNo"></span>赤：候補だがオッズ帯NG/NO</span>
+        <span class="legendChip"><span class="dot" style="background:#a855f7;box-shadow:0 0 10px rgba(168,85,247,.7)"></span>紫：AI優先監査</span>
+        <span class="legendChip"><span class="dot" style="background:#6366f1;box-shadow:0 0 10px rgba(99,102,241,.65)"></span>青紫：AI通常監査</span>
+        <span class="legendChip"><span class="dot" style="background:#64748b"></span>灰：AI SHADOW</span>
       </div>
     </div>
 
@@ -565,7 +580,10 @@
       <div>
         <label>表示</label>
         <select id="viewMode">
-          <option value="candidates">候補のみ（BUY/NO/WAIT・検証オッズ待ち）</option>
+          <option value="candidates">既存候補のみ（BUY/NO/WAIT・検証オッズ待ち）</option>
+          <option value="ai_audit">AI監査候補のみ（優先＋通常）</option>
+          <option value="ai_priority">AI優先監査のみ</option>
+          <option value="ai_shadow">AI SHADOWのみ（研究）</option>
           <option value="all" selected>全件表示（理由確認用）</option>
         </select>
       </div>
@@ -1875,7 +1893,8 @@
       // v2.20.25: 下関OPT/福岡PAIR_BAL等の主要TESTは、旧入口条件だけで落とさず事前候補として先回り取得対象に含める。
       // 予想条件本体・結果/能力値取得・before取得関数は変更しない。
       const pre = v22020PreCandidateInfo_(r);
-      if(!passFilter1Entry_(r).ok && !pre.candidate) return false;
+      const aiPre = buildAiAuditPreCandidate_(r);
+      if(!passFilter1Entry_(r).ok && !pre.candidate && !aiPre.ai_audit_pre_candidate) return false;
     }
     return (!r.exhReady) || (!envReady_(r)) || (!stReady13_(r));
   }
@@ -4761,6 +4780,242 @@
     return { ok: reasons.length===0, reasons };
   }
 
+
+  // ===== v2.20.33 AI監査候補（正式判定とは完全独立） =====
+  // 正式BUY/NO/WAIT/TEST/Research/Expansionは一切変更しない。
+  // このレイヤーは、ChatGPTへ渡す候補・SHADOW・不足情報を共通関数で一元管理する。
+  const AI_AUDIT_LAYER_VERSION_ = 'v2.20.33';
+
+  function aiAuditSplitBlockers_(text){
+    if(text == null || String(text).trim() === '') return [];
+    return String(text).split(/\s+\/\s+/).map(s=>s.trim()).filter(Boolean);
+  }
+
+  function aiAuditUnique_(arr){ return Array.from(new Set((arr || []).filter(Boolean))); }
+
+  function aiAuditBlockerWeight_(text){
+    const s = String(text || '');
+    let m = s.match(/d2>([0-9.]+)\(([0-9.]+)\)/i);
+    if(m){ const d = Number(m[2]) - Number(m[1]); return d <= 0.02 + EPS ? 1 : d <= 0.05 + EPS ? 2 : 3; }
+    m = s.match(/score<([0-9.]+)\(([0-9.]+)\)/i);
+    if(m){ const d = Number(m[1]) - Number(m[2]); return d <= 10 ? 1 : d <= 20 ? 2 : 3; }
+    m = s.match(/展示(?:>|1位ではない\()([0-9.-]+)/);
+    if(m){ const d = Math.max(1, Number(m[1]) - 1); return d <= 1 ? 1 : d <= 2 ? 2 : 3; }
+    if(/全国2連率不足|当地2連率不足|モーター2連率不足/.test(s)) return 1;
+    if(/ST出負け|ST全体安全不足|3-4脅威|3\/4脅威|外枠脅威|水面荒れ|雨表記|進入変更/.test(s)) return 1;
+    if(/欠損|待ち|未入力/.test(s)) return 0;
+    return 1;
+  }
+
+  function aiAuditEntryIntegrity_(r){
+    const hard=[];
+    const order = Array.isArray(r?.startEntryOrder) ? r.startEntryOrder.map(Number).filter(Number.isFinite) : [];
+    if(order.length && (order.length !== 6 || new Set(order).size !== order.length)) hard.push('進入データ矛盾');
+    if(['error','invalid','conflict'].includes(String(r?.entryParseStatus || '').toLowerCase())) hard.push('進入解析エラー');
+    return hard;
+  }
+
+  function buildAiAuditPreCandidate_(r){
+    const hard=[];
+    if(!r || !r.key || !r.date || !Number.isFinite(Number(r.stadium)) || !Number.isFinite(Number(r.race))) hard.push('レース特定不能');
+    hard.push(...aiAuditEntryIntegrity_(r));
+    const closeMs = parseCloseMs_(r?.race_closed_at);
+    if(Number.isFinite(closeMs) && Date.now() < closeMs && r?.result_top3) hard.push('未来レース結果混入');
+
+    const target = isV220TargetVenueForF1_(r?.stadium);
+    const f1 = passFilter1Entry_(r);
+    const nat = Number(r?.nat2), loc = Number(r?.loc2), motor = Number(r?.motor2);
+    const natReady = Number.isFinite(nat) && nat > 0;
+    const motorReady = Number.isFinite(motor) && motor > 0;
+    const locReady = Number.isFinite(loc) && loc > 0;
+    let abilityMiss = 0;
+    if(!natReady || nat < 42) abilityMiss++;
+    if(!motorReady || motor < 40) abilityMiss++;
+    if(locReady && loc < 42) abilityMiss++;
+    const mildAbility = target && abilityMiss <= 1 && natReady && nat >= 38 && motorReady && motor >= 36 && (!locReady || loc >= 35);
+    // 既存v2.20.25の主要TEST事前取得は別経路で維持する。
+    // AI監査独自入口では全メイン会場全レースを重複候補化せず、能力入口OKまたは軽微な一条件不足だけに絞る。
+    const candidate = hard.length === 0 && target && (f1.ok || mildAbility);
+    const reasons=[];
+    if(f1.ok) reasons.push('既存能力入口通過');
+    if(mildAbility && !f1.ok) reasons.push('能力入口の軽微な一条件不足');
+    const missing=[];
+    if(!natReady) missing.push('全国2連率');
+    if(!motorReady) missing.push('モーター2連率');
+    // loc2=0は既存仕様どおり欠損扱いだが、事前候補を即除外しない。
+    return {
+      ai_audit_pre_candidate:candidate,
+      ai_audit_pre_reason:reasons.join(' / ') || null,
+      ai_audit_pre_missing:missing.join(' / ') || null,
+      ai_audit_pre_hard_blockers:hard.join(' / ') || null,
+      ai_audit_pre_entry_blockers:f1.ok ? null : (f1.reasons.join(' / ') || null)
+    };
+  }
+
+  function aiAuditNearestRule_(r, v){
+    const candidates=[];
+    const add=(name, short, source, blockerText)=>{
+      if(!name || /対象外/.test(String(name))) return;
+      const all = aiAuditSplitBlockers_(blockerText);
+      const structure = all.filter(x=>!/オッズ|未入力|待ち|結果取得済み/.test(x));
+      candidates.push({ name, short:short || name, source, blockers:structure, count:structure.length, distance:structure.reduce((a,x)=>a+aiAuditBlockerWeight_(x),0) });
+    };
+    add(v?.v220_rule_name, v?.v220_rule_short, 'V220', v?.v220_structure_blockers);
+    add(v?.v22010_test_rule_name, v?.v22010_test_rule_short, 'TEST', v?.v22010_test_structure_blockers);
+    add(v?.v22014_extra_rule_name, v?.v22014_extra_rule_short, 'EXTRA', v?.v22014_extra_blockers);
+    add(v?.v22026_expansion_rule_name, v?.v22026_expansion_rule_short, 'EXPANSION', v?.v22026_expansion_blockers);
+    candidates.sort((a,b)=>(a.distance-b.distance)||(a.count-b.count)||String(a.name).localeCompare(String(b.name),'ja'));
+    return candidates[0] || { name:null, short:null, source:'NONE', blockers:[], count:99, distance:99 };
+  }
+
+  function aiAuditAppDecisionSource_(ev, v){
+    if(v?.v22026_promoted_official_buy) return v.v22026_promoted_official_source || 'PROMOTED';
+    if(v?.v220_official_buy) return 'CORE_OFFICIAL';
+    if(v?.v22026_expansion_active) return 'EXPANSION';
+    if(v?.v22010_test_active) return 'PROMOTED_TEST';
+    if(v?.v220_research_active) return 'PROMOTED_RESEARCH';
+    if(v?.v22014_extra_active) return 'EXTRA_ACTIVE';
+    if(ev?.state === 'WAIT') return 'APP_WAIT';
+    if(ev?.state === 'NO') return 'APP_NO';
+    return ev?.state === 'BUY' ? 'APP_BUY' : 'APP_OUT';
+  }
+
+  function aiAuditPriorityScore_(r, nearest, band){
+    const one = oneWinScoreV216_(r);
+    const l2 = lane2SurvivalScoreV215_(r);
+    const rank1 = exhibitionRank(r?.exh);
+    const rank2 = laneExhRank_(r?.exh,2);
+    const d2 = deltaLane(r?.exh,2);
+    let score = 50 + (isV220TargetVenueForF1_(r?.stadium) ? 10 : 0);
+    if(Number.isFinite(one?.score)) score += Math.max(-15,Math.min(15,(one.score-70)*0.5));
+    if(Number.isFinite(l2?.score)) score += Math.max(-15,Math.min(15,(l2.score-65)*0.5));
+    if(Number.isFinite(rank1)) score += rank1===1 ? 6 : rank1===2 ? 3 : -3*(rank1-2);
+    if(Number.isFinite(rank2)) score += rank2<=2 ? 5 : rank2===3 ? 2 : -3*(rank2-3);
+    if(Number.isFinite(d2)) score += d2<=0.05+EPS ? 5 : d2<=0.08+EPS ? 2 : d2>0.12+EPS ? -5 : 0;
+    score -= 8 * [l2?.lane3Threat,l2?.lane4Threat,l2?.outerThreat].filter(Boolean).length;
+    if(st1Outmuscled_(r, num('stOutmuscle') ?? 0.05) === true) score -= 12;
+    if(!calmWater4_(r)) score -= 6;
+    score -= Math.min(25,5*Number(nearest?.distance || 0));
+    if(band?.band === 'ODDS_DANGER') score -= 8;
+    return Math.max(0,Math.min(100,Math.round(score*10)/10));
+  }
+
+  function buildAiAuditCandidate_(r, ev=null, flags=null){
+    const e = ev || evaluate(r);
+    const v = flags || buildV217VenueRuleFlags_(r);
+    const pre = buildAiAuditPreCandidate_(r);
+    const hard = aiAuditSplitBlockers_(pre.ai_audit_pre_hard_blockers);
+    const nearest = aiAuditNearestRule_(r,v);
+    const odd = getOddFor(r,'2T','1-2');
+    const band = oddsBandV219_(odd);
+    const one = oneWinScoreV216_(r);
+    const l2 = lane2SurvivalScoreV215_(r);
+    const rank1 = exhibitionRank(r?.exh);
+    const rank2 = laneExhRank_(r?.exh,2);
+    const d2 = deltaLane(r?.exh,2);
+    const missing=[];
+    if(!exhReady(r?.exh)) missing.push('展示');
+    if(!stReady13_(r)) missing.push('ST');
+    if(!envReady_(r)) missing.push('環境');
+    const entryReady = Array.isArray(r?.startEntryOrder) && r.startEntryOrder.length===6 && String(r?.entryParseStatus || '')==='complete';
+    if(!entryReady) missing.push('進入');
+    if(!Number.isFinite(odd) || odd<=0) missing.push('オッズ');
+    const beforeCoreReady = exhReady(r?.exh) && stReady13_(r) && envReady_(r);
+    const target = isV220TargetVenueForF1_(r?.stadium);
+    const existing = !!(v?.v22026_promoted_official_buy || v?.v220_official_buy || v?.v22026_expansion_active || v?.v22010_test_active || v?.v220_research_active || v?.v22014_extra_active || e?.state==='WAIT');
+    const pairSane = Number.isFinite(one?.score) && one.score>=55 && Number.isFinite(l2?.score) && l2.score>=50 && Number.isFinite(rank1) && rank1<=3 && Number.isFinite(rank2) && rank2<=4 && Number.isFinite(d2) && d2<=0.12+EPS;
+    const score = aiAuditPriorityScore_(r,nearest,band);
+    const entryRisk = r?.entryStable12 === false || r?.entryChanged === true;
+    const danger = band.band === 'ODDS_DANGER';
+
+    let tier='EXCLUDE';
+    let source=aiAuditAppDecisionSource_(e,v);
+    const reasons=[];
+    const appNo = e?.state === 'NO';
+    const nearEntryOut = e?.state === '条件外' && pre.ai_audit_pre_candidate && pairSane && score>=75 && nearest.count<=1 && nearest.distance<=3;
+    if(hard.length===0){
+      if(existing){
+        tier='PRIORITY'; reasons.push('既存BUY/WAIT/Activeを独立監査');
+      }else if(beforeCoreReady && target && appNo && !danger && !entryRisk && pairSane && nearest.count<=1 && nearest.distance<=2){
+        tier='PRIORITY'; source=`${nearest.source}_NEAR`; reasons.push('アプリNO・強い1-2構造・ソフト阻害1件以内');
+      }else if(beforeCoreReady && target && appNo && !danger && pairSane && nearest.count<=2 && nearest.distance<=3){
+        tier='STANDARD'; source=`${nearest.source}_NEAR`; reasons.push('アプリNO・既存条件近傍かつ1号艇/2号艇スコアが監査可能');
+      }else if(beforeCoreReady && target && !danger && nearEntryOut){
+        tier='STANDARD'; source='PRE_NEAR_STANDARD'; reasons.push('事前入口の軽微な一条件不足かつ直前構造が強い');
+      }else if(beforeCoreReady && ((target && appNo && (nearest.distance<=6 || score>=52 || danger)) || (target && e?.state==='条件外' && pairSane && score>=75 && nearest.distance<=6) || (!target && pairSane && score>=85))){
+        tier='SHADOW'; source=target ? `${nearest.source}_SHADOW` : 'OUTSIDE_VENUE_SHADOW'; reasons.push(danger ? 'DANGER帯のため実戦監査ではなくSHADOW' : '複数阻害または正式入口外のため研究ログ向け');
+      }else if(pre.ai_audit_pre_candidate && !beforeCoreReady){
+        tier='STANDARD'; source='PRE_INFO_WAIT'; reasons.push('事前候補・直前情報待ち');
+      }
+    }
+    if(entryRisk && tier==='PRIORITY' && !existing) tier='STANDARD';
+    if(entryRisk && (tier==='STANDARD' || existing)) reasons.push('進入変化または1-2維持不確実');
+    if(danger && !existing && tier!=='EXCLUDE') tier='SHADOW';
+
+    const candidate = beforeCoreReady && (tier==='PRIORITY' || tier==='STANDARD');
+    const shadow = beforeCoreReady && tier==='SHADOW';
+    const ready = candidate && missing.length===0;
+    if((candidate || shadow || pre.ai_audit_pre_candidate) && !r._aiAuditCreatedAt) r._aiAuditCreatedAt = new Date().toISOString();
+    const review = getAiReview_(r.key);
+    return {
+      ai_audit_layer_version:AI_AUDIT_LAYER_VERSION_,
+      app_decision:e?.state || null,
+      app_decision_source:aiAuditAppDecisionSource_(e,v),
+      official_buy:!!v?.v220_official_buy,
+      test_active:!!v?.v22010_test_active,
+      research_active:!!v?.v220_research_active,
+      expansion_active:!!v?.v22026_expansion_active,
+      extra_active:!!v?.v22014_extra_active,
+      ai_audit_pre_candidate:!!pre.ai_audit_pre_candidate,
+      ai_audit_pre_reason:pre.ai_audit_pre_reason,
+      ai_audit_pre_missing:pre.ai_audit_pre_missing,
+      ai_audit_candidate:candidate,
+      ai_audit_shadow_candidate:shadow,
+      ai_audit_tier:tier,
+      ai_audit_ready:ready,
+      ai_audit_source:source,
+      ai_audit_nearest_rule:nearest.name,
+      ai_audit_nearest_rule_short:nearest.short,
+      ai_audit_distance:nearest.distance,
+      ai_audit_soft_blocker_count:nearest.count,
+      ai_audit_soft_blockers:nearest.blockers.join(' / ') || null,
+      ai_audit_hard_blockers:hard.join(' / ') || null,
+      ai_audit_hard_exclude:hard.length>0,
+      ai_audit_missing:aiAuditUnique_(missing).join(' / ') || null,
+      ai_audit_reasons:reasons.join(' / ') || null,
+      ai_audit_priority_score:score,
+      ai_audit_created_at:r._aiAuditCreatedAt || null,
+      ai_audit_input_odds:Number.isFinite(odd) ? odd : null,
+      ai_audit_odds_band:band.band,
+      ai_audit_decision:review.chatgptDecision || '',
+      ai_audit_decision_reason:review.chatgptDecision ? (review.reasonCode || review.note || '') : '',
+      ai_audit_decision_confidence:review.chatgptDecision ? (review.confidence || '') : '',
+      ai_audit_decided_at:review.chatgptDecision ? (review.updated_at || '') : ''
+    };
+  }
+
+  function getAiAuditTier_(r, ev=null, flags=null){ return buildAiAuditCandidate_(r,ev,flags).ai_audit_tier; }
+  function getAiAuditDisplayState_(r, ev=null, flags=null){
+    const a=buildAiAuditCandidate_(r,ev,flags);
+    if(a.ai_audit_hard_exclude) return 'EXCLUDE';
+    if(a.ai_audit_candidate && !a.ai_audit_ready) return 'INFO_WAIT';
+    return a.ai_audit_tier;
+  }
+  function getAiAuditReasonText_(r, ev=null, flags=null){
+    const a=buildAiAuditCandidate_(r,ev,flags);
+    return [a.ai_audit_reasons,a.ai_audit_soft_blockers,a.ai_audit_missing].filter(Boolean).join(' / ');
+  }
+
+  function aiAuditUniqueRacesByKey_(races){
+    const seen=new Set();
+    return (races || []).filter(r=>{
+      const key=String(r?.key || '');
+      if(!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
   function evaluate(r){
     const entry = passFilter1Entry_(r);
     if(!entry.ok){
@@ -5236,6 +5491,7 @@
     const autoOdds = getAutoOddBundleForRace_(r);
     const v215Flags = buildV215ResearchFlags_(r);
     const v217Flags = buildV217VenueRuleFlags_(r);
+    const aiAuditFlags = buildAiAuditCandidate_(r, ev, v217Flags);
     const planForExport = ev.plan || plan;
 
     return {
@@ -5264,6 +5520,9 @@
 
       // ChatGPT評価・人間の最終判断（未入力でも空欄で保持）
       ai_review: shallowCloneJson_(getAiReview_(r.key)),
+
+      // v2.20.33 AI監査候補（正式判定とは独立。既存state/plan/official/testを書き換えない）
+      ...shallowCloneJson_(aiAuditFlags),
 
       // 画面に出ている手入力オッズ・手動結果補正を必ず保存
       manualOdds: shallowCloneJson_(manualOdds),
@@ -5313,6 +5572,7 @@
     let v22026Expansion=0, v22026ExpansionActive=0, v22026ExpansionHit=0, v22026ExpansionStake=0, v22026ExpansionPayout=0, v22026ExpansionProfit=0;
     let v22026Promoted=0, v22026PromotedHit=0, v22026PromotedStake=0, v22026PromotedPayout=0, v22026PromotedProfit=0;
     let v22020Pre=0, v22025TestPre=0, v22020QualityNo=0;
+    let aiAuditPre=0, aiAuditPriority=0, aiAuditStandard=0, aiAuditShadow=0, aiAuditReady=0, aiAuditHardExclude=0;
     let v22023AbilityReady=0, v22023RacerIdReady=0;
     let v22023Nat2Ready=0, v22023Loc2Ready=0, v22023Motor2Ready=0;
 
@@ -5393,6 +5653,12 @@
       if(r.v22020_pre_candidate) v22020Pre++;
       if(r.v22025_test_pre_candidate) v22025TestPre++;
       if(r.v22020_test_quality_no) v22020QualityNo++;
+      if(r.ai_audit_pre_candidate) aiAuditPre++;
+      if(r.ai_audit_candidate && r.ai_audit_tier === 'PRIORITY') aiAuditPriority++;
+      if(r.ai_audit_candidate && r.ai_audit_tier === 'STANDARD') aiAuditStandard++;
+      if(r.ai_audit_shadow_candidate) aiAuditShadow++;
+      if(r.ai_audit_ready) aiAuditReady++;
+      if(r.ai_audit_hard_exclude) aiAuditHardExclude++;
       if(r.v22010_test_active) v22010Active++;
       if(r.v22010_test_hit) v22010Hit++;
       if(r.v22026_expansion_structure_candidate) v22026Expansion++;
@@ -5488,6 +5754,12 @@
       v22020_pre_candidates: v22020Pre,
       v22025_test_pre_candidates: v22025TestPre,
       v22020_quality_no: v22020QualityNo,
+      ai_audit_pre_candidates: aiAuditPre,
+      ai_audit_priority: aiAuditPriority,
+      ai_audit_standard: aiAuditStandard,
+      ai_audit_shadow: aiAuditShadow,
+      ai_audit_ready: aiAuditReady,
+      ai_audit_hard_exclude: aiAuditHardExclude,
       v22023_nat2_ready: v22023Nat2Ready,
       v22023_loc2_ready: v22023Loc2Ready,
       v22023_motor2_ready: v22023Motor2Ready,
@@ -5662,8 +5934,17 @@
     const v22010Roi = v22010Stake > 0 ? ((v22010Payout / v22010Stake) * 100).toFixed(1) : '-';
     const v22026ExpansionRoi = v22026ExpansionStake > 0 ? ((v22026ExpansionPayout / v22026ExpansionStake) * 100).toFixed(1) : '-';
     const v22026PromotedRoi = v22026PromotedStake > 0 ? ((v22026PromotedPayout / v22026PromotedStake) * 100).toFixed(1) : '-';
+    let aiAuditPriority=0, aiAuditStandard=0, aiAuditShadow=0, aiAuditReady=0, aiAuditPre=0;
+    for(const r of races){
+      const a=buildAiAuditCandidate_(r);
+      if(a.ai_audit_pre_candidate) aiAuditPre++;
+      if(a.ai_audit_candidate && a.ai_audit_tier==='PRIORITY') aiAuditPriority++;
+      if(a.ai_audit_candidate && a.ai_audit_tier==='STANDARD') aiAuditStandard++;
+      if(a.ai_audit_shadow_candidate) aiAuditShadow++;
+      if(a.ai_audit_ready) aiAuditReady++;
+    }
     $("summary").textContent =
-      `取得${total}R / 条件①通過${f1pass}R / v2.20正式候補${v220MainStruct} / BUY${buy} / NO${no}（risk:${riskNo} odds:${oddsNo}） / WAIT${wait} / 条件外${filtered} / v2.20正式BUY${v220Official}（的中${v220OfficialHit} 収支${v220OfficialProfit}円 ROI${v220OfficialRoi}%） / v2.20検証${v220Research}（構造${v220ResearchStruct} 的中${v220ResearchHit} 収支${v220ResearchProfit}円 ROI${v220ResearchRoi}%） / v2.20.13検証${v22010Active}（構造${v22010Struct} WAIT${v22010Wait} NO${v22010OddsNo} 品質NO${v22020QualityNo} 的中${v22010Hit} 収支${v22010Profit}円 ROI${v22010Roi}%） / v2.20.26EXP${v22026ExpansionActive}（構造${v22026Expansion} 的中${v22026ExpansionHit} 収支${v22026ExpansionProfit}円 ROI${v22026ExpansionRoi}%） / v2.20.26正式昇格${v22026Promoted}（的中${v22026PromotedHit} 収支${v22026PromotedProfit}円 ROI${v22026PromotedRoi}%） / 事前候補${v22020Pre}（TEST事前${v22025TestPre}） / 能力${v22023AbilityReady}/${total}（nat:${v22023Nat2Ready} loc:${v22023Loc2Ready} motor:${v22023Motor2Ready}） / 選手ID${v22023RacerIdReady}/${total} / 旧SIM_RULE${simRule}（的中${simRuleHit}） / LOW${low}（的中${lowHit} 収支${lowProfit}円 ROI${lowRoi}%） / VALUE${value}（的中${valueHit} 収支${valueProfit}円 ROI${valueRoi}%） / HIGH${high}（的中${highHit} 収支${highProfit}円 ROI${highRoi}%） / DANGER${danger}（的中${dangerHit} 収支${dangerProfit}円 ROI${dangerRoi}%） / SIM_STRICT${simStrict}（的中${simStrictHit} 収支${simStrictProfit}円 ROI${strictRoi}% / WAIT${simStrictWait} ODDS_NO${simStrictOddsNo} / 1ズレ${simStrictOneWinNot12} 1飛び${simStrictOneLost}） / WATCH${watch}（的中${watchHit}） / 二段階候補${twoStageCandidate} / 1勝候補${oneWinCandidate} / 1score強${oneScoreStrong} / 1-2的中${hit12} / 1勝ち2ズレ${oneWinNot12}（1-3:${lane3Slip} 1-4:${lane4Slip}） / 2単odds${oddsReady} / before${beforeReady} / result${resReady}`;
+      `取得${total}R / AI監査:事前${aiAuditPre} 優先${aiAuditPriority} 通常${aiAuditStandard} READY${aiAuditReady} SHADOW${aiAuditShadow} / 条件①通過${f1pass}R / v2.20正式候補${v220MainStruct} / BUY${buy} / NO${no}（risk:${riskNo} odds:${oddsNo}） / WAIT${wait} / 条件外${filtered} / v2.20正式BUY${v220Official}（的中${v220OfficialHit} 収支${v220OfficialProfit}円 ROI${v220OfficialRoi}%） / v2.20検証${v220Research}（構造${v220ResearchStruct} 的中${v220ResearchHit} 収支${v220ResearchProfit}円 ROI${v220ResearchRoi}%） / v2.20.13検証${v22010Active}（構造${v22010Struct} WAIT${v22010Wait} NO${v22010OddsNo} 品質NO${v22020QualityNo} 的中${v22010Hit} 収支${v22010Profit}円 ROI${v22010Roi}%） / v2.20.26EXP${v22026ExpansionActive}（構造${v22026Expansion} 的中${v22026ExpansionHit} 収支${v22026ExpansionProfit}円 ROI${v22026ExpansionRoi}%） / v2.20.26正式昇格${v22026Promoted}（的中${v22026PromotedHit} 収支${v22026PromotedProfit}円 ROI${v22026PromotedRoi}%） / 事前候補${v22020Pre}（TEST事前${v22025TestPre}） / 能力${v22023AbilityReady}/${total}（nat:${v22023Nat2Ready} loc:${v22023Loc2Ready} motor:${v22023Motor2Ready}） / 選手ID${v22023RacerIdReady}/${total} / 旧SIM_RULE${simRule}（的中${simRuleHit}） / LOW${low}（的中${lowHit} 収支${lowProfit}円 ROI${lowRoi}%） / VALUE${value}（的中${valueHit} 収支${valueProfit}円 ROI${valueRoi}%） / HIGH${high}（的中${highHit} 収支${highProfit}円 ROI${highRoi}%） / DANGER${danger}（的中${dangerHit} 収支${dangerProfit}円 ROI${dangerRoi}%） / SIM_STRICT${simStrict}（的中${simStrictHit} 収支${simStrictProfit}円 ROI${strictRoi}% / WAIT${simStrictWait} ODDS_NO${simStrictOddsNo} / 1ズレ${simStrictOneWinNot12} 1飛び${simStrictOneLost}） / WATCH${watch}（的中${watchHit}） / 二段階候補${twoStageCandidate} / 1勝候補${oneWinCandidate} / 1score強${oneScoreStrong} / 1-2的中${hit12} / 1勝ち2ズレ${oneWinNot12}（1-3:${lane3Slip} 1-4:${lane4Slip}） / 2単odds${oddsReady} / before${beforeReady} / result${resReady}`;
 
     renderNoDiagnostics_(races);
   }
@@ -5692,6 +5973,10 @@
     "race-research-wait",
     "race-pre-candidate",
     "race-test-pre-candidate",
+    "race-ai-priority",
+    "race-ai-standard",
+    "race-ai-shadow",
+    "race-ai-info-wait",
     "race-main-blocked"
   ];
 
@@ -5708,6 +5993,11 @@
       card.classList.add("race-official-wait");
       return;
     }
+    const aiAudit = buildAiAuditCandidate_(r, ev, v);
+    if(aiAudit.ai_audit_candidate && !aiAudit.ai_audit_ready){ card.classList.add("race-ai-info-wait"); return; }
+    if(aiAudit.ai_audit_tier === "PRIORITY" && aiAudit.ai_audit_candidate){ card.classList.add("race-ai-priority"); return; }
+    if(aiAudit.ai_audit_tier === "STANDARD" && aiAudit.ai_audit_candidate){ card.classList.add("race-ai-standard"); return; }
+    if(aiAudit.ai_audit_tier === "SHADOW" && aiAudit.ai_audit_shadow_candidate){ card.classList.add("race-ai-shadow"); return; }
     if(v.v220_role === "official" && v.v220_structure_candidate && v.v220_odds_blockers){
       card.classList.add("race-official-oddsno");
       return;
@@ -5810,6 +6100,7 @@
 
     const v215Flags = buildV215ResearchFlags_(r);
     const v217Flags = buildV217VenueRuleFlags_(r);
+    const aiAudit = buildAiAuditCandidate_(r, ev, v217Flags);
     applyRaceVisualClass_(card, r, ev, v217Flags);
     const oddsIntent = oddsInputIntent2T12_(r, ev, v217Flags);
     const showSimOdds = oddsIntent.showSimOdds;
@@ -5820,7 +6111,7 @@
     const oddsBlock = showOddsBlock ? `
       <div class="hr"></div>
       <div class="muted small">
-        <b>${showV220Odds ? (v217Flags.v220_role === 'official' ? "v2.20正式候補" : "v2.20検証候補") : (showV22010Odds ? "v2.20.13検証ログ" : (isFinal ? "最終候補" : "旧v2.19 SIM検証候補"))}</b>：2連単 1-2（1点）
+        <b>${oddsIntent.label || '2連単1-2入力対象'}</b>：2連単 1-2（1点）
         <span class="tag mono">会場:${venueSubRankOf(r.stadium)}</span>
         ${isFinal && plan?._strong2t12 ? `<span class="tag mono">強BUY条件</span>` : ``}
         ${showV220Odds ? `<span class="tag mono">${v217Flags.v220_rule_short}</span><span class="tag mono">${v217Flags.v220_group}</span><span class="tag mono">${v217Flags.v220_odds_band}</span>` : ``}
@@ -5856,6 +6147,12 @@
       : ``;
     const v22020PreBadge = v217Flags.v22020_pre_candidate
       ? `<span class="tag mono">${v217Flags.v22025_test_pre_candidate ? 'TEST事前' : '事前候補'}:${v217Flags.v22020_pre_missing || '-'}</span>`
+      : ``;
+    const aiAuditBadge = (aiAudit.ai_audit_candidate || aiAudit.ai_audit_shadow_candidate || aiAudit.ai_audit_pre_candidate)
+      ? `<span class="tag mono">AI:${aiAudit.ai_audit_tier}${aiAudit.ai_audit_ready ? '/READY' : '/情報待ち'}</span><span class="tag mono">距離:${aiAudit.ai_audit_distance}</span>`
+      : ``;
+    const aiAuditLine = (aiAudit.ai_audit_candidate || aiAudit.ai_audit_shadow_candidate || aiAudit.ai_audit_pre_candidate)
+      ? `<div class="aiAuditLine ${aiAudit.ai_audit_tier==='SHADOW'?'shadow':''}"><b>AI監査候補：${aiAudit.ai_audit_tier}</b> / READY=${aiAudit.ai_audit_ready?'Y':'N'} / source=${aiAudit.ai_audit_source || '-'} / 近傍=${aiAudit.ai_audit_nearest_rule_short || '-'} / 距離=${aiAudit.ai_audit_distance} / score=${aiAudit.ai_audit_priority_score}<br><span class="small">外れ項目=${aiAudit.ai_audit_soft_blockers || '-'} / hard=${aiAudit.ai_audit_hard_blockers || '-'} / 不足=${aiAudit.ai_audit_missing || '-'} / 理由=${aiAudit.ai_audit_reasons || '-'}</span></div>`
       : ``;
     const v217Badge = (v217Flags.v218_sim_rule_candidate || v217Flags.v218_watch_candidate)
       ? `<span class="tag mono">v2.19:${v217Flags.v218_sim_rule_candidate ? v217Flags.v217_rule_short : v217Flags.v218_watch_short}</span><span class="tag mono">${v217Flags.v217_sim_state}</span><span class="tag mono">${v217Flags.v219_sim_eval_group}</span>`
@@ -5910,6 +6207,7 @@
           ${v22010Badge}
           ${v22026Badge}
           ${v22020PreBadge}
+          ${aiAuditBadge}
           ${v217Badge}
           <span class="tag mono">rank:${venueSubRankOf(r.stadium)}</span>
           ${isHighRiskVenue_(r.stadium) ? `<span class="tag mono">警戒</span>` : ``}
@@ -5934,6 +6232,7 @@
           ${v22026Line}
           ${v22020PreLine}
           ${v217Line}
+          ${aiAuditLine}
           <div class="resultLine small">
             結果補正: <input data-result-top3 type="text" inputmode="numeric" placeholder="例: 5-1-2" value="${manualTop3 || ""}" style="width:120px; padding:6px; font-size:12px; display:inline-block;">
             <span class="muted small">※結果未取得/誤取得の時だけ入力</span>
@@ -6154,7 +6453,9 @@
     const showV22010Odds = !!(v.v22010_test_candidate || v.v22010_test_active || v.v22010_test_wait_odds || v.v22010_test_odds_no);
     const showV22014ExtraOdds = !!(v.v22014_extra_structure_candidate || v.v22014_extra_active || v.v22014_extra_wait_odds || v.v22014_extra_odds_no);
     const showV22026ExpansionOdds = !!(v.v22026_expansion_structure_candidate || v.v22026_expansion_active || v.v22026_expansion_wait_odds || v.v22026_expansion_odds_no);
-    const showOddsBlock = !!(isFinal || showSimOdds || showV220Odds || showV22010Odds || showV22014ExtraOdds || showV22026ExpansionOdds);
+    const aiAudit = buildAiAuditCandidate_(r, e, v);
+    const showAiAuditOdds = !!(aiAudit.ai_audit_pre_candidate || aiAudit.ai_audit_candidate);
+    const showOddsBlock = !!(isFinal || showSimOdds || showV220Odds || showV22010Odds || showV22014ExtraOdds || showV22026ExpansionOdds || showAiAuditOdds);
 
     let route = '';
     let label = '';
@@ -6170,6 +6471,9 @@
     }else if(showV22010Odds){
       route = 'v22010';
       label = `v2.20.14既存検証ログ：${v.v22010_test_rule_short || '-'}`;
+    }else if(showAiAuditOdds){
+      route = 'ai_audit';
+      label = `AI監査候補：${aiAudit.ai_audit_tier} / ${aiAudit.ai_audit_nearest_rule_short || '-'}`;
     }else if(showSimOdds){
       route = 'sim';
       label = `旧SIM/WATCH検証：${v.v218_sim_rule_candidate ? (v.v217_rule_short || 'SIM_RULE') : (v.v218_watch_short || 'WATCH')}`;
@@ -6189,6 +6493,8 @@
       showV22010Odds,
       showV22014ExtraOdds,
       showV22026ExpansionOdds,
+      showAiAuditOdds,
+      aiAudit,
       route,
       label
     };
@@ -6355,6 +6661,15 @@
     let show = races.slice();
     if(mode==="candidates") {
       show = show.filter(r => shouldShowInCondition1List_(r));
+    }else if(mode==="ai_audit"){
+      show = show.filter(r=>{ const a=buildAiAuditCandidate_(r); return a.ai_audit_candidate || a.ai_audit_pre_candidate; });
+    }else if(mode==="ai_priority"){
+      show = show.filter(r=>{ const a=buildAiAuditCandidate_(r); return a.ai_audit_candidate && a.ai_audit_tier==='PRIORITY'; });
+    }else if(mode==="ai_shadow"){
+      show = show.filter(r=>buildAiAuditCandidate_(r).ai_audit_shadow_candidate);
+    }
+    if(mode==="ai_audit" || mode==="ai_priority" || mode==="ai_shadow"){
+      show = aiAuditUniqueRacesByKey_(show);
     }
 
     show.sort((a,b)=>{
@@ -6992,11 +7307,12 @@
     return `${sign}${h ? h+":" : ""}${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")}`;
   }
   function monitoringCandidatesV22028_(){
-    return LAST_RACES.filter(r=>{
+    const filtered=LAST_RACES.filter(r=>{
       const close=parseCloseMs_(r.race_closed_at);
       if(!Number.isFinite(close) || close < Date.now()-5*60000) return false;
-      return shouldShowInCondition1List_(r) || v22020PreCandidateInfo_(r).candidate;
-    }).sort((a,b)=>parseCloseMs_(a.race_closed_at)-parseCloseMs_(b.race_closed_at));
+      return shouldShowInCondition1List_(r) || v22020PreCandidateInfo_(r).candidate || buildAiAuditPreCandidate_(r).ai_audit_pre_candidate;
+    });
+    return aiAuditUniqueRacesByKey_(filtered).sort((a,b)=>parseCloseMs_(a.race_closed_at)-parseCloseMs_(b.race_closed_at));
   }
   function renderOpsNavigatorV22028_(){
     if(!$('opsUpcomingList')) return;
@@ -7023,7 +7339,10 @@
     const candidates=monitoringCandidatesV22028_();
     if(!candidates.length) return null;
     const now=Date.now();
-    return candidates.find(r=>Math.abs(parseCloseMs_(r.race_closed_at)-now-15*60000)<=20*60000) || candidates[0];
+    return candidates.find(r=>{ const a=buildAiAuditCandidate_(r); return a.ai_audit_ready && a.ai_audit_tier==='PRIORITY'; })
+      || candidates.find(r=>{ const a=buildAiAuditCandidate_(r); return a.ai_audit_ready && a.ai_audit_candidate; })
+      || candidates.find(r=>Math.abs(parseCloseMs_(r.race_closed_at)-now-15*60000)<=20*60000)
+      || candidates[0];
   }
   function buildAiEvaluationPayloadV22029_(r){
     const er=buildExportRace_(r);
