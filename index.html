@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>競艇 v2.20.35（AI監査候補 / 正式判定不変 / SAFE）</title>
+  <title>競艇 v2.20.36（AI監査Web選手情報 / 正式判定不変 / SAFE）</title>
   <style>
     body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; margin:0; background:#0b0f14; color:#e9eef5; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
@@ -78,7 +78,7 @@
     .opsRace { border:1px solid #223248; border-radius:12px; padding:10px; margin-top:8px; background:#0d141d; }
     .opsUrgent { border-color:#f59e0b; box-shadow:0 0 0 1px rgba(245,158,11,.25); }
     .aiFields { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:10px; }
-    .aiFields input,.aiFields select { padding:7px; font-size:12px; }
+    .aiFields input,.aiFields select,.aiFields textarea { width:100%; padding:7px; border-radius:10px; border:1px solid #223248; background:#0d141d; color:#e9eef5; font-size:12px; box-sizing:border-box; }
     @media (max-width:760px){ .opsGrid,.aiFields { grid-template-columns:1fr; } }
     @media (max-width:760px){ .settingTiles { grid-template-columns:1fr; } }
 
@@ -114,11 +114,12 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>競艇 v2.20.35（AI監査候補 / 正式判定不変 / SAFE）</h1>
+  <h1>競艇 v2.20.36（AI監査Web選手情報 / 正式判定不変 / SAFE）</h1>
   <div class="sub">
-    ✅ <b>v2.20.35</b>では、正式BUY・NO・WAIT・TESTを一切変更せず、独立した「AI監査候補」レイヤーを維持しています。<br/>
-    📋 AI評価用JSONと「ChatGPTへコピー」に共通監査プロンプトを自動付与し、ChatGPT回答の先頭へ会場・R・race_keyを表示します。結果由来フィールドはAI提出データから除外します。<br/>
-    🧾 監査時オッズは後入力オッズから分離し、1号艇勝率・条件付き2号艇2着率・最終行動を分析用に保存します。<br/>
+    ✅ <b>v2.20.36</b>では、正式BUY・NO・WAIT・TESTを一切変更せず、独立した「AI監査候補」レイヤーを維持しています。<br/>
+    🌐 AI監査プロンプトv1.2は、元JSONだけの暫定評価後にBOAT RACE公式Webから当日・今節成績を確認し、Web反映前後の判定差を記録します。<br/>
+    📋 AI評価用JSONと「ChatGPTへコピー」に同じ監査プロンプトを自動付与します。結果由来フィールドはAI提出データから除外し、自動オッズ取得は停止したままです。<br/>
+    🧾 監査時オッズは後入力オッズから分離し、1号艇勝率・条件付き2号艇2着率・Web調整・最終行動を分析用に保存します。<br/>
     紫＝優先監査、青紫＝通常監査、灰＝SHADOW、黄＝情報待ち。AI監査候補はBUYではなく、自動購入も行いません。v2.20.32の日付安全ガードも維持しています。<br/>
   </div>
 
@@ -885,7 +886,7 @@
   }
 
 
-  // v2.20.35: ChatGPT監査を後からsource別・理由別に検証できる形でローカル保存。
+  // v2.20.36: ChatGPT監査を後からsource別・理由別・公式Web反映前後で検証できる形でローカル保存。
   // 人間最終判断と購入有無は finalAction に一本化。監査時オッズは現在の後入力オッズから分離する。
   const AI_REVIEW_KEY = "kyotei_ai_review_v2";
   const AI_REVIEW_LEGACY_KEY_ = "kyotei_ai_review_v1";
@@ -903,6 +904,15 @@
     p1WinProbability:"",
     p2SecondGiven1WinProbability:"",
     estimatedProbability:"",
+    webPlayerInfoStatus:"",
+    webRetrievedAt:"",
+    webSourceUrls:"",
+    baselineProbability12:"",
+    webAdjustedProbability12:"",
+    baselineDecision:"",
+    finalDecision:"",
+    decisionChanged:false,
+    webAdjustmentReason:"",
     fairOdds:"",
     evIndex:"",
     minimumBuyOdds:"",
@@ -922,7 +932,9 @@
       "見送り":"NO",
       "購入":"BUY"
     };
-    const normalizedDecision = decisionMap[src.chatgptDecision] || String(src.chatgptDecision || "").trim();
+    const rawFinalDecision = src.chatgptDecision || src.finalDecision || "";
+    const normalizedDecision = decisionMap[rawFinalDecision] || String(rawFinalDecision).trim();
+    const baselineDecision = decisionMap[src.baselineDecision] || String(src.baselineDecision || "").trim();
     let finalAction = String(src.finalAction || "").trim();
     if(!finalAction){
       if(src.purchased === "yes" || src.humanDecision === "購入") finalAction = "PURCHASED";
@@ -933,12 +945,27 @@
       ...AI_REVIEW_DEFAULT_,
       ...src,
       chatgptDecision: normalizedDecision,
+      baselineDecision,
+      finalDecision: normalizedDecision,
       finalAction
     };
+    if((out.estimatedProbability == null || String(out.estimatedProbability).trim() === "") && String(out.webAdjustedProbability12 || "").trim()){
+      out.estimatedProbability = out.webAdjustedProbability12;
+    }
+    if((out.webAdjustedProbability12 == null || String(out.webAdjustedProbability12).trim() === "") && String(out.estimatedProbability || "").trim()){
+      out.webAdjustedProbability12 = out.estimatedProbability;
+    }
+    out.decisionChanged = !!(baselineDecision && normalizedDecision && baselineDecision !== normalizedDecision);
+    out.webPlayerInfoStatus = String(out.webPlayerInfoStatus || "").trim().toUpperCase();
+    out.webRetrievedAt = String(out.webRetrievedAt || "").trim();
+    out.webSourceUrls = Array.isArray(out.webSourceUrls)
+      ? out.webSourceUrls.map(x=>String(x || "").trim()).filter(Boolean).join("\n")
+      : String(out.webSourceUrls || "").trim();
+    out.webAdjustmentReason = String(out.webAdjustmentReason || "").trim();
     // 旧監査は事前/事後を推測せず、未分類の旧記録として明示する。
     if(normalizedDecision && !String(out.auditMode || "").trim()) out.auditMode = "UNKNOWN_LEGACY";
     if(normalizedDecision && !String(out.reasonCode || "").trim()) out.reasonCode = "LEGACY_UNCLASSIFIED";
-    for(const key of ["auditInputOdds","confidence","p1WinProbability","p2SecondGiven1WinProbability","estimatedProbability","fairOdds","evIndex","minimumBuyOdds","purchaseOdds"]){
+    for(const key of ["auditInputOdds","confidence","p1WinProbability","p2SecondGiven1WinProbability","estimatedProbability","baselineProbability12","webAdjustedProbability12","fairOdds","evIndex","minimumBuyOdds","purchaseOdds"]){
       if(out[key] == null || String(out[key]).trim() === "") out[key] = "";
     }
     out.auditRequestCount = Number.isFinite(Number(out.auditRequestCount)) ? Number(out.auditRequestCount) : 0;
@@ -4896,10 +4923,10 @@
   }
 
 
-  // ===== v2.20.35 AI監査候補（正式判定とは完全独立） =====
+  // ===== v2.20.36 AI監査候補（正式判定とは完全独立） =====
   // 正式BUY/NO/WAIT/TEST/Research/Expansionは一切変更しない。
   // このレイヤーは、ChatGPTへ渡す候補・SHADOW・不足情報を共通関数で一元管理する。
-  const AI_AUDIT_LAYER_VERSION_ = 'v2.20.35';
+  const AI_AUDIT_LAYER_VERSION_ = 'v2.20.36';
 
   function aiAuditSplitBlockers_(text){
     if(text == null || String(text).trim() === '') return [];
@@ -5115,6 +5142,15 @@
       ai_probability_p1_win:review.p1WinProbability || '',
       ai_probability_p2_second_given_p1_win:review.p2SecondGiven1WinProbability || '',
       ai_probability_12:review.estimatedProbability || '',
+      web_player_info_status:review.webPlayerInfoStatus || '',
+      web_retrieved_at:review.webRetrievedAt || null,
+      web_source_urls:review.webSourceUrls || '',
+      baseline_probability_12:review.baselineProbability12 || '',
+      web_adjusted_probability_12:review.webAdjustedProbability12 || review.estimatedProbability || '',
+      baseline_decision:review.baselineDecision || '',
+      final_decision:review.finalDecision || review.chatgptDecision || '',
+      decision_changed:!!review.decisionChanged,
+      web_adjustment_reason:review.webAdjustmentReason || '',
       ai_fair_odds:review.fairOdds || '',
       ai_ev_index:review.evIndex || '',
       ai_minimum_buy_odds:review.minimumBuyOdds || '',
@@ -5651,7 +5687,7 @@
       // ChatGPT評価・人間の最終判断（未入力でも空欄で保持）
       ai_review: shallowCloneJson_(getAiReview_(r.key)),
 
-      // v2.20.35 AI監査候補（正式判定とは独立。既存state/plan/official/testを書き換えない）
+      // v2.20.36 AI監査候補（正式判定とは独立。既存state/plan/official/testを書き換えない）
       ...shallowCloneJson_(aiAuditFlags),
 
       // 画面に出ている手入力オッズ・手動結果補正を必ず保存
@@ -6433,8 +6469,25 @@
             <option value="UNKNOWN_LEGACY">旧記録・時点不明</option>
           </select>
           <input data-audit-performed-at data-ai-review-field type="datetime-local" title="ChatGPTへ監査データを送った時刻" placeholder="監査実施時刻">
+          <select data-web-player-info-status data-ai-review-field>
+            <option value="">公式Web取得状態</option>
+            <option value="SUCCEEDED">SUCCEEDED：全6艇を確認</option>
+            <option value="PARTIAL">PARTIAL：一部のみ確認</option>
+            <option value="FAILED">FAILED：取得失敗</option>
+            <option value="BLOCKED_RESULT_RISK">BLOCKED：結果混入リスク</option>
+            <option value="NOT_REQUESTED">NOT_REQUESTED：未取得</option>
+          </select>
+          <input data-web-retrieved-at data-ai-review-field type="datetime-local" title="BOAT RACE公式Webを確認した時刻" placeholder="公式Web取得時刻">
+          <select data-baseline-decision data-ai-review-field>
+            <option value="">Web取得前の暫定判定</option>
+            <option value="BUY">BUY</option>
+            <option value="WAIT">WAIT</option>
+            <option value="NO">NO</option>
+            <option value="EXCLUDE">EXCLUDE</option>
+          </select>
+          <input data-baseline-prob-12 data-ai-review-field type="number" min="0" max="100" step="0.1" placeholder="Web取得前1-2確率%">
           <select data-ai-decision data-ai-review-field>
-            <option value="">ChatGPT判定</option>
+            <option value="">ChatGPT最終判定</option>
             <option value="BUY">BUY</option>
             <option value="WAIT">WAIT</option>
             <option value="NO">NO</option>
@@ -6460,7 +6513,7 @@
           <input data-ai-confidence data-ai-review-field type="number" min="0" max="100" step="1" placeholder="信頼度%">
           <input data-ai-p1-prob data-ai-review-field type="number" min="0" max="100" step="0.1" placeholder="1号艇1着確率%">
           <input data-ai-p2-cond-prob data-ai-review-field type="number" min="0" max="100" step="0.1" placeholder="条件付き2号艇2着率%">
-          <input data-ai-prob data-ai-review-field type="number" min="0" max="100" step="0.1" placeholder="1-2的中確率%">
+          <input data-ai-prob data-ai-review-field type="number" min="0" max="100" step="0.1" placeholder="Web反映後1-2確率%">
           <input data-ai-fair-odds type="number" min="1" step="0.01" placeholder="適正オッズ" readonly title="1÷推定1-2確率で自動計算">
           <input data-ai-audit-odds data-ai-review-field type="number" min="1" step="0.1" placeholder="ChatGPT監査時オッズ">
           <input data-ai-ev-index type="number" min="0" step="0.001" placeholder="期待値指数" readonly title="推定1-2確率×監査時オッズで自動計算">
@@ -6472,11 +6525,14 @@
             <option value="UNDECIDED">未判断</option>
           </select>
           <input data-purchase-odds data-ai-review-field type="number" min="1" step="0.1" placeholder="実購入オッズ（購入時のみ）">
+          <textarea data-web-source-urls data-ai-review-field rows="2" placeholder="確認したBOAT RACE公式URL（1行1件）" style="grid-column:1/-1;"></textarea>
+          <input data-web-adjustment-reason data-ai-review-field type="text" placeholder="Web情報で判定・確率を調整した理由（変更なしも記録）" style="grid-column:1/-1;">
           <input data-ai-note data-ai-review-field type="text" placeholder="AI判断メモ・補足理由" style="grid-column:1/-1;">
         </div>
         <div data-ai-prob-check class="muted small" style="margin-top:6px;"></div>
         <div class="muted small" style="margin-top:6px;">
           ※期待値指数は「推定1-2確率 × ChatGPT監査時オッズ」で固定計算します。画面の後入力オッズが変わっても監査時EVは変えません。<br/>
+          ※公式WebはBOAT RACE公式の出走表・直前情報だけを使用し、対象レースの結果・払戻は使用しません。<br/>
           ※「人間最終判断」と「購入有無」は最終行動へ統合しました。実購入オッズだけは収支計算用に任意入力できます。
         </div>
       </details>
@@ -6578,6 +6634,10 @@
     const fieldMap = {
       auditMode:"[data-audit-mode]",
       auditPerformedAt:"[data-audit-performed-at]",
+      webPlayerInfoStatus:"[data-web-player-info-status]",
+      webRetrievedAt:"[data-web-retrieved-at]",
+      baselineDecision:"[data-baseline-decision]",
+      baselineProbability12:"[data-baseline-prob-12]",
       chatgptDecision:"[data-ai-decision]",
       reasonCode:"[data-ai-reason]",
       confidence:"[data-ai-confidence]",
@@ -6588,12 +6648,14 @@
       minimumBuyOdds:"[data-ai-min-buy-odds]",
       finalAction:"[data-final-action]",
       purchaseOdds:"[data-purchase-odds]",
+      webSourceUrls:"[data-web-source-urls]",
+      webAdjustmentReason:"[data-web-adjustment-reason]",
       note:"[data-ai-note]"
     };
     for(const [key,sel] of Object.entries(fieldMap)){
       const el = card.querySelector(sel);
       if(!el) continue;
-      if(key === "auditPerformedAt") el.value = toDatetimeLocalV22035_(ai[key]);
+      if(key === "auditPerformedAt" || key === "webRetrievedAt") el.value = toDatetimeLocalV22035_(ai[key]);
       else if(key === "auditInputOdds" && !String(ai[key] || "").trim()) el.value = Number.isFinite(currentOddForAudit) && currentOddForAudit > 0 ? currentOddForAudit : "";
       else el.value = ai[key] ?? "";
     }
@@ -6631,6 +6693,12 @@
       return {
         auditMode:valueOf("[data-audit-mode]"),
         auditPerformedAt:fromDatetimeLocalV22035_(valueOf("[data-audit-performed-at]")),
+        webPlayerInfoStatus:valueOf("[data-web-player-info-status]"),
+        webRetrievedAt:fromDatetimeLocalV22035_(valueOf("[data-web-retrieved-at]")),
+        webSourceUrls:valueOf("[data-web-source-urls]"),
+        baselineProbability12:valueOf("[data-baseline-prob-12]"),
+        webAdjustedProbability12:valueOf("[data-ai-prob]"),
+        baselineDecision:valueOf("[data-baseline-decision]"),
         chatgptDecision:valueOf("[data-ai-decision]"),
         reasonCode:valueOf("[data-ai-reason]"),
         confidence:valueOf("[data-ai-confidence]"),
@@ -6643,6 +6711,7 @@
         minimumBuyOdds:valueOf("[data-ai-min-buy-odds]"),
         finalAction:valueOf("[data-final-action]"),
         purchaseOdds:valueOf("[data-purchase-odds]"),
+        webAdjustmentReason:valueOf("[data-web-adjustment-reason]"),
         note:valueOf("[data-ai-note]")
       };
     };
@@ -7567,17 +7636,34 @@
       || candidates.find(r=>Math.abs(parseCloseMs_(r.race_closed_at)-now-15*60000)<=20*60000)
       || candidates[0];
   }
-  // ===== v2.20.35 AI監査プロンプト統合 =====
+  // ===== v2.20.36 AI監査プロンプト統合 =====
   // JSON書き出しとChatGPTコピーの両方が、必ず同じ版の監査指示を使用する。
   // 結果由来フィールドはAI評価用データから除外し、事後情報リークを防ぐ。
-  const AI_AUDIT_PROMPT_VERSION_ = 'kyotei_2t12_independent_audit_v1.1';
+  const AI_AUDIT_PROMPT_VERSION_ = 'kyotei_2t12_independent_audit_v1.2';
 
-  function buildAiAuditPromptV22035_(r=null, generatedAt=null){
+  function officialWebSourcesV22036_(r=null){
+    const hd = String(r?.date || '').replace(/\D/g,'');
+    const jcd = Number.isFinite(Number(r?.stadium)) ? String(Number(r.stadium)).padStart(2,'0') : '';
+    const rno = Number.isFinite(Number(r?.race)) ? String(Number(r.race)) : '';
+    const valid = /^\d{8}$/.test(hd) && /^\d{2}$/.test(jcd) && /^\d{1,2}$/.test(rno);
+    return {
+      source_policy:'BOAT_RACE_OFFICIAL_ONLY',
+      result_use_prohibited:true,
+      racelist_url:valid ? `https://www.boatrace.jp/owpc/pc/race/racelist?hd=${hd}&jcd=${jcd}&rno=${rno}` : null,
+      beforeinfo_url:valid ? `https://www.boatrace.jp/owpc/pc/race/beforeinfo?hd=${hd}&jcd=${jcd}&rno=${rno}` : null,
+      expected_racer_ids:Array.isArray(r?.racer_ids) ? r.racer_ids.map(x=>String(x || '').trim()).filter(Boolean) : []
+    };
+  }
+
+  function buildAiAuditPromptV22036_(r=null, generatedAt=null){
     const venue = r?.venue || (Number.isFinite(Number(r?.stadium)) ? (VENUES[Number(r.stadium)] || String(r.stadium)) : '会場名');
     const round = Number.isFinite(Number(r?.race)) ? `${Number(r.race)}R` : '○R';
     const date = r?.date || 'YYYY-MM-DD';
     const raceKey = r?.key || 'race_key';
     const generated = generatedAt || 'JSON内generated_at';
+    const web = officialWebSourcesV22036_(r);
+    const racelistUrl = web.racelist_url || 'JSON内web_lookup_plan.racelist_url';
+    const beforeinfoUrl = web.beforeinfo_url || 'JSON内web_lookup_plan.beforeinfo_url';
     return [
       '【競艇・2連単1-2 独立最終監査】',
       '',
@@ -7604,11 +7690,38 @@
       '6. 欠損値を0や安全として扱わず、必要情報が不足する場合はWAITまたはNOにしてください。',
       '7. 1-2以外の買い目を提案しないでください。',
       '8. manual_odds.recorded_atは入力操作時刻であり、オッズ観測時刻とは限りません。監査時オッズはodds_observationまたはevaluation_request.audit_input_oddsを優先してください。',
+      '9. Webからオッズを取得・推測・上書きしないでください。期待値計算にはJSONの監査時オッズだけを使用してください。',
+      '10. 対象レースの結果、払戻、決まり手、リプレイ、確定着順、結果を示す検索スニペットは絶対に見ない・使わないでください。',
+      '11. generated_at、recorded_at、ai_audit_decided_at等の時刻差だけを理由に、ユーザーが締切前取得としたデータを事後データ扱いしないでください。情報リークの有無は内容で判断してください。',
       '',
-      '【必須評価】',
+      '【監査手順：順序厳守】',
+      '手順1：Webを開く前に、JSON内データだけで暫定評価を作成してください。',
+      '・baseline_decision：BUY / WAIT / NO / EXCLUDE',
+      '・baseline_probability_12：Web取得前の1-2的中確率',
+      '・baseline_reason：重要な理由を2つ以内',
+      '',
+      '手順2：次のBOAT RACE公式ページをURLから直接確認してください。一般検索や非公式予想サイトは使用しないでください。',
+      `・出走表：${racelistUrl}`,
+      `・直前情報：${beforeinfoUrl}`,
+      '・JSON内の開催日、会場コード、R、全6艇の登録番号を公式ページと照合してください。',
+      '・確認対象は、全6艇の全国・当地成績、モーター・ボート成績、今節の対象レースより前の進入コース・ST・着順、当日の前走、部品交換、展示・進入・気象です。',
+      '・平均着順だけで評価せず、各走の進入コースとセットで内容を評価してください。',
+      '・対象レース自身の結果が表示されている、または事前情報と結果を安全に分離できない場合は、Web情報を判定へ反映せずweb_player_info_status=BLOCKED_RESULT_RISKとしてください。',
+      '・全6艇を照合できた場合はSUCCEEDED、一部だけならPARTIAL、取得不能ならFAILED、未実施ならNOT_REQUESTEDとしてください。',
+      '・PARTIALまたはFAILEDでも推測で穴埋めせず、確認できた事実だけを使ってください。',
+      '',
+      '手順3：公式Web確認後に最終評価を作成し、Web取得前からの変化を明示してください。',
+      '・web_adjusted_probability_12：Web反映後の1-2的中確率',
+      '・final_decision：BUY / WAIT / NO / EXCLUDE',
+      '・decision_changed：baseline_decisionとfinal_decisionが異なるか',
+      '・web_adjustment_reason：確率・判定を変えた理由。変更なしの場合も「変更なし」と理由を記録',
+      '・Web取得失敗または結果混入リスクで使えない場合は、最終評価をJSONだけで行い、その制約を明記してください。',
+      '',
+      '【最終評価の必須観点】',
       '・1号艇の1着信頼度：能力、当地、モーター、展示順位、展示差、ST差、進入、水面、飛びの典型形',
       '・2号艇の2着残存力：展示、ST、3・4号艇および外枠脅威、差し残し、2号艇頭のリスク',
       '・進入とスタート展示：枠なり、1・2コース維持、前付け、深イン、ST紐づけ',
+      '・選手の現在状態：当日前走、今節のコース別内容、F/L・事故・部品交換。長期勝率と直近状態を混同しない',
       '・オッズ期待値：推定1-2確率、適正オッズ、期待値指数、最低購入オッズ',
       '',
       '1-2的中確率は、原則として「1号艇1着確率 × 1号艇勝利条件下の2号艇2着確率」と整合させてください。',
@@ -7630,8 +7743,26 @@
       `開催日：${date}`, 
       `race_key：${raceKey}`,
       '',
+      '### Web取得前の暫定評価',
+      '* baseline_decision：BUY / WAIT / NO / EXCLUDE',
+      '* baseline_probability_12：',
+      '* baseline_reason：',
+      '',
+      '### 公式Web確認',
+      '* web_player_info_status：SUCCEEDED / PARTIAL / FAILED / BLOCKED_RESULT_RISK / NOT_REQUESTED',
+      '* web_retrieved_at：',
+      '* web_source_urls：',
+      '* 登録番号照合：1〜6号艇',
+      '* 当日・今節の重要事実：',
+      '',
+      '### Web反映',
+      '* web_adjusted_probability_12：',
+      '* final_decision：BUY / WAIT / NO / EXCLUDE',
+      '* decision_changed：true / false',
+      '* web_adjustment_reason：',
+      '',
       '### 最終判定',
-      'BUY / WAIT / NO / EXCLUDE',
+      'final_decisionと同じラベルを1つだけ記載。',
       '',
       '### 信頼度',
       '0〜100',
@@ -7667,7 +7798,7 @@
       '不足情報を列挙。不足がなければ「なし」。',
       '',
       '最後に必ず1行で再掲してください。',
-      `対象：${venue} ${round}｜結論：BUY / WAIT / NO / EXCLUDE｜信頼度○○｜適正オッズ○○倍｜最低購入オッズ○○倍`
+      `対象：${venue} ${round}｜暫定：BUY / WAIT / NO / EXCLUDE｜最終：BUY / WAIT / NO / EXCLUDE｜Web：SUCCEEDED / PARTIAL / FAILED / BLOCKED_RESULT_RISK / NOT_REQUESTED｜信頼度○○｜適正オッズ○○倍｜最低購入オッズ○○倍`
     ].join('\n');
   }
 
@@ -7683,6 +7814,9 @@
       'ai_audit_decision','ai_audit_decision_reason','ai_audit_decision_confidence',
       'ai_audit_decided_at','ai_audit_decided_at_basis','ai_audit_decision_recorded_at',
       'ai_probability_p1_win','ai_probability_p2_second_given_p1_win','ai_probability_12',
+      'web_player_info_status','web_retrieved_at','web_source_urls',
+      'baseline_probability_12','web_adjusted_probability_12',
+      'baseline_decision','final_decision','decision_changed','web_adjustment_reason',
       'ai_fair_odds','ai_ev_index','ai_minimum_buy_odds',
       'human_final_action','purchase_odds','human_final_action_recorded_at'
     ]);
@@ -7719,7 +7853,8 @@
     const stats={removed:0};
     const er=sanitizeAiEvaluationValueV22035_(buildExportRace_(r), stats);
     const close=parseCloseMs_(r.race_closed_at);
-    const promptText=buildAiAuditPromptV22035_(r, generatedAt);
+    const promptText=buildAiAuditPromptV22036_(r, generatedAt);
+    const webLookupPlan=officialWebSourcesV22036_(r);
     const manualOdds = getManualOdds(r.key);
     const review = getAiReview_(r.key);
     const currentOdd = getOddFor(r,'2T','1-2');
@@ -7731,7 +7866,7 @@
       generated_at:generatedAt,
       selection_mode:'race_card_explicit',
       app_meta:{
-        app_version:'v2.20.35',
+        app_version:'v2.20.36',
         ai_audit_layer_version:AI_AUDIT_LAYER_VERSION_,
         formal_buy_logic_changed:false
       },
@@ -7759,6 +7894,7 @@
         recommended_before_at:Number.isFinite(close)?new Date(close-15*60000).toISOString():null,
         odds_recheck_at:Number.isFinite(close)?new Date(close-5*60000).toISOString():null
       },
+      web_lookup_plan:webLookupPlan,
       odds_observation:{
         selection:'2連単1-2',
         value:auditInputOdd,
@@ -7775,8 +7911,8 @@
         audit_input_odds:auditInputOdd,
         prompt_version:AI_AUDIT_PROMPT_VERSION_,
         prompt_text:includePromptText ? promptText : undefined,
-        instruction:'上記の版管理された独立監査プロンプトに従い、回答冒頭へ対象会場・R・race_keyを表示し、結果情報を使用せず、この1レースだけを評価してください。',
-        required_outputs:['対象レース','race_key','最終判定','信頼度','1号艇1着確率','2号艇条件付き2着確率','1-2的中確率','確率積との整合','適正オッズ','監査時オッズ','期待値指数','最低購入オッズ','判定理由','危険要因','購入条件','データ不足'],
+        instruction:'上記の版管理された独立監査プロンプトに従い、JSONだけの暫定評価後にBOAT RACE公式Webを直接確認し、対象レースの結果情報を使用せず、この1レースだけを評価してください。',
+        required_outputs:['対象レース','race_key','baseline_decision','baseline_probability_12','web_player_info_status','web_retrieved_at','web_source_urls','web_adjusted_probability_12','final_decision','decision_changed','web_adjustment_reason','最終判定','信頼度','1号艇1着確率','2号艇条件付き2着確率','1-2的中確率','確率積との整合','適正オッズ','監査時オッズ','期待値指数','最低購入オッズ','判定理由','危険要因','購入条件','データ不足'],
         final_labels:['BUY','WAIT','NO','EXCLUDE']
       },
       race:er
@@ -7797,7 +7933,7 @@
 
   function buildAiClipboardTextV22029_(r, requestMeta=null){
     const generatedAt = requestMeta?.generated_at || new Date().toISOString();
-    const prompt=buildAiAuditPromptV22035_(r, generatedAt);
+    const prompt=buildAiAuditPromptV22036_(r, generatedAt);
     // クリップボードではプロンプトを平文で先頭に置き、JSON内の重複本文だけ省略して軽量化する。
     const payload=buildAiEvaluationPayloadV22029_(r,{includePromptText:false,requestMeta});
     const er=payload.race || {};
@@ -7853,7 +7989,7 @@
   }
 
   async function copyAiAuditPromptOnlyV22035_(){
-    await copyTextSafeV22029_(buildAiAuditPromptV22035_(null, null));
+    await copyTextSafeV22029_(buildAiAuditPromptV22036_(null, null));
   }
 
   function exportAiEvaluationV22028_(){
@@ -7862,7 +7998,7 @@
     exportAiEvaluationForRaceV22029_(r);
   }
 
-  // v2.20.35: 別PCで作成したAI評価JSONを家PCへ取り込み、監査時刻・監査時オッズを復元する。
+  // v2.20.36: 別PCで作成したAI評価JSONを家PCへ取り込み、監査時刻・監査時オッズを復元する。
   // localStorageはPC間同期されないため、これを正規の引継ぎ経路とする。
   function importAiEvaluationPayloadV22035_(payload, filename=''){
     if(!payload || typeof payload !== 'object') throw new Error('JSON形式が不正です');
@@ -7928,10 +8064,11 @@
 
     const snap = {
       generated_at: new Date().toISOString(),
-      app_version: 'v2.20.35',
+      app_version: 'v2.20.36',
       logic_version: 'v2.20.27-compatible-formal',
       ai_audit_layer_version: AI_AUDIT_LAYER_VERSION_,
       ai_review_schema: 'kyotei_ai_review_v2',
+      ai_web_player_info_schema: 'kyotei_ai_web_player_info_v1',
       worker_base: WORKER_BASE,
       enabled_stadiums: Array.from(enabledStadiums).sort((a,b)=>a-b),
       settings: collectSettings_(),
